@@ -173,6 +173,7 @@ routes.delete("/api/users/:id", destroy);
 
 // Loans Route
 routes.get("/api/loan/:id", findLoanByCustomer);
+routes.get("/api/loan/amortization/:id", getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", findAllLoans);
 routes.put("/api/loan/:id", updateLoan);
