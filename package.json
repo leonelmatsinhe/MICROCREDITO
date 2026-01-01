@@ -8,7 +8,7 @@
     "postinstall": "tsc",
     "dev": "tsc && node build/app.js",
     "dev:server": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "deploy": "git add . && git commit -m ConfiguredMysqlDatabase && git push heroku master"
+    "deploy": "git add . && git commit -m ConfiguredMysqlDatabase && git push heroku main"
   },
   "engines": {
     "node": "16.14.0"
