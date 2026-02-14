@@ -8,10 +8,11 @@
     "postinstall": "tsc",
     "dev": "tsc && node build/app.js",
     "dev:server": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "deploy": "git add . && git commit -m ConfiguredMysqlDatabase && git push heroku main"
+    "build:frontend": "cd web-app && npm install && npm run build",
+    "deploy": "git add . && git commit -m deploy && git push heroku main"
   },
   "engines": {
-    "node": "16.14.0"
+    "node": "18.x"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",

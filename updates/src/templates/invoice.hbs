@@ -1,0 +1,167 @@
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/css/bootstrap.min.css"
+      integrity="sha384-B0vP5xmATw1+K9KRQjQERJvTumQW0nPEzvF6L/Z6nronJ3oUOFUFpCjEUQouq2+l"
+      crossorigin="anonymous"
+    />
+    <title>Factura</title>
+  </head>
+
+  <style>
+    body { font-family: 'Helvetica Neue', Arial, Helvetica, sans-serif; padding:
+    20px; color: #000000; } table { width: 95%; } table tr th { border: 1px
+    solid #000000; text-align: left; }
+  </style>
+
+  <body>
+
+    <div class="row mb-0 mt-0">
+      <div class="col text-left">
+        <img
+          src="{{company.companyLogo}}"
+          width="100%"
+          height="90%"
+          alt="LOGO"
+        />
+      </div>
+      <div class="col-6">
+        <table class="table-sm mt-0">
+          <tbody style="font-size: 9pt; border: 1px solid #000;">
+            <tr>
+              <td colspan=" 2">Exmo(s) Sr(s):
+                <br />
+                <b>{{ customer.customerName}}
+                  | Conta:
+                  {{customer.accountNumber}}</b><br />
+                Morada:
+                {{customer.customerAddress}}
+                <br />
+                <hr style="border-top: dotted 1px #000;" class="mt-0 mb-0" />
+                Telemóvel:
+                {{customer.customerPhone}}<br />
+                NUIT:
+                {{customer.customerNuit}}<br />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="row" style="font-size: 9pt;">
+      <div class="col-12">
+        <table class="table-sm">
+          <thead>
+            <tr>
+              <th>Ola</th>
+              <th>Mundo</th>
+              <th>Valeu</th>
+            </tr>
+          </thead>
+        </table>
+      </div>
+    </div>
+
+    <div class="row mt-0" style="font-size: 8pt;">
+      <div class="col-12">
+        <table class="table-sm">
+          <thead>
+            <tr>
+              <th>Ola</th>
+              <th>Mundo</th>
+              <th>Valeu</th>
+            </tr>
+          </thead>
+        </table>
+      </div>
+    </div>
+
+    <div class="row mt-0" style="font-size: 8pt;">
+      <div class="col-12">
+        <b>DETALHES SOBRE MEIOS DE PAGAMENTOS</b><br />
+        <table class="table-sm">
+          <thead>
+            <tr>
+              <td>
+                <b>M-PESA</b><br />
+                <b>*150#</b>
+                Tecla de chamada
+                <br />
+                6. Pagamentos
+                <br />
+                7. Digitar código de serviço:
+                <b>901029</b>
+                <br />
+                Digitar Referência:
+                <b>{{customer.accountNumber}}</b>
+                <br />
+                Digitar o Valor:
+                <b>da prestação MZN</b>
+                <br />
+                Digitar o PIN M-pesa e confirmar a tranzação
+
+              </td>
+              <td colspan="2">
+                <b>BCI</b><br />
+                Titular: Nthuso Microcrédito, EI<br />
+                {{company.bankAccount}}
+                <br />
+                {{company.nib}}
+                <br />
+                <b>Google Play Store - NthusoApp</b><br />
+                Contacte +{{company.companyPhone}}
+                ou iselsocumbi@gmail.com para solicitar credenciais de acesso ao
+                aplicativo.
+
+              </td>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="4">
+                <b>Informações:</b>
+                <hr class="bg-dark mt-0 mb-0" />
+                <ol>
+                  <li>A falta de pagamento da presente factura dentro do prazo
+                    estabelecido resultará em:
+                    <br />
+                    a) Multa de 20% sobre o valor da factura;<br />
+                    b) Corte de fornecimento de água;<br />
+                    b1) A religação será feita mediante o pagamento da taxa de
+                    religação.
+                  </li>
+                  <li>A reclamação da factura só é aceite no prazo máximo de 15
+                    dias antes do prazo do pagamento: (Artigo 8, nr. 2 Contrato
+                    de Adesão).</li>
+                  <li>Os comprovativos de pagamentos efectuados via Depósito
+                    Bancário devem ser apresentados no escritório da TSENANE,
+                    LDA, em Funhalouro</li>
+                </ol>
+              </td>
+            </tr>
+            <tr style="font-size: 8pt; color: red">
+              {{#if avisoCorte}}
+                <td colspan="4">AVISO: Será feito o corte de água dos clientes
+                  com 2 (duas) ou mais facturas em atrazo. Regularize seus
+                  débitos e evite a suspenção de água.</td>
+              {{/if}}
+            </tr>
+            <tr style="font-size: 7pt;">
+              <td colspan="2">
+                Documento Processado por Computador
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </body>
+
+</html>

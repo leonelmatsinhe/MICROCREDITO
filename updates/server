@@ -1,0 +1,5 @@
+
+> microcredit-system@1.0.0 dev
+> tsc && node build/app.js
+
+Nthuso Server is running on PORT 3000

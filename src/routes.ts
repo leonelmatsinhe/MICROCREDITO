@@ -1,5 +1,6 @@
 import express, { request } from "express";
 import { Request, Response } from "express";
+import path from "path";
 // import multer from "multer";
 
 import {
@@ -27,6 +28,7 @@ import {
   updateCustomer,
   deleteCustomer,
   loginCustomer,
+  changeCustomerPassword,
 } from "./controllers/CustomerController";
 
 import {
@@ -46,6 +48,7 @@ import {
 
 import {
   findAlltranzactions,
+  findTransactionsByCompany,
   getCustomerTranzactions,
   addTranzaction,
   updateTranzaction,
@@ -109,17 +112,18 @@ const routes = express.Router();
 
 // Front End Entry point
 routes.get("/", (req: Request, res: Response) =>
-  res.sendFile(__dirname + "../../public/index.html")
+  res.sendFile(path.join(__dirname, "..", "..", "public", "index.html"))
 );
 
 routes.get("/logo/:image", (req: Request, res: Response) =>
-  res.sendFile(__dirname + `../../uploads/img/${req.params.image}`)
+  res.sendFile(path.join(__dirname, "..", "..", "uploads", "img", req.params.image))
 );
 
 routes.post("/api/userCredentials", sendUserCredentials);
 // Login Routes
 routes.post("/api/login", loginUser);
 routes.post("/api/customer/login", loginCustomer);
+routes.post("/api/customer/changePassword", changeCustomerPassword);
 
 // Customer Contrats
 routes.get("/contract/:companyId/:accountNumber/:loanId", customerContract)
@@ -155,7 +159,7 @@ routes.get("/api/download/:id", (req: Request, res: Response) => {
   const fileName = req.params.id;
 
   return fileName != null
-    ? res.sendFile(__dirname + `/uploads/${fileName}`)
+    ? res.sendFile(path.join(__dirname, "..", "..", "uploads", fileName))
     : res.json({
       success: false,
       message: "Arquivo não encontrado.",
@@ -223,6 +227,7 @@ routes.post("/api/account", createAccount);
 // Tranzaction Routes
 routes.get("/api/tranzaction", findAlltranzactions);
 routes.get("/api/tranzaction/:id", getCustomerTranzactions);
+routes.get("/api/monthllyTransactions/:id", findTransactionsByCompany);
 routes.put("/api/tranzaction/:id", updateTranzaction);
 routes.post("/api/tranzaction", addTranzaction);
 

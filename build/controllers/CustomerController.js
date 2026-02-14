@@ -35,7 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
+exports.changeCustomerPassword = exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 const CustomerModel_1 = require("../database/models/CustomerModel");
@@ -215,3 +215,57 @@ const loginCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.loginCustomer = loginCustomer;
+const changeCustomerPassword = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { customerId, currentPassword, newPassword } = req.body;
+    if (!customerId || !currentPassword || !newPassword) {
+        return res.status(400).json({
+            success: false,
+            message: "Todos os campos são obrigatórios.",
+        });
+    }
+    if (newPassword.length < 6) {
+        return res.status(400).json({
+            success: false,
+            message: "A nova senha deve ter pelo menos 6 caracteres.",
+        });
+    }
+    try {
+        const customer = yield CustomerModel_1.CustomerModel.findOne({
+            where: { id: customerId },
+        });
+        if (!customer) {
+            return res.status(200).json({
+                success: false,
+                message: "Cliente não encontrado.",
+            });
+        }
+        const isMatch = yield bcryptjs_1.default.compare(currentPassword + "", customer.getDataValue("password"));
+        if (!isMatch) {
+            return res.status(200).json({
+                success: false,
+                message: "A senha actual está incorrecta.",
+            });
+        }
+        bcryptjs_1.default.hash(newPassword + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
+            if (hashError) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Erro ao processar a nova senha.",
+                });
+            }
+            yield CustomerModel_1.CustomerModel.update({ password: hash }, { where: { id: customerId } });
+            return res.status(200).json({
+                success: true,
+                message: "Senha alterada com sucesso.",
+            });
+        }));
+    }
+    catch (error) {
+        console.error("Erro ao alterar senha do cliente:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Erro interno ao alterar a senha.",
+        });
+    }
+});
+exports.changeCustomerPassword = changeCustomerPassword;

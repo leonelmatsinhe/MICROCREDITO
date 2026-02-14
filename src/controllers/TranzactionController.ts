@@ -19,6 +19,24 @@ const findAlltranzactions = async (req: Request, res: Response) => {
     });
 };
 
+const findTransactionsByCompany = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const tranzactions = await TranzactionModel.findAll({
+    where: {
+      companyId: id
+    },
+    order: [["id", "DESC"]],
+  });
+
+  return tranzactions.length > 0
+    ? res.status(200).send({ success: true, result: tranzactions })
+    : res.status(200).send({
+      success: true,
+      result: [],
+    });
+};
+
 const getCustomerTranzactions = async (req: Request, res: Response) => {
   const { id } = req.params;
   const tranzaction = await TranzactionModel.findAll({
@@ -110,6 +128,7 @@ const updateTranzaction = async (req: Request, res: Response) => {
 
 export {
   findAlltranzactions,
+  findTransactionsByCompany,
   getCustomerTranzactions,
   addTranzaction,
   updateTranzaction,

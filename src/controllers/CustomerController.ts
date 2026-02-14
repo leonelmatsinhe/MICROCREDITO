@@ -3,7 +3,6 @@ import bcryptjs from "bcryptjs";
 import * as jwt from "jsonwebtoken";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { Op } from "sequelize";
-import { AccountModel } from "../database/models/AccountModel";
 
 const findAllCustomers = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -180,9 +179,9 @@ const loginCustomer = async (req: Request, res: Response) => {
       customerPhone: phone,
     },
   });
-  if (customer?.getDataValue("id") > 0) {
+  if (customer?.getDataValue.length == 1) {
     if (
-      await bcryptjs.compare(password + "", customer?.getDataValue("password"))
+      await bcryptjs.compare(password, customer?.getDataValue("password"))
     ) {
       const token = jwt.sign(
         { id: customer?.getDataValue("id") },
@@ -195,6 +194,7 @@ const loginCustomer = async (req: Request, res: Response) => {
       const data = [
         {
           id: customer?.getDataValue("id"),
+          companyId: customer?.getDataValue("companyId"),
           accountNumber: customer?.getDataValue("accountNumber"),
           customerName: customer?.getDataValue("customerName"),
           customerEmail: customer?.getDataValue("customerEmail"),
@@ -203,23 +203,96 @@ const loginCustomer = async (req: Request, res: Response) => {
           customerNationalId: customer?.getDataValue("customerNationalId"),
           issuedAt: customer?.getDataValue("issuedAt"),
           localOfIssue: customer?.getDataValue("localOfIssue"),
+          customerDateOfBirth: customer?.getDataValue("customerDateOfBirth"),
+          customerProfession: customer?.getDataValue("customerProfession"),
+          customerMonthlySalary: customer?.getDataValue("customerMonthlySalary"),
+          customerLocalOfWork: customer?.getDataValue("customerLocalOfWork"),
           customerAddress: customer?.getDataValue("customerAddress"),
+          sex: customer?.getDataValue("sex"),
+          maritalStatus: customer?.getDataValue("maritalStatus"),
           status: customer?.getDataValue("status"),
           createdAt: customer?.getDataValue("createdAt"),
           updatedAt: customer?.getDataValue("updatedAt"),
         },
       ];
-
       return res.send(JSON.stringify({ success: true, result: data, token }));
     } else {
       return res
-        .status(204)
+        .status(200)
         .send(JSON.stringify({ success: false, message: "Wrong password" }));
     }
   } else {
     return res
-      .status(204)
+      .status(200)
       .json({ success: false, message: "Customer not found" });
+  }
+};
+
+const changeCustomerPassword = async (req: Request, res: Response) => {
+  const { customerId, currentPassword, newPassword } = req.body;
+
+  if (!customerId || !currentPassword || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "Todos os campos são obrigatórios.",
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "A nova senha deve ter pelo menos 6 caracteres.",
+    });
+  }
+
+  try {
+    const customer = await CustomerModel.findOne({
+      where: { id: customerId },
+    });
+
+    if (!customer) {
+      return res.status(200).json({
+        success: false,
+        message: "Cliente não encontrado.",
+      });
+    }
+
+    const isMatch = await bcryptjs.compare(
+      currentPassword + "",
+      customer.getDataValue("password")
+    );
+
+    if (!isMatch) {
+      return res.status(200).json({
+        success: false,
+        message: "A senha actual está incorrecta.",
+      });
+    }
+
+    bcryptjs.hash(newPassword + "", 10, async (hashError, hash) => {
+      if (hashError) {
+        return res.status(500).json({
+          success: false,
+          message: "Erro ao processar a nova senha.",
+        });
+      }
+
+      await CustomerModel.update(
+        { password: hash },
+        { where: { id: customerId } }
+      );
+
+      return res.status(200).json({
+        success: true,
+        message: "Senha alterada com sucesso.",
+      });
+    });
+  } catch (error) {
+    console.error("Erro ao alterar senha do cliente:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno ao alterar a senha.",
+    });
   }
 };
 
@@ -231,4 +304,5 @@ export {
   updateCustomer,
   deleteCustomer,
   loginCustomer,
+  changeCustomerPassword,
 };

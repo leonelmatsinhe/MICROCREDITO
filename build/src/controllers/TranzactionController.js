@@ -9,18 +9,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateTranzaction = exports.addTranzaction = exports.getCustomerTranzactions = exports.findAlltranzactions = void 0;
+exports.updateTranzaction = exports.addTranzaction = exports.getCustomerTranzactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
-const sequelize_1 = require("sequelize");
 const findAlltranzactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { from, to, companyId } = req.query;
+    const { from, companyId } = req.query;
     const tranzactions = yield TranzactionModel_1.TranzactionModel.findAll({
         where: {
-            createdAt: {
-                [sequelize_1.Op.between]: [from, to],
-            },
-            companyId: companyId,
+            companyId
         },
     });
     return tranzactions.length > 0
@@ -31,6 +27,22 @@ const findAlltranzactions = (req, res) => __awaiter(void 0, void 0, void 0, func
         });
 });
 exports.findAlltranzactions = findAlltranzactions;
+const findTransactionsByCompany = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const tranzactions = yield TranzactionModel_1.TranzactionModel.findAll({
+        where: {
+            companyId: id
+        },
+        order: [["id", "DESC"]],
+    });
+    return tranzactions.length > 0
+        ? res.status(200).send({ success: true, result: tranzactions })
+        : res.status(200).send({
+            success: true,
+            result: [],
+        });
+});
+exports.findTransactionsByCompany = findTransactionsByCompany;
 const getCustomerTranzactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const tranzaction = yield TranzactionModel_1.TranzactionModel.findAll({
@@ -47,17 +59,22 @@ const getCustomerTranzactions = (req, res) => __awaiter(void 0, void 0, void 0, 
 });
 exports.getCustomerTranzactions = getCustomerTranzactions;
 const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { companyId, accountNumber, amortizationLoanId, amount, phoneNumber, tranzactionReference, paymentMethod, description, staffName, } = req.body;
+    let { companyId, accountNumber, amortizationLoanId, amount, latePaymentInterest, interestRateAmount, phoneNumber, tranzactionReference, paymentMethod, description, receiptUrl, staffName, loanId, paymentDate, } = req.body;
     const tranzaction = yield TranzactionModel_1.TranzactionModel.create({
         companyId,
         accountNumber,
         amortizationLoanId,
         amount,
+        latePaymentInterest,
+        interestRateAmount,
         phoneNumber,
         tranzactionReference,
         paymentMethod,
         description,
+        receiptUrl,
         staffName,
+        loanId,
+        paymentDate,
     });
     if (tranzaction != null) {
         const updateAmortizationLoan = yield AmortizationLoanModel_1.AmorizationLoanModel.update({

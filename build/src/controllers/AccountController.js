@@ -11,7 +11,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteAccount = exports.updateAccount = exports.createAccount = exports.findOneAccount = exports.findAllaccounts = void 0;
 const AccountModel_1 = require("../database/models/AccountModel");
-const CustomerModel_1 = require("../database/models/CustomerModel");
 const findAllaccounts = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const accounts = yield AccountModel_1.AccountModel.findAll({
@@ -20,11 +19,8 @@ const findAllaccounts = (req, res) => __awaiter(void 0, void 0, void 0, function
         },
         order: [["id", "DESC"]],
     });
-    return accounts.length > 0
-        ? res.status(200).send({ success: true, result: accounts })
-        : res
-            .status(204)
-            .send({ success: false, message: "No accounts registered so far." });
+    // Retorna sempre 200 com array (vazio ou preenchido) para evitar problemas com status 204
+    return res.status(200).json({ success: true, result: accounts || [] });
 });
 exports.findAllaccounts = findAllaccounts;
 const findOneAccount = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -43,30 +39,18 @@ const findOneAccount = (req, res) => __awaiter(void 0, void 0, void 0, function*
 });
 exports.findOneAccount = findOneAccount;
 const createAccount = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { createdBy, companyId } = req.body;
-    let accountStatus = 0;
-    let accountNumber;
-    const account = yield AccountModel_1.AccountModel.findAll({
-        order: [["id", "DESC"]],
-    });
-    if (account.length === 0) {
-        accountNumber = 202200000;
-    }
-    else {
-        const conta = account.at(0);
-        const incrementAccount = conta === null || conta === void 0 ? void 0 : conta.getDataValue("accountNumber");
-        accountNumber = parseInt(incrementAccount) + 1;
-    }
+    let { accountHolder, accountDescription, accountNumber, createdBy, companyId } = req.body;
     const newAccount = yield AccountModel_1.AccountModel.create({
         companyId,
+        accountHolder,
+        accountDescription,
         accountNumber,
         createdBy,
-        accountStatus,
     });
     newAccount != null
         ? res.send(JSON.stringify({
             success: true,
-            message: "Account generated successfully.",
+            message: "Account created successfully.",
         }))
         : res.status(400).send(JSON.stringify({
             success: false,
@@ -76,37 +60,28 @@ const createAccount = (req, res) => __awaiter(void 0, void 0, void 0, function* 
 exports.createAccount = createAccount;
 const updateAccount = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
-    const { customerId } = req.body;
     const update = yield AccountModel_1.AccountModel.update(req.body, {
         where: {
-            accountNumber: id,
+            id,
         },
     });
     if (update != null) {
-        const customerUpdation = yield CustomerModel_1.CustomerModel.update(req.body, {
-            where: { id: customerId },
+        res.json({
+            success: true,
+            message: "Account number allocated successfully",
         });
-        return customerUpdation != null
-            ? res.json({
-                success: true,
-                message: "Account number allocated successfully",
-            })
-            : res.status(500).send(JSON.stringify({
-                success: false,
-                message: "There was an error allocating the account.",
-            }));
     }
     else {
         return res.status(500).send(JSON.stringify({
             success: false,
-            message: "There was an error allocating the account.",
+            message: "There was an error updating the account.",
         }));
     }
 });
 exports.updateAccount = updateAccount;
 const deleteAccount = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
-    const deleteAccount = yield AccountModel_1.AccountModel.destroy({ where: { id: id } });
+    const deleteAccount = yield AccountModel_1.AccountModel.destroy({ where: { id } });
     return deleteAccount != null
         ? res.status(201).send(JSON.stringify({
             success: true,

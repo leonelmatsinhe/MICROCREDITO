@@ -10,11 +10,8 @@ const findAllaccounts = async (req: Request, res: Response) => {
     order: [["id", "DESC"]],
   });
 
-  return accounts.length > 0
-    ? res.status(200).send({ success: true, result: accounts })
-    : res
-      .status(204)
-      .send({ success: false, message: "No accounts registered so far." });
+  // Retorna sempre 200 com array (vazio ou preenchido) para evitar problemas com status 204
+  return res.status(200).json({ success: true, result: accounts || [] });
 };
 
 const findOneAccount = async (req: Request, res: Response) => {
