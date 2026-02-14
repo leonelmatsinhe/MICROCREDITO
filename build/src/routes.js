@@ -26,11 +26,17 @@ const UserCredentials_1 = require("./controllers/UserCredentials");
 const SmsController_1 = require("./controllers/SmsController");
 const PdfController_1 = require("./controllers/PdfController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
+const path_1 = require("path");
+// Determina a raiz do projecto
+const isCompiled = __dirname.includes(path_1.sep + "build" + path_1.sep) || __dirname.endsWith(path_1.sep + "build");
+const projectRoot = isCompiled
+    ? path_1.join(__dirname, "..", "..")
+    : path_1.join(__dirname, "..");
 const routes = express_1.default.Router();
 exports.routes = routes;
 // Front End Entry point
-routes.get("/", (req, res) => res.sendFile(__dirname + "../../public/index.html"));
-routes.get("/logo/:image", (req, res) => res.sendFile(__dirname + `../../uploads/img/${req.params.image}`));
+routes.get("/", (req, res) => res.sendFile(path_1.join(projectRoot, "public", "index.html")));
+routes.get("/logo/:image", (req, res) => res.sendFile(path_1.join(projectRoot, "uploads", "img", req.params.image)));
 routes.post("/api/userCredentials", UserCredentials_1.sendUserCredentials);
 // Login Routes
 routes.post("/api/login", UserController_1.loginUser);
@@ -62,7 +68,7 @@ routes.post("/api/mpesa/send", MpesaPaymentController_1.b2Customer);
 routes.get("/api/download/:id", (req, res) => {
     const fileName = req.params.id;
     return fileName != null
-        ? res.sendFile(__dirname + `/uploads/${fileName}`)
+        ? res.sendFile(path_1.join(projectRoot, "uploads", fileName))
         : res.json({
             success: false,
             message: "Arquivo não encontrado.",

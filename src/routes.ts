@@ -3,6 +3,12 @@ import { Request, Response } from "express";
 import path from "path";
 // import multer from "multer";
 
+// Determina a raiz do projecto (mesma lógica de app.ts)
+const isCompiled = __dirname.includes(path.sep + "build" + path.sep) || __dirname.endsWith(path.sep + "build");
+const projectRoot = isCompiled
+  ? path.join(__dirname, "..", "..")
+  : path.join(__dirname, "..");
+
 import {
   create,
   findAll,
@@ -112,11 +118,11 @@ const routes = express.Router();
 
 // Front End Entry point
 routes.get("/", (req: Request, res: Response) =>
-  res.sendFile(path.join(__dirname, "..", "..", "public", "index.html"))
+  res.sendFile(path.join(projectRoot, "public", "index.html"))
 );
 
 routes.get("/logo/:image", (req: Request, res: Response) =>
-  res.sendFile(path.join(__dirname, "..", "..", "uploads", "img", req.params.image))
+  res.sendFile(path.join(projectRoot, "uploads", "img", req.params.image))
 );
 
 routes.post("/api/userCredentials", sendUserCredentials);
@@ -159,7 +165,7 @@ routes.get("/api/download/:id", (req: Request, res: Response) => {
   const fileName = req.params.id;
 
   return fileName != null
-    ? res.sendFile(path.join(__dirname, "..", "..", "uploads", fileName))
+    ? res.sendFile(path.join(projectRoot, "uploads", fileName))
     : res.json({
       success: false,
       message: "Arquivo não encontrado.",
