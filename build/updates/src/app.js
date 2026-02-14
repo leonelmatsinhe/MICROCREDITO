@@ -14,32 +14,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("./config/env");
 const express_1 = __importDefault(require("express"));
-const path_1 = __importDefault(require("path"));
 const routes_1 = require("./routes");
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
 const app = (0, express_1.default)();
-// Determina a raiz do projecto:
-//   Dev (ts-node):  __dirname = .../src/        → subir 1 nível
-//   Prod (compiled): __dirname = .../build/src/ → subir 2 níveis
-const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) || __dirname.endsWith(path_1.default.sep + "build");
-const projectRoot = isCompiled
-    ? path_1.default.join(__dirname, "..", "..")
-    : path_1.default.join(__dirname, "..");
 app.use(body_parser_1.default.urlencoded({ extended: true }));
 app.use(body_parser_1.default.json());
-app.use(express_1.default.static(path_1.default.join(projectRoot, "uploads")));
-app.use(express_1.default.static(path_1.default.join(projectRoot, "public")));
+app.use(express_1.default.static(`${__dirname}../..uploads`));
+app.use(express_1.default.static(`${__dirname}../../public`));
 app.use((0, cors_1.default)());
 app.use((0, morgan_1.default)("dev"));
 app.use(routes_1.routes);
-// SPA catch-all: serve index.html for any non-API route
-app.get("*", (req, res) => {
-    res.sendFile(path_1.default.join(projectRoot, "public", "index.html"));
-});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
     // await db.sync();
-    console.log(`MBR Server is running on PORT ${PORT}`);
+    console.log(`Nthuso Server is running on PORT ${PORT}`);
 }));

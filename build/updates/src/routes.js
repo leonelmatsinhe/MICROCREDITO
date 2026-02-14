@@ -5,13 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.routes = void 0;
 const express_1 = __importDefault(require("express"));
-const path_1 = __importDefault(require("path"));
 // import multer from "multer";
-// Determina a raiz do projecto (mesma lógica de app.ts)
-const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) || __dirname.endsWith(path_1.default.sep + "build");
-const projectRoot = isCompiled
-    ? path_1.default.join(__dirname, "..", "..")
-    : path_1.default.join(__dirname, "..");
 const UserController_1 = require("./controllers/UserController");
 const CompanyController_1 = require("./controllers/CompanyController");
 const CustomerController_1 = require("./controllers/CustomerController");
@@ -35,13 +29,12 @@ const OperatorLoanController_1 = require("./controllers/OperatorLoanController")
 const routes = express_1.default.Router();
 exports.routes = routes;
 // Front End Entry point
-routes.get("/", (req, res) => res.sendFile(path_1.default.join(projectRoot, "public", "index.html")));
-routes.get("/logo/:image", (req, res) => res.sendFile(path_1.default.join(projectRoot, "uploads", "img", req.params.image)));
+routes.get("/", (req, res) => res.sendFile(__dirname + "../../public/index.html"));
+routes.get("/logo/:image", (req, res) => res.sendFile(__dirname + `../../uploads/img/${req.params.image}`));
 routes.post("/api/userCredentials", UserCredentials_1.sendUserCredentials);
 // Login Routes
 routes.post("/api/login", UserController_1.loginUser);
 routes.post("/api/customer/login", CustomerController_1.loginCustomer);
-routes.post("/api/customer/changePassword", CustomerController_1.changeCustomerPassword);
 // Customer Contrats
 routes.get("/contract/:companyId/:accountNumber/:loanId", PdfController_1.customerContract);
 routes.get("/api/findAllSms", SmsController_1.findAllSms);
@@ -69,7 +62,7 @@ routes.post("/api/mpesa/send", MpesaPaymentController_1.b2Customer);
 routes.get("/api/download/:id", (req, res) => {
     const fileName = req.params.id;
     return fileName != null
-        ? res.sendFile(path_1.default.join(projectRoot, "uploads", fileName))
+        ? res.sendFile(__dirname + `/uploads/${fileName}`)
         : res.json({
             success: false,
             message: "Arquivo não encontrado.",
@@ -128,7 +121,6 @@ routes.post("/api/account", AccountController_1.createAccount);
 // Tranzaction Routes
 routes.get("/api/tranzaction", TranzactionController_1.findAlltranzactions);
 routes.get("/api/tranzaction/:id", TranzactionController_1.getCustomerTranzactions);
-routes.get("/api/monthllyTransactions/:id", TranzactionController_1.findTransactionsByCompany);
 routes.put("/api/tranzaction/:id", TranzactionController_1.updateTranzaction);
 routes.post("/api/tranzaction", TranzactionController_1.addTranzaction);
 // Installments Routes
