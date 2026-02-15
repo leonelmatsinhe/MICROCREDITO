@@ -6,42 +6,71 @@ import { Op } from "sequelize";
 
 const findAllCustomers = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const customers = await CustomerModel.findAll(
-    {
-      where: {
-        companyId: id
-      },
-      order: [["customerName", "ASC"]],
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 15;
+  const search = (req.query.search as string) || "";
+  const offset = (page - 1) * limit;
+
+  try {
+    // Condição base: filtrar por empresa
+    const whereClause: any = { companyId: id };
+
+    // Se houver pesquisa, adicionar filtro por nome, telefone ou conta
+    if (search.trim()) {
+      whereClause[Op.or] = [
+        { customerName: { [Op.like]: `%${search}%` } },
+        { customerPhone: { [Op.like]: `%${search}%` } },
+        { accountNumber: { [Op.like]: `%${search}%` } },
+        { customerNuit: { [Op.like]: `%${search}%` } },
+      ];
     }
-  );
-  return customers.length > 0
-    ? res.status(200).send({ success: true, result: customers })
-    : res
-      .status(204)
-      .send({ success: false, message: "No customers registered so far." });
+
+    const { count, rows } = await CustomerModel.findAndCountAll({
+      where: whereClause,
+      order: [["customerName", "ASC"]],
+      limit,
+      offset,
+    });
+
+    const totalPages = Math.ceil(count / limit);
+
+    return res.status(200).json({
+      success: true,
+      result: rows,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems: count,
+        itemsPerPage: limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
+    });
+  } catch (error: any) {
+    console.error("Erro ao buscar mutuários:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Erro interno ao buscar mutuários.",
+    });
+  }
 };
 
+// Mantém endpoint legado para compatibilidade com outros componentes
 const searchCustomers = async (req: Request, res: Response) => {
   const { search } = req.params;
 
   const customers = await CustomerModel.findAll({
-    order: ["customerName"],
+    order: [["customerName", "ASC"]],
     where: {
       [Op.or]: [
-        {
-          customerName: {
-            [Op.like]: "%" + search + "%",
-          },
-        },
+        { customerName: { [Op.like]: "%" + search + "%" } },
+        { customerPhone: { [Op.like]: "%" + search + "%" } },
+        { accountNumber: { [Op.like]: "%" + search + "%" } },
       ],
     },
-  })
+  });
 
-  return customers.length > 0
-    ? res.status(200).send({ success: true, result: customers })
-    : res
-      .status(204)
-      .send({ success: false, message: "No customers registered so far." });
+  return res.status(200).json({ success: true, result: customers || [] });
 };
 
 

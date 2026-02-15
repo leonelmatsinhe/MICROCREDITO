@@ -42,38 +42,65 @@ const CustomerModel_1 = require("../database/models/CustomerModel");
 const sequelize_1 = require("sequelize");
 const findAllCustomers = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
-    const customers = yield CustomerModel_1.CustomerModel.findAll({
-        where: {
-            companyId: id
-        },
-        order: [["customerName", "ASC"]],
-    });
-    return customers.length > 0
-        ? res.status(200).send({ success: true, result: customers })
-        : res
-            .status(204)
-            .send({ success: false, message: "No customers registered so far." });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const search = req.query.search || "";
+    const offset = (page - 1) * limit;
+    try {
+        // Condição base: filtrar por empresa
+        const whereClause = { companyId: id };
+        // Se houver pesquisa, adicionar filtro por nome, telefone ou conta
+        if (search.trim()) {
+            whereClause[sequelize_1.Op.or] = [
+                { customerName: { [sequelize_1.Op.like]: `%${search}%` } },
+                { customerPhone: { [sequelize_1.Op.like]: `%${search}%` } },
+                { accountNumber: { [sequelize_1.Op.like]: `%${search}%` } },
+                { customerNuit: { [sequelize_1.Op.like]: `%${search}%` } },
+            ];
+        }
+        const { count, rows } = yield CustomerModel_1.CustomerModel.findAndCountAll({
+            where: whereClause,
+            order: [["customerName", "ASC"]],
+            limit,
+            offset,
+        });
+        const totalPages = Math.ceil(count / limit);
+        return res.status(200).json({
+            success: true,
+            result: rows,
+            pagination: {
+                currentPage: page,
+                totalPages,
+                totalItems: count,
+                itemsPerPage: limit,
+                hasNextPage: page < totalPages,
+                hasPrevPage: page > 1,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Erro ao buscar mutuários:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Erro interno ao buscar mutuários.",
+        });
+    }
 });
 exports.findAllCustomers = findAllCustomers;
+// Mantém endpoint legado para compatibilidade com outros componentes
 const searchCustomers = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { search } = req.params;
     const customers = yield CustomerModel_1.CustomerModel.findAll({
-        order: ["customerName"],
+        order: [["customerName", "ASC"]],
         where: {
             [sequelize_1.Op.or]: [
-                {
-                    customerName: {
-                        [sequelize_1.Op.like]: "%" + search + "%",
-                    },
-                },
+                { customerName: { [sequelize_1.Op.like]: "%" + search + "%" } },
+                { customerPhone: { [sequelize_1.Op.like]: "%" + search + "%" } },
+                { accountNumber: { [sequelize_1.Op.like]: "%" + search + "%" } },
             ],
         },
     });
-    return customers.length > 0
-        ? res.status(200).send({ success: true, result: customers })
-        : res
-            .status(204)
-            .send({ success: false, message: "No customers registered so far." });
+    return res.status(200).json({ success: true, result: customers || [] });
 });
 exports.searchCustomers = searchCustomers;
 const findOneCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {

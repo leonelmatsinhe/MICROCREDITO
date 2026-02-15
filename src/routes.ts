@@ -112,7 +112,7 @@ import { sendUserCredentials } from "./controllers/UserCredentials";
 import { sendSms, findAllSms, findSmsByCustomer } from "./controllers/SmsController";
 
 import { customerContract } from "./controllers/PdfController";
-import { companyLoans } from "./controllers/OperatorLoanController";
+import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
 const routes = express.Router();
 
@@ -252,5 +252,6 @@ routes.post("/api/createGuarantee", createGuarantee);
 routes.delete("/api/deleteGuarantee/:id", deleteGuarantee);
 // Company Loans Router
 routes.get("/api/companyLoans/:companyId", companyLoans)
+routes.get("/api/companyLoans/:companyId/paginated", companyLoansPaginated)
 
 export { routes };

@@ -1,12 +1,12 @@
 {
   "name": "microcredit-system",
   "version": "1.0.0",
-  "main": "build/app.js",
+  "main": "build/src/app.js",
   "license": "MIT",
   "scripts": {
-    "start": "node build/app.js",
+    "start": "node build/src/app.js",
     "postinstall": "tsc",
-    "dev": "tsc && node build/app.js",
+    "dev": "tsc && node build/src/app.js",
     "dev:server": "ts-node-dev --respawn --transpile-only src/app.ts",
     "deploy": "git add . && git commit -m deploy && git push heroku main"
   },

@@ -144,3 +144,4 @@ routes.post("/api/createGuarantee", GuaranteesController_1.createGuarantee);
 routes.delete("/api/deleteGuarantee/:id", GuaranteesController_1.deleteGuarantee);
 // Company Loans Router
 routes.get("/api/companyLoans/:companyId", OperatorLoanController_1.companyLoans);
+routes.get("/api/companyLoans/:companyId/paginated", OperatorLoanController_1.companyLoansPaginated);
