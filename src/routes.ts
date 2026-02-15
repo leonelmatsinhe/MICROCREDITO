@@ -114,6 +114,18 @@ import { sendSms, findAllSms, findSmsByCustomer } from "./controllers/SmsControl
 import { customerContract } from "./controllers/PdfController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
+import {
+  getNotifications,
+  getUnreadCount,
+  getCustomerNotifications,
+  getCustomerUnreadCount,
+  createNotification,
+  createBulkNotifications,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+} from "./controllers/NotificationController";
+
 const routes = express.Router();
 
 // Front End Entry point
@@ -145,6 +157,12 @@ routes.delete("/api/debt", deleteDebtp);
 
 routes.put("/api/mpesa/receive", c2Business);
 routes.post("/api/mpesa/send", b2Customer);
+
+// Notification Routes (públicas para o portal do cliente)
+routes.get("/api/notifications/customer/:companyId/:customerId", getCustomerNotifications);
+routes.get("/api/notifications/customer/unread/:companyId/:customerId", getCustomerUnreadCount);
+routes.put("/api/notifications/read/:id", markAsRead);
+routes.put("/api/notifications/customer/markAllRead/:companyId/:customerId", markAllAsRead);
 
 // routes.post(
 //   "/api/upload",
@@ -253,5 +271,13 @@ routes.delete("/api/deleteGuarantee/:id", deleteGuarantee);
 // Company Loans Router
 routes.get("/api/companyLoans/:companyId", companyLoans)
 routes.get("/api/companyLoans/:companyId/paginated", companyLoansPaginated)
+
+// Notification Routes (protegidas para admin/gestor)
+routes.get("/api/notifications/:companyId", getNotifications);
+routes.get("/api/notifications/unread/:companyId", getUnreadCount);
+routes.post("/api/notifications", createNotification);
+routes.post("/api/notifications/bulk", createBulkNotifications);
+routes.put("/api/notifications/markAllRead/:companyId", markAllAsRead);
+routes.delete("/api/notifications/:id", deleteNotification);
 
 export { routes };

@@ -12,6 +12,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoans = void 0;
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
+const CustomerModel_1 = require("../database/models/CustomerModel");
+const NotificationModel_1 = require("../database/models/NotificationModel");
+const UserModel_1 = require("../database/models/UserModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const findLoanByCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
@@ -84,6 +87,32 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         dateCreated,
         status,
     });
+    // Criar notificação para admin/gestor sobre nova solicitação
+    if (loan) {
+        try {
+            const admins = yield UserModel_1.UserModel.findAll({
+                where: { companyId, userRole: 0 },
+            });
+            const bulkNotifs = [];
+            for (const admin of admins) {
+                bulkNotifs.push({
+                    companyId,
+                    recipientType: "admin",
+                    recipientId: admin.id,
+                    title: "Nova solicitação de crédito",
+                    message: `Conta ${accountNumber} solicitou um crédito de ${Number(amount).toLocaleString("pt-MZ")} MZN.`,
+                    type: "loan_request",
+                    referenceId: loan.id,
+                    isRead: false,
+                });
+            }
+            if (bulkNotifs.length > 0) {
+                yield NotificationModel_1.NotificationModel.bulkCreate(bulkNotifs);
+            }
+        } catch (err) {
+            console.error("Erro ao criar notificações de novo crédito:", err);
+        }
+    }
     return loan != null
         ? res
             .status(200)
@@ -96,11 +125,57 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
 exports.createLoan = createLoan;
 const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
+    // Buscar o empréstimo antes de atualizar para verificar mudança de status
+    const previousLoan = yield LoanModel_1.LoanModel.findByPk(id);
     const loan = yield LoanModel_1.LoanModel.update(req.body, {
         where: {
             id,
         },
     });
+    // Criar notificação para o cliente quando o status muda
+    if (loan && previousLoan && req.body.status !== undefined) {
+        const newStatus = Number(req.body.status);
+        const oldStatus = Number(previousLoan.status);
+        if (newStatus !== oldStatus) {
+            try {
+                const customer = yield CustomerModel_1.CustomerModel.findOne({
+                    where: { accountNumber: previousLoan.accountNumber },
+                });
+                if (customer) {
+                    let title = "";
+                    let message = "";
+                    let type = "";
+                    if (newStatus === 1) {
+                        title = "Crédito aprovado";
+                        message = `O seu crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi aprovado.`;
+                        type = "loan_approved";
+                    } else if (newStatus === 2) {
+                        title = "Crédito rejeitado";
+                        message = `O seu pedido de crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN não foi aprovado.`;
+                        type = "loan_rejected";
+                    } else if (newStatus === 3) {
+                        title = "Crédito desembolsado";
+                        message = `O valor de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi desembolsado na sua conta.`;
+                        type = "loan_disbursed";
+                    }
+                    if (title) {
+                        yield NotificationModel_1.NotificationModel.create({
+                            companyId: previousLoan.companyId,
+                            recipientType: "customer",
+                            recipientId: customer.id,
+                            title,
+                            message,
+                            type,
+                            referenceId: Number(id),
+                            isRead: false,
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Erro ao criar notificação de atualização de crédito:", err);
+            }
+        }
+    }
     return loan != null
         ? res
             .status(200)

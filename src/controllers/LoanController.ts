@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { LoanModel } from "../database/models/LoanModel";
+import { CustomerModel } from "../database/models/CustomerModel";
+import { NotificationModel } from "../database/models/NotificationModel";
+import { UserModel } from "../database/models/UserModel";
 import { Op } from "sequelize";
 import { installmentPanification, totalsOfInstallments } from "../utils/calculateLateAmount";
 
@@ -92,6 +95,34 @@ const createLoan = async (req: Request, res: Response) => {
     status,
   });
 
+  // Criar notificação para admin/gestor sobre nova solicitação
+  if (loan) {
+    try {
+      // Notificar todos os admins (userRole = 0) da empresa
+      const admins = await UserModel.findAll({
+        where: { companyId, userRole: 0 },
+      });
+      const bulkNotifs: any[] = [];
+      for (const admin of admins) {
+        bulkNotifs.push({
+          companyId,
+          recipientType: "admin",
+          recipientId: (admin as any).id,
+          title: "Nova solicitação de crédito",
+          message: `Conta ${accountNumber} solicitou um crédito de ${Number(amount).toLocaleString("pt-MZ")} MZN.`,
+          type: "loan_request",
+          referenceId: (loan as any).id,
+          isRead: false,
+        });
+      }
+      if (bulkNotifs.length > 0) {
+        await NotificationModel.bulkCreate(bulkNotifs);
+      }
+    } catch (err) {
+      console.error("Erro ao criar notificações de novo crédito:", err);
+    }
+  }
+
   return loan != null
     ? res
       .status(200)
@@ -105,11 +136,67 @@ const createLoan = async (req: Request, res: Response) => {
 const updateLoan = async (req: Request, res: Response) => {
   const { id } = req.params;
 
+  // Buscar o empréstimo antes de atualizar para verificar mudança de status
+  const previousLoan: any = await LoanModel.findByPk(id);
+
   const loan = await LoanModel.update(req.body, {
     where: {
       id,
     },
   });
+
+  // Criar notificação para o cliente quando o status muda
+  if (loan && previousLoan && req.body.status !== undefined) {
+    const newStatus = Number(req.body.status);
+    const oldStatus = Number(previousLoan.status);
+
+    if (newStatus !== oldStatus) {
+      try {
+        // Buscar cliente associado ao empréstimo
+        const customer: any = await CustomerModel.findOne({
+          where: { accountNumber: previousLoan.accountNumber },
+        });
+
+        if (customer) {
+          let title = "";
+          let message = "";
+          let type = "";
+
+          if (newStatus === 1) {
+            // Aprovado
+            title = "Crédito aprovado";
+            message = `O seu crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi aprovado.`;
+            type = "loan_approved";
+          } else if (newStatus === 2) {
+            // Rejeitado
+            title = "Crédito rejeitado";
+            message = `O seu pedido de crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN não foi aprovado.`;
+            type = "loan_rejected";
+          } else if (newStatus === 3) {
+            // Desembolsado
+            title = "Crédito desembolsado";
+            message = `O valor de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi desembolsado na sua conta.`;
+            type = "loan_disbursed";
+          }
+
+          if (title) {
+            await NotificationModel.create({
+              companyId: previousLoan.companyId,
+              recipientType: "customer",
+              recipientId: customer.id,
+              title,
+              message,
+              type,
+              referenceId: Number(id),
+              isRead: false,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao criar notificação de atualização de crédito:", err);
+      }
+    }
+  }
 
   return loan != null
     ? res

@@ -32,6 +32,7 @@ const UserCredentials_1 = require("./controllers/UserCredentials");
 const SmsController_1 = require("./controllers/SmsController");
 const PdfController_1 = require("./controllers/PdfController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
+const NotificationController_1 = require("./controllers/NotificationController");
 const routes = express_1.default.Router();
 exports.routes = routes;
 // Front End Entry point
@@ -53,6 +54,11 @@ routes.post("/api/debt", DebtController_1.createDebt);
 routes.delete("/api/debt", DebtController_1.deleteDebtp);
 routes.put("/api/mpesa/receive", MpesaPaymentController_1.c2Business);
 routes.post("/api/mpesa/send", MpesaPaymentController_1.b2Customer);
+// Notification Routes (públicas para o portal do cliente)
+routes.get("/api/notifications/customer/:companyId/:customerId", NotificationController_1.getCustomerNotifications);
+routes.get("/api/notifications/customer/unread/:companyId/:customerId", NotificationController_1.getCustomerUnreadCount);
+routes.put("/api/notifications/read/:id", NotificationController_1.markAsRead);
+routes.put("/api/notifications/customer/markAllRead/:companyId/:customerId", NotificationController_1.markAllAsRead);
 // routes.post(
 //   "/api/upload",
 //   multer(multerConfig).single("file"),
@@ -145,3 +151,10 @@ routes.delete("/api/deleteGuarantee/:id", GuaranteesController_1.deleteGuarantee
 // Company Loans Router
 routes.get("/api/companyLoans/:companyId", OperatorLoanController_1.companyLoans);
 routes.get("/api/companyLoans/:companyId/paginated", OperatorLoanController_1.companyLoansPaginated);
+// Notification Routes (protegidas para admin/gestor)
+routes.get("/api/notifications/:companyId", NotificationController_1.getNotifications);
+routes.get("/api/notifications/unread/:companyId", NotificationController_1.getUnreadCount);
+routes.post("/api/notifications", NotificationController_1.createNotification);
+routes.post("/api/notifications/bulk", NotificationController_1.createBulkNotifications);
+routes.put("/api/notifications/markAllRead/:companyId", NotificationController_1.markAllAsRead);
+routes.delete("/api/notifications/:id", NotificationController_1.deleteNotification);

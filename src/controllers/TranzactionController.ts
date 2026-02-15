@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
+import { CustomerModel } from "../database/models/CustomerModel";
+import { NotificationModel } from "../database/models/NotificationModel";
 import { Op } from "sequelize";
 
 const findAlltranzactions = async (req: Request, res: Response) => {
@@ -97,6 +99,28 @@ const addTranzaction = async (req: Request, res: Response) => {
         },
       }
     );
+
+    // Notificar o cliente sobre o pagamento recebido
+    try {
+      const customer: any = await CustomerModel.findOne({
+        where: { accountNumber },
+      });
+      if (customer && companyId) {
+        await NotificationModel.create({
+          companyId,
+          recipientType: "customer",
+          recipientId: customer.id,
+          title: "Pagamento confirmado",
+          message: `O seu pagamento de ${Number(amount).toLocaleString("pt-MZ")} MZN foi registado com sucesso.`,
+          type: "payment_received",
+          referenceId: (tranzaction as any).id,
+          isRead: false,
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao criar notificação de pagamento:", err);
+    }
+
     return updateAmortizationLoan != null
       ? res
         .status(201)

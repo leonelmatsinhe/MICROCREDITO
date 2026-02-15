@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateTranzaction = exports.addTranzaction = exports.getCustomerTranzactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
+const CustomerModel_1 = require("../database/models/CustomerModel");
+const NotificationModel_1 = require("../database/models/NotificationModel");
 const findAlltranzactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { from, companyId } = req.query;
     const tranzactions = yield TranzactionModel_1.TranzactionModel.findAll({
@@ -84,6 +86,26 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 id: amortizationLoanId,
             },
         });
+        // Notificar o cliente sobre o pagamento recebido
+        try {
+            const customer = yield CustomerModel_1.CustomerModel.findOne({
+                where: { accountNumber },
+            });
+            if (customer && companyId) {
+                yield NotificationModel_1.NotificationModel.create({
+                    companyId,
+                    recipientType: "customer",
+                    recipientId: customer.id,
+                    title: "Pagamento confirmado",
+                    message: `O seu pagamento de ${Number(amount).toLocaleString("pt-MZ")} MZN foi registado com sucesso.`,
+                    type: "payment_received",
+                    referenceId: tranzaction.id,
+                    isRead: false,
+                });
+            }
+        } catch (err) {
+            console.error("Erro ao criar notificação de pagamento:", err);
+        }
         return updateAmortizationLoan != null
             ? res
                 .status(201)
