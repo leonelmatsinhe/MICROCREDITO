@@ -55,6 +55,7 @@ import {
 import {
   findAlltranzactions,
   findTransactionsByCompany,
+  findPaginatedTransactions,
   getCustomerTranzactions,
   addTranzaction,
   updateTranzaction,
@@ -252,6 +253,7 @@ routes.post("/api/account", createAccount);
 routes.get("/api/tranzaction", findAlltranzactions);
 routes.get("/api/tranzaction/:id", getCustomerTranzactions);
 routes.get("/api/monthllyTransactions/:id", findTransactionsByCompany);
+routes.get("/api/payments/:id/paginated", findPaginatedTransactions);
 routes.put("/api/tranzaction/:id", updateTranzaction);
 routes.post("/api/tranzaction", addTranzaction);
 

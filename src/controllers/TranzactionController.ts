@@ -39,6 +39,98 @@ const findTransactionsByCompany = async (req: Request, res: Response) => {
     });
 };
 
+const findPaginatedTransactions = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      page = "1",
+      limit = "15",
+      fromDate,
+      toDate,
+      search,
+      paymentMethod,
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page as string));
+    const limitNum = Math.max(1, Math.min(100, parseInt(limit as string)));
+    const offset = (pageNum - 1) * limitNum;
+
+    const whereClause: any = { companyId: id };
+
+    if (fromDate && toDate) {
+      whereClause.createdAt = {
+        [Op.between]: [
+          new Date(`${fromDate}T00:00:00`),
+          new Date(`${toDate}T23:59:59`),
+        ],
+      };
+    } else if (fromDate) {
+      whereClause.createdAt = {
+        [Op.gte]: new Date(`${fromDate}T00:00:00`),
+      };
+    } else if (toDate) {
+      whereClause.createdAt = {
+        [Op.lte]: new Date(`${toDate}T23:59:59`),
+      };
+    }
+
+    if (paymentMethod && paymentMethod !== "0") {
+      whereClause.paymentMethod = parseInt(paymentMethod as string);
+    }
+
+    if (search) {
+      const searchTerm = `%${search}%`;
+      whereClause[Op.or] = [
+        { accountNumber: { [Op.like]: searchTerm } },
+        { tranzactionReference: { [Op.like]: searchTerm } },
+        { staffName: { [Op.like]: searchTerm } },
+        { description: { [Op.like]: searchTerm } },
+      ];
+    }
+
+    const { count, rows } = await TranzactionModel.findAndCountAll({
+      where: whereClause,
+      order: [["id", "DESC"]],
+      limit: limitNum,
+      offset,
+    });
+
+    const totalPages = Math.ceil(count / limitNum);
+
+    // Calculate totals for the filtered dataset (all pages)
+    const allFiltered = await TranzactionModel.findAll({
+      where: whereClause,
+      attributes: ["amount", "latePaymentInterest", "interestRateAmount"],
+    });
+
+    const totals = {
+      totalAmount: allFiltered.reduce((sum: number, t: any) => sum + (t.amount || 0), 0),
+      totalLateInterest: allFiltered.reduce((sum: number, t: any) => sum + (t.latePaymentInterest || 0), 0),
+      totalInterestRate: allFiltered.reduce((sum: number, t: any) => sum + (t.interestRateAmount || 0), 0),
+    };
+
+    return res.status(200).json({
+      success: true,
+      result: rows,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalItems: count,
+        itemsPerPage: limitNum,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
+      },
+      totals,
+    });
+  } catch (error: any) {
+    console.error("Erro ao buscar transacções paginadas:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Erro interno ao buscar transacções.",
+    });
+  }
+};
+
 const getCustomerTranzactions = async (req: Request, res: Response) => {
   const { id } = req.params;
   const tranzaction = await TranzactionModel.findAll({
@@ -153,6 +245,7 @@ const updateTranzaction = async (req: Request, res: Response) => {
 export {
   findAlltranzactions,
   findTransactionsByCompany,
+  findPaginatedTransactions,
   getCustomerTranzactions,
   addTranzaction,
   updateTranzaction,
