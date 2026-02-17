@@ -24,19 +24,41 @@ const findAllLogs = async (req: Request, res: Response) => {
 };
 
 const findLogsByCompany = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const lgos = await LogsModel.findAll({
-    where: {
-      companyId: id,
-    },
-  });
+  try {
+    const { id } = req.params;
+    const { from, to } = req.query;
 
-  return lgos != null
-    ? res.status(200).send({ success: true, result: lgos })
-    : res.status(204).send({
-        success: false,
-        result: "No logs found with the userId provided",
-      });
+    const whereClause: any = { companyId: id };
+
+    if (from && to) {
+      whereClause.createdAt = {
+        [Op.between]: [
+          new Date(from as string),
+          new Date((to as string) + "T23:59:59"),
+        ],
+      };
+    } else if (from) {
+      whereClause.createdAt = {
+        [Op.gte]: new Date(from as string),
+      };
+    } else if (to) {
+      whereClause.createdAt = {
+        [Op.lte]: new Date((to as string) + "T23:59:59"),
+      };
+    }
+
+    const logs = await LogsModel.findAll({
+      where: whereClause,
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.status(200).send({ success: true, result: logs });
+  } catch (error: any) {
+    return res.status(500).send({
+      success: false,
+      message: error.message || "Erro ao buscar logs.",
+    });
+  }
 };
 
 const createLog = async (req: Request, res: Response) => {

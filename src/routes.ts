@@ -129,11 +129,6 @@ import {
 
 const routes = express.Router();
 
-// Front End Entry point
-routes.get("/", (req: Request, res: Response) =>
-  res.sendFile(path.join(projectRoot, "public", "index.html"))
-);
-
 routes.get("/logo/:image", (req: Request, res: Response) =>
   res.sendFile(path.join(projectRoot, "uploads", "img", req.params.image))
 );
