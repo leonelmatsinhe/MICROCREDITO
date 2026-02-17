@@ -186,8 +186,8 @@ routes.get("/api/download/:id", (req: Request, res: Response) => {
     });
 });
 
-// User Routes
-routes.use(auth);
+// Middleware de autenticação — aplica-se apenas a rotas /api protegidas
+routes.use("/api", auth);
 routes.post("/api/users", create);
 routes.post("/api/updatePassword", changeUserPassword);
 routes.get("/api/usersAll/:id", findAll);
