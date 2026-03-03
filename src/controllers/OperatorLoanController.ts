@@ -2,21 +2,87 @@ import { Request, Response } from "express";
 import { LoanModel } from "../database/models/LoanModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { Op } from "sequelize";
+import moment from "moment";
 
 const companyLoans = async (req: Request, res: Response) => {
     const { companyId } = req.params;
+    const { from, to, status, creditManager, search } = req.query;
 
-    const loans = await LoanModel.findAll({ where: { companyId }, });
+    try {
+        const whereClause: any = { companyId };
 
-    if (loans) {
-        res.status(200).send({
+        if (status !== undefined && status !== "") {
+            whereClause.status = parseInt(status as string);
+        }
+
+        if (creditManager !== undefined && creditManager !== "") {
+            whereClause.creditManager = parseInt(creditManager as string);
+        }
+
+        if ((search as string || "").trim()) {
+            const searchText = (search as string).trim();
+            const matchingCustomers = await CustomerModel.findAll({
+                attributes: ["accountNumber"],
+                where: {
+                    companyId,
+                    [Op.or]: [
+                        { customerName: { [Op.like]: `%${searchText}%` } },
+                        { customerPhone: { [Op.like]: `%${searchText}%` } },
+                    ],
+                },
+            });
+
+            const matchingAccountNumbers = matchingCustomers.map(
+                (c: any) => c.getDataValue("accountNumber")
+            );
+            const searchConditions: any[] = [];
+            const numericSearch = parseInt(searchText);
+            if (!isNaN(numericSearch)) {
+                searchConditions.push({ accountNumber: numericSearch });
+            }
+            if (matchingAccountNumbers.length > 0) {
+                searchConditions.push({
+                    accountNumber: { [Op.in]: matchingAccountNumbers },
+                });
+            }
+            if (searchConditions.length > 0) {
+                whereClause[Op.or] = searchConditions;
+            } else {
+                return res.status(200).send({
+                    success: true,
+                    result: [],
+                });
+            }
+        }
+
+        let loans: any[] = await LoanModel.findAll({
+            where: whereClause,
+            order: [["id", "DESC"]],
+        });
+
+        // Filtro de intervalo no backend para reduzir processamento no frontend
+        if (from || to) {
+            const fromDate = from ? moment(String(from)).startOf("day") : null;
+            const toDate = to ? moment(String(to)).endOf("day") : null;
+
+            loans = loans.filter((loan: any) => {
+                const loanDate = moment(loan.dateCreated);
+                if (!loanDate.isValid()) return false;
+                if (fromDate && loanDate.isBefore(fromDate)) return false;
+                if (toDate && loanDate.isAfter(toDate)) return false;
+                return true;
+            });
+        }
+
+        return res.status(200).send({
             success: true,
             result: loans,
         });
-    } else {
-        res.status(204).send({
+    } catch (error: any) {
+        console.error("Erro ao buscar financiamentos:", error);
+        return res.status(500).send({
             success: false,
-            message: "There was an error on the server",
+            message: error.message || "There was an error on the server",
         });
     }
 };

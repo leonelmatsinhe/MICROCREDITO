@@ -31,10 +31,12 @@ import {
   searchCustomers,
   findOneCustomer,
   createCustomer,
+  bulkCreateCustomers,
   updateCustomer,
   deleteCustomer,
   loginCustomer,
   changeCustomerPassword,
+  getAllCustomerNames,
 } from "./controllers/CustomerController";
 
 import {
@@ -126,6 +128,7 @@ import {
   markAllAsRead,
   deleteNotification,
 } from "./controllers/NotificationController";
+import { getDashboardOverview } from "./controllers/DashboardController";
 
 const routes = express.Router();
 
@@ -230,11 +233,13 @@ routes.delete("/api/rate/:id", destroyRate);
 routes.post("/api/rate", createRate);
 
 // Customer Routes
+routes.get("/api/customers/:id/names", getAllCustomerNames);
 routes.get("/api/customers/:id", findAllCustomers);
 routes.get("/api/customer/:id", findOneCustomer);
 routes.get("/api/searchCustomers/:search", searchCustomers);
 routes.put("/api/customer/:id", updateCustomer);
 routes.delete("/api/customer/:id", deleteCustomer);
+routes.post("/api/customer/bulk", bulkCreateCustomers);
 routes.post("/api/customer", createCustomer);
 
 // Account Routes
@@ -276,5 +281,8 @@ routes.post("/api/notifications", createNotification);
 routes.post("/api/notifications/bulk", createBulkNotifications);
 routes.put("/api/notifications/markAllRead/:companyId", markAllAsRead);
 routes.delete("/api/notifications/:id", deleteNotification);
+
+// Dashboard agregado (KPIs, PAR, risco e alertas)
+routes.get("/api/dashboard/:companyId", getDashboardOverview);
 
 export { routes };

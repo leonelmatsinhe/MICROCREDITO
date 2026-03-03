@@ -26,25 +26,20 @@ const findLoanByCustomer = async (req: Request, res: Response) => {
 
 const findAllLoans = async (req: Request, res: Response) => {
   const { id, companyId } = req.params;
+  const whereClause: any = { companyId };
+
+  // Compatibilidade com o contrato existente:
+  // `id` pode vir como data (YYYY-MM-DD). Se vier "all", não filtra por data.
+  if (id && id !== "all") {
+    whereClause.dateCreated = id;
+  }
 
   const credits = await LoanModel.findAll({
-    where: {
-      companyId: {
-        companyId
-      },
-      dateCreated: {
-        id
-      }
-    },
+    where: whereClause,
     order: [["id", "DESC"]],
   });
 
-  return credits != null
-    ? res.status(200).send({ success: true, result: credits })
-    : res.status(204).send({
-      success: false,
-      message: "No loans registered so far.",
-    });
+  return res.status(200).send({ success: true, result: credits || [] });
 };
 
 const getLoanAmortization = async (req: Request, res: Response) => {
@@ -173,10 +168,10 @@ const updateLoan = async (req: Request, res: Response) => {
             message = `O seu pedido de crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN não foi aprovado.`;
             type = "loan_rejected";
           } else if (newStatus === 3) {
-            // Desembolsado
-            title = "Crédito desembolsado";
-            message = `O valor de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi desembolsado na sua conta.`;
-            type = "loan_disbursed";
+            // Liquidado
+            title = "Crédito liquidado";
+            message = `O seu crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi totalmente liquidado.`;
+            type = "loan_approved";
           }
 
           if (title) {

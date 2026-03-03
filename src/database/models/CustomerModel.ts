@@ -17,7 +17,7 @@ export const CustomerModel = db.define("customers", {
     allowNull: false,
   },
   password: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING,
     allowNull: false,
   },
   customerName: {
