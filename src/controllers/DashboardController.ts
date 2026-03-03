@@ -44,7 +44,22 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       loanWhere.status = parseInt(String(status), 10);
     }
 
-    let loans: any[] = await LoanModel.findAll({
+    // dateCreated é string (YYYY-MM-DD). Filtrar no SQL para reduzir custo.
+    if (from && to) {
+      loanWhere.dateCreated = {
+        [Op.between]: [String(from), String(to)],
+      };
+    } else if (from) {
+      loanWhere.dateCreated = {
+        [Op.gte]: String(from),
+      };
+    } else if (to) {
+      loanWhere.dateCreated = {
+        [Op.lte]: String(to),
+      };
+    }
+
+    const loans: any[] = await LoanModel.findAll({
       where: loanWhere,
       attributes: [
         "id",
@@ -57,18 +72,8 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       ],
       order: [["id", "DESC"]],
     });
-
     const fromMoment = from ? moment(String(from)).startOf("day") : null;
     const toMoment = to ? moment(String(to)).endOf("day") : null;
-    if (fromMoment || toMoment) {
-      loans = loans.filter((l: any) => {
-        const d = parseDateSafe(l.dateCreated);
-        if (!d) return false;
-        if (fromMoment && d.isBefore(fromMoment)) return false;
-        if (toMoment && d.isAfter(toMoment)) return false;
-        return true;
-      });
-    }
 
     const loanIds = loans.map((l: any) => l.id);
     const loanIdSet = new Set<number>(loanIds);

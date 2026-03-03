@@ -3,24 +3,51 @@ import { Op } from "sequelize";
 import { LogsModel } from "../database/models/LogsModel";
 
 const findAllLogs = async (req: Request, res: Response) => {
-  const { from, to, companyId } = req.query;
-  console.log(from, to, companyId)
+  try {
+    const { from, to, companyId, limit } = req.query;
+    const whereClause: any = {};
 
-  const logs = await LogsModel.findAll({
-    where: {
-      createdAt: {
-        [Op.between]: [from, to],
-      },
-      companyId: companyId,
-    },
-  });
+    if (companyId) {
+      whereClause.companyId = companyId;
+    }
 
-  return logs.length != null
-    ? res.status(200).send({ success: true, result: logs })
-    : res.status(204).send({
-        success: false,
-        message: "No logs registered so far.",
-      });
+    if (from && to) {
+      whereClause.createdAt = {
+        [Op.between]: [
+          new Date(from as string),
+          new Date((to as string) + "T23:59:59"),
+        ],
+      };
+    } else if (from) {
+      whereClause.createdAt = {
+        [Op.gte]: new Date(from as string),
+      };
+    } else if (to) {
+      whereClause.createdAt = {
+        [Op.lte]: new Date((to as string) + "T23:59:59"),
+      };
+    }
+
+    const queryOptions: any = {
+      where: whereClause,
+      order: [["createdAt", "DESC"]],
+    };
+
+    if (limit) {
+      const parsedLimit = parseInt(limit as string, 10);
+      if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
+        queryOptions.limit = parsedLimit;
+      }
+    }
+
+    const logs = await LogsModel.findAll(queryOptions);
+    return res.status(200).send({ success: true, result: logs || [] });
+  } catch (error: any) {
+    return res.status(500).send({
+      success: false,
+      message: error.message || "Erro ao buscar logs.",
+    });
+  }
 };
 
 const findLogsByCompany = async (req: Request, res: Response) => {

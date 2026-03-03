@@ -4,49 +4,83 @@ import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { Op } from "sequelize";
 import { simulator } from "../utils/loanAmortization";
 import { LoanModel } from "../database/models/LoanModel";
-
-const endOfMonth = moment().format("YYYY-MM-") + moment().daysInMonth();
-// 2022-10-28 17:41:11
-const today = moment().format("YYYY-MM-DD HH:mm:ss");
-const thirtyDaysBefore = moment().subtract(30, "days").toDate();
+import { DebtModel } from "../database/models/DebtModel";
+import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const loans = await AmorizationLoanModel.findAll({
-    where: {
-      dueDate: {
-        [Op.between]: [today, endOfMonth],
-      },
-      companyId: id,
-    },
-  });
+  try {
+    const { id } = req.params;
+    // dueDate é string (YYYY-MM-DD); comparar por string evita cast em memória.
+    const now = moment().format("YYYY-MM-DD");
 
-  return loans != null
-    ? res.status(200).send({ success: true, result: loans })
-    : res.status(204).send({
-      success: false,
-      result: "No loan found with the account number you provided",
+    const loans = await AmorizationLoanModel.findAll({
+      where: {
+        dueDate: {
+          [Op.gte]: now,
+        },
+        companyId: id,
+        status: { [Op.in]: [0, -1] },
+      },
+      order: [["dueDate", "ASC"]],
     });
+
+    const partialIds = loans
+      .filter((l: any) => l.status === -1)
+      .map((l: any) => l.id);
+
+    let debtsMap: Record<number, any> = {};
+    if (partialIds.length > 0) {
+      const debts = await DebtModel.findAll({
+        where: { amortisationId: { [Op.in]: partialIds } },
+      });
+      debts.forEach((d: any) => {
+        debtsMap[d.amortisationId] = {
+          debtAmount: d.debtAmount,
+          debtDate: d.updatedAt || d.dateInserted,
+        };
+      });
+    }
+
+    const result = loans.map((loan: any) => {
+      const plain = loan.toJSON ? loan.toJSON() : { ...loan };
+      if (plain.status === -1 && debtsMap[plain.id]) {
+        plain.debtAmount = debtsMap[plain.id].debtAmount;
+        plain.debtDate = debtsMap[plain.id].debtDate;
+      }
+      return plain;
+    });
+
+    return res.status(200).send({ success: true, result });
+  } catch (error: any) {
+    return res.status(500).send({
+      success: false,
+      message: error.message || "Erro ao buscar prestações próximas.",
+    });
+  }
 };
 
 const getPastAmortizations = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const pastAmortizations = await AmorizationLoanModel.findAll({
-    where: {
-      dueDate: {
-        [Op.lt]: today,
-        // [Op.gt]: thirtyDaysBefore,
-      },
-      companyId: id,
-    },
-  });
+  try {
+    const { id } = req.params;
+    const now = moment().format("YYYY-MM-DD");
 
-  return pastAmortizations != null
-    ? res.status(200).send({ success: true, result: pastAmortizations })
-    : res.status(204).send({
-      success: false,
-      result: "No loan found with the account number you provided",
+    const pastAmortizations = await AmorizationLoanModel.findAll({
+      where: {
+        dueDate: {
+          [Op.lt]: now,
+        },
+        companyId: id,
+      },
+      order: [["dueDate", "DESC"]],
     });
+
+    return res.status(200).send({ success: true, result: pastAmortizations || [] });
+  } catch (error: any) {
+    return res.status(500).send({
+      success: false,
+      message: error.message || "Erro ao buscar prestações vencidas.",
+    });
+  }
 };
 
 const createAmortizationLoan = async (req: Request, res: Response) => {
@@ -92,6 +126,18 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: "O número de prestações deve ser maior que zero.",
+      });
+    }
+
+    const MIN_DOCUMENTS_FOR_APPROVAL = 3;
+    const customerDocuments = await CustomerDocumentsModel.findAll({
+      where: { accountNumber }
+    });
+
+    if (!customerDocuments || customerDocuments.length < MIN_DOCUMENTS_FOR_APPROVAL) {
+      return res.status(400).json({
+        success: false,
+        message: `O mutuário deve ter pelo menos ${MIN_DOCUMENTS_FOR_APPROVAL} documentos submetidos para aprovação do crédito. Actualmente possui ${customerDocuments ? customerDocuments.length : 0} documento(s).`,
       });
     }
 

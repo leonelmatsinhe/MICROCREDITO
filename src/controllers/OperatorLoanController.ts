@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { LoanModel } from "../database/models/LoanModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { Op } from "sequelize";
-import moment from "moment";
 
 const companyLoans = async (req: Request, res: Response) => {
     const { companyId } = req.params;
@@ -17,6 +16,22 @@ const companyLoans = async (req: Request, res: Response) => {
 
         if (creditManager !== undefined && creditManager !== "") {
             whereClause.creditManager = parseInt(creditManager as string);
+        }
+
+        // dateCreated é armazenado como string no formato YYYY-MM-DD.
+        // Aplicar filtro no SQL reduz leitura em memória.
+        if (from && to) {
+            whereClause.dateCreated = {
+                [Op.between]: [String(from), String(to)],
+            };
+        } else if (from) {
+            whereClause.dateCreated = {
+                [Op.gte]: String(from),
+            };
+        } else if (to) {
+            whereClause.dateCreated = {
+                [Op.lte]: String(to),
+            };
         }
 
         if ((search as string || "").trim()) {
@@ -55,24 +70,10 @@ const companyLoans = async (req: Request, res: Response) => {
             }
         }
 
-        let loans: any[] = await LoanModel.findAll({
+        const loans: any[] = await LoanModel.findAll({
             where: whereClause,
             order: [["id", "DESC"]],
         });
-
-        // Filtro de intervalo no backend para reduzir processamento no frontend
-        if (from || to) {
-            const fromDate = from ? moment(String(from)).startOf("day") : null;
-            const toDate = to ? moment(String(to)).endOf("day") : null;
-
-            loans = loans.filter((loan: any) => {
-                const loanDate = moment(loan.dateCreated);
-                if (!loanDate.isValid()) return false;
-                if (fromDate && loanDate.isBefore(fromDate)) return false;
-                if (toDate && loanDate.isAfter(toDate)) return false;
-                return true;
-            });
-        }
 
         return res.status(200).send({
             success: true,

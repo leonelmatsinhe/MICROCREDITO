@@ -45,12 +45,41 @@ const findAlltranzactions = async (req: Request, res: Response) => {
 
 const findTransactionsByCompany = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const { from, to, limit } = req.query;
+
+  const whereClause: any = {
+    companyId: id,
+  };
+  if (from && to) {
+    whereClause.createdAt = {
+      [Op.between]: [
+        new Date(`${from}T00:00:00`),
+        new Date(`${to}T23:59:59`),
+      ],
+    };
+  } else if (from) {
+    whereClause.createdAt = {
+      [Op.gte]: new Date(`${from}T00:00:00`),
+    };
+  } else if (to) {
+    whereClause.createdAt = {
+      [Op.lte]: new Date(`${to}T23:59:59`),
+    };
+  }
+
+  const queryOptions: any = {
+    where: whereClause,
+    order: [["id", "DESC"]],
+  };
+  if (limit) {
+    const parsedLimit = parseInt(limit as string, 10);
+    if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
+      queryOptions.limit = parsedLimit;
+    }
+  }
 
   const tranzactions = await TranzactionModel.findAll({
-    where: {
-      companyId: id
-    },
-    order: [["id", "DESC"]],
+    ...queryOptions,
   });
 
   return tranzactions.length > 0
