@@ -37,7 +37,7 @@ export const LoanModel = db.define("customer_loans", {
     allowNull: false,
   },
   dateCreated: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING,
     allowNull: false,
   },
   status: {

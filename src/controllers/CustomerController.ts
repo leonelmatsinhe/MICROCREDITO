@@ -325,13 +325,101 @@ const changeCustomerPassword = async (req: Request, res: Response) => {
   }
 };
 
+const bulkCreateCustomers = async (req: Request, res: Response) => {
+  try {
+    const { companyId, customers } = req.body;
+
+    if (!companyId || !Array.isArray(customers) || customers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Dados inválidos. Forneça companyId e uma lista de mutuários.",
+      });
+    }
+
+    const lastCustomer = await CustomerModel.findOne({
+      where: { companyId },
+      order: [["id", "DESC"]],
+    });
+    let nextAccount = lastCustomer === null ? 100 : parseInt(lastCustomer.getDataValue("accountNumber")) + 1;
+
+    const defaultPassword = await new Promise<string>((resolve, reject) => {
+      bcryptjs.hash("123456", 10, (err, hash) => {
+        if (err) reject(err);
+        else resolve(hash);
+      });
+    });
+
+    const records = customers.map((c: any) => {
+      const record = {
+        companyId,
+        accountNumber: nextAccount++,
+        password: defaultPassword,
+        customerName: c.customerName || "",
+        sex: c.sex || "M",
+        customerEmail: c.customerEmail || "",
+        customerNuit: c.customerNuit || "",
+        customerPhone: c.customerPhone || "",
+        customerNationalId: c.customerNationalId || "",
+        issuedAt: c.issuedAt || "",
+        localOfIssue: c.localOfIssue || "",
+        customerDateOfBirth: c.customerDateOfBirth || "",
+        customerMonthlySalary: c.customerMonthlySalary || "0",
+        customerAddress: c.customerAddress || "",
+        customerProfession: c.customerProfession || "",
+        customerLocalOfWork: c.customerLocalOfWork || "",
+        maritalStatus: c.maritalStatus || "solteiro",
+        customerSpouseName: c.customerSpouseName || "",
+        customerSpouseContact: c.customerSpouseContact || "",
+        customerEmergencyPerson: c.customerEmergencyPerson || "",
+        customerEmergencyContact: c.customerEmergencyContact || "",
+        customerStatus: 0,
+      };
+      return record;
+    });
+
+    const created = await CustomerModel.bulkCreate(records);
+
+    return res.status(201).json({
+      success: true,
+      message: `${created.length} mutuário(s) cadastrado(s) com sucesso.`,
+      count: created.length,
+    });
+  } catch (error: any) {
+    console.error("Erro ao cadastrar mutuários em massa:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Erro interno ao cadastrar mutuários.",
+    });
+  }
+};
+
+const getAllCustomerNames = async (req: Request, res: Response) => {
+  const { id: companyId } = req.params;
+  try {
+    const customers = await CustomerModel.findAll({
+      attributes: ["accountNumber", "customerName"],
+      where: { companyId },
+      order: [["customerName", "ASC"]],
+    });
+    const nameMap: Record<string, string> = {};
+    customers.forEach((c: any) => {
+      nameMap[c.getDataValue("accountNumber")] = c.getDataValue("customerName");
+    });
+    return res.status(200).json({ success: true, result: nameMap });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 export {
   findAllCustomers,
   searchCustomers,
   findOneCustomer,
   createCustomer,
+  bulkCreateCustomers,
   updateCustomer,
   deleteCustomer,
   loginCustomer,
   changeCustomerPassword,
+  getAllCustomerNames,
 };

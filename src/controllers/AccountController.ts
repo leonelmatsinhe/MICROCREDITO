@@ -67,7 +67,7 @@ const updateAccount = async (req: Request, res: Response) => {
   if (update != null) {
     res.json({
       success: true,
-      message: "Account number allocated successfully",
+      message: "Account number updated successfully",
     })
   } else {
     return res.status(500).send(

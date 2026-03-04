@@ -5,7 +5,7 @@ import { NotificationModel } from "../database/models/NotificationModel";
 // ── Buscar notificações por destinatário (admin/gestor) ──
 const getNotifications = async (req: Request, res: Response) => {
   const { companyId } = req.params;
-  const { recipientType, recipientId, unreadOnly } = req.query;
+  const { recipientType, recipientId, unreadOnly, limit } = req.query;
 
   try {
     const where: any = { companyId };
@@ -22,11 +22,16 @@ const getNotifications = async (req: Request, res: Response) => {
       where.isRead = false;
     }
 
-    const notifications = await NotificationModel.findAll({
+    const queryOptions: any = {
       where,
       order: [["createdAt", "DESC"]],
-      limit: 50,
-    });
+    };
+
+    if (limit) {
+      queryOptions.limit = parseInt(limit as string, 10);
+    }
+
+    const notifications = await NotificationModel.findAll(queryOptions);
 
     return res.status(200).json({ success: true, result: notifications });
   } catch (err: any) {
@@ -70,7 +75,6 @@ const getCustomerNotifications = async (req: Request, res: Response) => {
         recipientId: customerId,
       },
       order: [["createdAt", "DESC"]],
-      limit: 30,
     });
 
     return res.status(200).json({ success: true, result: notifications });

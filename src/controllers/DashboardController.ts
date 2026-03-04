@@ -31,12 +31,55 @@ const toNumber = (value: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const isValidDateInput = (value: any) => {
+  if (value === undefined || value === null || value === "") return true;
+  return moment(String(value), "YYYY-MM-DD", true).isValid();
+};
+
 const getDashboardOverview = async (req: Request, res: Response) => {
   try {
     const { companyId } = req.params;
     const { from, to, creditManager, status } = req.query;
+    const companyIdNum = parseInt(String(companyId), 10);
 
-    const loanWhere: any = { companyId };
+    if (Number.isNaN(companyIdNum) || companyIdNum <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "companyId inválido.",
+      });
+    }
+    if (!isValidDateInput(from) || !isValidDateInput(to)) {
+      return res.status(400).json({
+        success: false,
+        message: "Parâmetros de data inválidos. Use o formato YYYY-MM-DD.",
+      });
+    }
+    if (from && to && moment(String(from)).isAfter(moment(String(to)))) {
+      return res.status(400).json({
+        success: false,
+        message: "Intervalo de datas inválido: 'from' não pode ser maior que 'to'.",
+      });
+    }
+    if (creditManager !== undefined && creditManager !== "all") {
+      const managerNum = parseInt(String(creditManager), 10);
+      if (Number.isNaN(managerNum) || managerNum <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: "creditManager inválido.",
+        });
+      }
+    }
+    if (status !== undefined && status !== "" && status !== "all") {
+      const statusNum = parseInt(String(status), 10);
+      if (Number.isNaN(statusNum)) {
+        return res.status(400).json({
+          success: false,
+          message: "status inválido.",
+        });
+      }
+    }
+
+    const loanWhere: any = { companyId: companyIdNum };
     if (creditManager && creditManager !== "all") {
       loanWhere.creditManager = parseInt(String(creditManager), 10);
     }
@@ -81,7 +124,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
     let transactions: any[] = [];
     if (loanIds.length > 0) {
       const txWhere: any = {
-        companyId,
+        companyId: companyIdNum,
         loanId: { [Op.in]: loanIds },
       };
       if (fromMoment && toMoment) {
@@ -109,7 +152,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
     if (loanIds.length > 0) {
       amortizations = await AmorizationLoanModel.findAll({
         where: {
-          companyId,
+          companyId: companyIdNum,
           loanId: { [Op.in]: loanIds },
         },
         attributes: ["id", "loanId", "accountNumber", "dueDate", "status", "installment"],
@@ -132,7 +175,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
     }
 
     const managers = await UserModel.findAll({
-      where: { companyId },
+      where: { companyId: companyIdNum },
       attributes: ["id", "name", "userRole"],
     });
     const managerNameMap: Record<number, string> = {};
