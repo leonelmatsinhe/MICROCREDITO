@@ -92,7 +92,7 @@ const findOneCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function
 });
 exports.findOneCustomer = findOneCustomer;
 const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { customerName, sex, companyId, customerEmail, customerNuit, customerPhone, customerNationalId, issuedAt, localOfIssue, customerDateOfBirth, customerLocalOfBirth, customerProfession, customerMonthlySalary, customerLocalOfWork, customerAddress, maritalStatus, customerSpouseName, customerSpouseContact, customerEmergencyPerson, customerEmergencyContact, customerStatus, interestRateId, } = req.body;
+    let { customerName, sex, companyId, customerEmail, customerNuit, customerPhone, customerNationalId, issuedAt, localOfIssue, customerDateOfBirth, customerLocalOfBirth, customerProfession, customerMonthlySalary, customerLocalOfWork, customerAddress, customerBairro, maritalStatus, customerSpouseName, customerSpouseContact, customerEmergencyPerson, customerEmergencyContact, customerStatus, interestRateId, } = req.body;
     const accNumber = yield CustomerModel_1.CustomerModel.findOne({
         where: {
             companyId
@@ -125,6 +125,7 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
             customerMonthlySalary,
             customerLocalOfWork,
             customerAddress,
+            customerBairro,
             maritalStatus,
             customerSpouseName,
             customerSpouseContact,

@@ -64,6 +64,10 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  customerBairro: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   customerProfession: {
     type: DataTypes.STRING,
     allowNull: true,

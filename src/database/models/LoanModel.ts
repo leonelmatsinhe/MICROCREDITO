@@ -36,6 +36,10 @@ export const LoanModel = db.define("customer_loans", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  capacityExcessObservation: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
   dateCreated: {
     type: DataTypes.STRING,
     allowNull: false,

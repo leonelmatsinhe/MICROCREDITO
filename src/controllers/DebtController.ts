@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { DebtModel } from "../database/models/DebtModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
+import { enqueueLateInterestSms } from "../services/SmsGatewayService";
 
 const findAllDebts = async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -41,6 +42,27 @@ const createDebt = async (req: Request, res: Response) => {
                 },
             }
         );
+
+        try {
+            const amortization: any = amortisationId
+                ? await AmorizationLoanModel.findByPk(amortisationId, {
+                    attributes: ["id", "dueDate"],
+                })
+                : null;
+
+            await enqueueLateInterestSms({
+                companyId: Number(companyId),
+                debtId: Number((newDebt as any).id),
+                loanId: loanId ? Number(loanId) : null,
+                amortizationLoanId: amortisationId ? Number(amortisationId) : null,
+                accountNumber,
+                debtAmount: Number(debtAmount || 0),
+                dueDate: amortization?.dueDate || null,
+            });
+        } catch (smsError) {
+            console.error("Erro ao enfileirar SMS de juros de mora:", smsError);
+        }
+
         return updateAmortizationLoan != null
             ? res
                 .status(201)

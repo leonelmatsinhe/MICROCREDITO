@@ -6,6 +6,7 @@ import { simulator } from "../utils/loanAmortization";
 import { LoanModel } from "../database/models/LoanModel";
 import { DebtModel } from "../database/models/DebtModel";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
+import { enqueueDisbursementSms } from "../services/SmsGatewayService";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
   try {
@@ -179,6 +180,21 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
         }
       }
     );
+
+    try {
+      await enqueueDisbursementSms({
+        companyId: Number(companyId),
+        loanId: Number(loanId),
+        accountNumber,
+        amount: Number(amount),
+        installments: Number(numberOfInstallments),
+        firstDueDate: customerAmortizationPlan[0]?.dueDate
+          ? String(customerAmortizationPlan[0].dueDate)
+          : null,
+      });
+    } catch (smsError) {
+      console.error("Erro ao enfileirar SMS de desembolso:", smsError);
+    }
 
     return bulckInsert != null && bulckInsert.length > 0
       ? res.status(200).json({

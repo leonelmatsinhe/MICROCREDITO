@@ -6,6 +6,7 @@ import { CustomerModel } from "../database/models/CustomerModel";
 import { NotificationModel } from "../database/models/NotificationModel";
 import { UserModel } from "../database/models/UserModel";
 import { Op, fn, col } from "sequelize";
+import { enqueuePaymentSms } from "../services/SmsGatewayService";
 
 const findAlltranzactions = async (req: Request, res: Response) => {
   const { from, to, companyId } = req.query;
@@ -310,6 +311,22 @@ const addTranzaction = async (req: Request, res: Response) => {
       }
     } catch (err) {
       console.error("Erro ao verificar liquidação do crédito:", err);
+    }
+
+    try {
+      await enqueuePaymentSms({
+        companyId: Number(companyId),
+        transactionId: Number((tranzaction as any).id),
+        loanId: loanId ? Number(loanId) : null,
+        amortizationLoanId: amortizationLoanId ? Number(amortizationLoanId) : null,
+        accountNumber,
+        paidAmount: Number(amount),
+        latePaymentInterest: Number(latePaymentInterest || 0),
+        paymentDate,
+        reference: tranzactionReference,
+      });
+    } catch (smsError) {
+      console.error("Erro ao enfileirar SMS de pagamento:", smsError);
     }
 
     return updateAmortizationLoan != null

@@ -31,6 +31,22 @@ const toNumber = (value: any) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const calculateTotalWithInterest = (loan: any) => {
+  const principal = toNumber(loan?.amount);
+  const rate = toNumber(loan?.interestRate);
+  const installments = Math.max(1, parseInt(String(loan?.numberOfInstallments || 1), 10));
+
+  if (principal <= 0) return 0;
+  if (rate <= 0) return principal;
+
+  // Fórmula Price: PMT = P * i / (1 - (1 + i)^-n)
+  const denominator = 1 - Math.pow(1 + rate, -installments);
+  if (denominator <= 0) return principal;
+
+  const pmt = (principal * rate) / denominator;
+  return pmt * installments;
+};
+
 const isValidDateInput = (value: any) => {
   if (value === undefined || value === null || value === "") return true;
   return moment(String(value), "YYYY-MM-DD", true).isValid();
@@ -110,6 +126,8 @@ const getDashboardOverview = async (req: Request, res: Response) => {
         "accountNumber",
         "creditManager",
         "amount",
+        "interestRate",
+        "numberOfInstallments",
         "dateCreated",
         "status",
       ],
@@ -231,7 +249,25 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       .filter((a: any) => a.daysOverdue > 90)
       .reduce((sum: number, a: any) => sum + toNumber(a.amountDue), 0);
 
-    const totalDisbursed = loans.reduce(
+    const activeLoansList = loans.filter((l: any) => Number(l.status) === 1);
+    const pendingLoansList = loans.filter((l: any) => Number(l.status) === 0);
+    const liquidatedLoansList = loans.filter((l: any) => Number(l.status) === 3);
+    const rejectedLoansList = loans.filter((l: any) => [2, -1].includes(Number(l.status)));
+
+    // "Desembolsado" no dashboard corresponde ao montante de créditos ativos.
+    const totalDisbursed = activeLoansList.reduce(
+      (sum: number, l: any) => sum + toNumber(l.amount),
+      0
+    );
+    const pendingAmount = pendingLoansList.reduce(
+      (sum: number, l: any) => sum + toNumber(l.amount),
+      0
+    );
+    const liquidatedAmount = liquidatedLoansList.reduce(
+      (sum: number, l: any) => sum + toNumber(l.amount),
+      0
+    );
+    const rejectedAmount = rejectedLoansList.reduce(
       (sum: number, l: any) => sum + toNumber(l.amount),
       0
     );
@@ -247,13 +283,27 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       (sum: number, t: any) => sum + toNumber(t.interestRateAmount),
       0
     );
+    const totalRecoveryCollected = totalCollected + totalLateInterest;
+
+    // Base da recuperação: créditos efetivamente desembolsados (ativos + liquidados).
+    const disbursedRecoveryLoans = loans.filter((l: any) =>
+      [1, 3].includes(Number(l.status))
+    );
+    const recoveryBaseAmount = disbursedRecoveryLoans.reduce(
+      (sum: number, l: any) => sum + calculateTotalWithInterest(l),
+      0
+    );
+    const recoveryRatePct =
+      recoveryBaseAmount > 0
+        ? Number(((totalRecoveryCollected / recoveryBaseAmount) * 100).toFixed(2))
+        : 0;
 
     const totalLoans = loans.length;
     const statusCount = {
-      pending: loans.filter((l: any) => Number(l.status) === 0).length,
-      active: loans.filter((l: any) => Number(l.status) === 1).length,
-      rejected: loans.filter((l: any) => [2, -1].includes(Number(l.status))).length,
-      liquidated: loans.filter((l: any) => Number(l.status) === 3).length,
+      pending: pendingLoansList.length,
+      active: activeLoansList.length,
+      rejected: rejectedLoansList.length,
+      liquidated: liquidatedLoansList.length,
     };
 
     const riskByManagerMap: Record<number, any> = {};
@@ -340,10 +390,19 @@ const getDashboardOverview = async (req: Request, res: Response) => {
         },
         financial: {
           totalDisbursed: Number(totalDisbursed.toFixed(2)),
+          pendingAmount: Number(pendingAmount.toFixed(2)),
+          liquidatedAmount: Number(liquidatedAmount.toFixed(2)),
+          rejectedAmount: Number(rejectedAmount.toFixed(2)),
           totalCollected: Number(totalCollected.toFixed(2)),
           totalInterestCollected: Number(totalInterestCollected.toFixed(2)),
           totalLateInterest: Number(totalLateInterest.toFixed(2)),
-          avgTicket: totalLoans > 0 ? Number((totalDisbursed / totalLoans).toFixed(2)) : 0,
+          recoveryBaseAmount: Number(recoveryBaseAmount.toFixed(2)),
+          recoveryCollectedAmount: Number(totalRecoveryCollected.toFixed(2)),
+          recoveryRatePct,
+          avgTicket:
+            activeLoansList.length > 0
+              ? Number((totalDisbursed / activeLoansList.length).toFixed(2))
+              : 0,
           roiPct:
             totalDisbursed > 0
               ? Number(

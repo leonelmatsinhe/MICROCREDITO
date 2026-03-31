@@ -119,6 +119,10 @@
               <b-dropdown-item to="/profile">
                 <b-icon icon="person-circle" class="mr-2"></b-icon> Meu Perfil
               </b-dropdown-item>
+              <b-dropdown-item-button @click="toggleTheme">
+                <b-icon :icon="isDarkTheme ? 'sun-fill' : 'moon-stars-fill'" class="mr-2"></b-icon>
+                {{ isDarkTheme ? "Modo claro" : "Modo escuro" }}
+              </b-dropdown-item-button>
               <b-dropdown-divider></b-dropdown-divider>
               <b-dropdown-item @click="logoutUser()" variant="danger">
                 <b-icon icon="power" class="mr-2"></b-icon> Sair do Sistema
@@ -339,6 +343,7 @@
                     <th class="text-right">Montante</th>
                     <th class="text-center">Prestações</th>
                     <th class="text-center">Taxa</th>
+                    <th>Obs. Excesso</th>
                     <th class="text-center">Estado</th>
                     <th class="text-center">Data</th>
                     <th class="text-center">Acções</th>
@@ -353,6 +358,12 @@
                     <td class="text-right font-weight-bold">{{ formatMoney(loan.amount) }}</td>
                     <td class="text-center">{{ loan.numberOfInstallments }}</td>
                     <td class="text-center">{{ (loan.interestRate * 100).toFixed(0) }}%</td>
+                    <td>
+                      <small v-if="loan.capacityExcessObservation" class="text-danger d-block">
+                        {{ loan.capacityExcessObservation.length > 70 ? `${loan.capacityExcessObservation.slice(0, 70)}...` : loan.capacityExcessObservation }}
+                      </small>
+                      <small v-else class="text-muted">—</small>
+                    </td>
                     <td class="text-center">
                       <b-badge :variant="loanStatusVariant(loan.status)" pill>{{ loanStatusLabel(loan.status) }}</b-badge>
                     </td>
@@ -398,10 +409,31 @@
                         </b-input-group-append>
                       </b-input-group>
                     </b-col>
-                    <b-col md="4" class="text-right">
+                    <b-col md="4" class="text-right mt-2 mt-md-0">
                       <b-button size="sm" variant="outline-secondary" @click="refreshCustomers" title="Actualizar">
                         <b-icon icon="arrow-clockwise"></b-icon>
                       </b-button>
+                    </b-col>
+                  </b-row>
+                  <b-row class="mt-2" align-v="center">
+                    <b-col md="6" lg="5">
+                      <b-input-group size="sm">
+                        <b-input-group-prepend is-text class="bg-light border-right-0">
+                          <b-icon icon="geo-alt" variant="secondary"></b-icon>
+                        </b-input-group-prepend>
+                        <b-form-input
+                          type="text"
+                          class="border-left-0 bg-light"
+                          v-model="bairroFilter"
+                          @input="onBairroFilterInput"
+                          placeholder="Filtrar por bairro..."
+                        ></b-form-input>
+                        <b-input-group-append v-if="bairroFilter">
+                          <b-button variant="outline-secondary" size="sm" @click="clearBairroFilter" title="Limpar filtro de bairro">
+                            <b-icon icon="x"></b-icon>
+                          </b-button>
+                        </b-input-group-append>
+                      </b-input-group>
                     </b-col>
                   </b-row>
                 </b-card-header>
@@ -418,6 +450,7 @@
                           <th class="pl-4 border-top-0">Nome Completo</th>
                           <th class="border-top-0">Nº Mutuário</th>
                           <th class="border-top-0">Telefone</th>
+                          <th class="border-top-0">Bairro</th>
                           <th class="text-center border-top-0">Estado</th>
                           <th class="text-center border-top-0" width="150">Acções</th>
                         </tr>
@@ -432,6 +465,7 @@
                             <span class="badge badge-light border">{{ customer.accountNumber }}</span>
                           </td>
                           <td class="align-middle">{{ customer.customerPhone }}</td>
+                          <td class="align-middle">{{ customer.customerBairro || '—' }}</td>
                           <td class="text-center align-middle">
                             <b-badge :variant="customer.customerStatus == 0 ? 'success' : 'danger'" pill>
                               {{ customer.customerStatus == 0 ? 'Activo' : 'Desabilitado' }}
@@ -553,7 +587,11 @@
                   </b-row>
                   <b-form-group class="mb-2">
                     <small class="form-field-label">Endereço / residência</small>
-                    <b-form-input size="sm" v-model="customerForm.customerAddress" placeholder="Ex.: Bairro, Rua, nº"></b-form-input>
+                    <b-form-input size="sm" v-model="customerForm.customerAddress" placeholder="Ex.: Rua, nº"></b-form-input>
+                  </b-form-group>
+                  <b-form-group class="mb-2">
+                    <small class="form-field-label">Bairro</small>
+                    <b-form-input size="sm" v-model="customerForm.customerBairro" placeholder="Ex.: Mukhatine"></b-form-input>
                   </b-form-group>
 
                   <div class="section-label mt-3">Documentação</div>
@@ -936,13 +974,31 @@
                         </small>
                       </div>
                     </b-col>
+                    <b-col lg="12" class="mb-2" v-if="!borrowerElegibility">
+                      <b-form-group
+                        label="Observação para excesso de capacidade"
+                        label-size="sm"
+                        label-class="font-weight-bold text-danger"
+                        class="mb-0"
+                      >
+                        <b-form-textarea
+                          v-model="loanForm.capacityExcessObservation"
+                          placeholder="Justifique o motivo para submeter o crédito acima de 1/3 do rendimento mensal..."
+                          rows="3"
+                          size="sm"
+                        ></b-form-textarea>
+                        <small class="text-muted">
+                          Obrigatório quando a prestação simulada excede o limite recomendado.
+                        </small>
+                      </b-form-group>
+                    </b-col>
                   </b-row>
                   <hr class="my-2" />
                   <div class="d-flex justify-content-end">
                     <b-button :disabled="isLoading" variant="outline-secondary" size="sm" class="mr-2" @click="borrowerAmortization = []">
                       <b-icon icon="x-lg" class="mr-1"></b-icon> Cancelar
                     </b-button>
-                    <b-button :disabled="isLoading || !borrowerElegibility" variant="success" size="sm" @click="createLoan()" v-b-tooltip.hover :title="!borrowerElegibility ? 'Prestação excede 1/3 do rendimento' : ''">
+                    <b-button :disabled="isLoading" variant="success" size="sm" @click="createLoan()" v-b-tooltip.hover :title="!borrowerElegibility ? 'Será obrigatório preencher observação de excesso.' : ''">
                       <b-icon icon="telegram" class="mr-1"></b-icon> Submeter Crédito
                     </b-button>
                   </div>
@@ -1468,6 +1524,7 @@ export default {
     dashboardDateFrom: "",
     dashboardDateTo: "",
     searchValues: "",
+    bairroFilter: "",
     searchTimeout: null,
     perPage: 15,
     perPageOptions: [
@@ -1491,6 +1548,7 @@ export default {
       customerDateOfBirth: "",
       customerMonthlySalary: 0,
       customerAddress: "",
+      customerBairro: "",
       customerProfession: "",
       customerLocalOfWork: "",
       maritalStatus: null,
@@ -1543,6 +1601,7 @@ export default {
       juros: null,
       prestacoes: null,
       loanDescription: "Crédito desembolsado mediante apresentação de garantias",
+      capacityExcessObservation: "",
       dateCreated: moment().format("YYYY-MM-DD"),
     },
 
@@ -1635,6 +1694,7 @@ export default {
       "customerLoans",
       "upcomingInstallments",
       "dashboardKpis",
+      "isDarkTheme",
     ]),
 
     todayFormatted() {
@@ -2022,7 +2082,8 @@ export default {
     },
 
     buildInstNotifMessage(customer, item) {
-      return `Prezado(a) ${customer.customerName},\n\nLembramos que a prestação nº ${item.installmentOrder} no valor de ${MoneyFormat.formatMoney(item.installment)} vence em breve. Caso já tenha efectuado o pagamento, por favor desconsidere esta mensagem.\n\n${this.company.companyName}`;
+      const dueDateLabel = item?.dueDate ? moment(item.dueDate).format("DD/MM/YYYY") : "data indisponível";
+      return `Prezado(a) ${customer.customerName},\n\nLembrete: prestação nº ${item.installmentOrder}, vencimento ${dueDateLabel}, valor ${MoneyFormat.formatMoney(item.installment)}.\nSe já pagou, ignore esta mensagem.\n\n${this.company.companyName}`;
     },
 
     openInstNotifModal(item) {
@@ -2058,7 +2119,23 @@ export default {
       try {
         if (this.instNotifChannels.includes("sms")) {
           if (!this.instNotifData.phone) { this.showInstToast("Aviso!", "warning", "Telefone obrigatório para SMS."); this.instSendingNotif = false; return; }
-          this.$store.dispatch("sendSMSMessage", { receipient: this.instNotifData.phone, accountNumber: this.instNotifData.accountNumber, sender: this.company.smsSender, companyId: this.company.id, smsBody: this.instNotifMessage });
+          const payload = {
+            companyId: this.company.id,
+            accountNumber: this.instNotifData.accountNumber,
+            customerName: this.instNotifData.customerName,
+            phone: this.instNotifData.phone,
+            messageType: "upcoming_installment_alert_manual",
+            messageBody: this.instNotifMessage,
+            payloadJson: {
+              source: "gestor_dashboard_notification_modal",
+              installmentOrder: this.instNotifData.installmentOrder,
+              dueDate: this.instCurrentItem?.dueDate || null,
+            },
+          };
+          const smsEnqueueRes = await axios.post("/api/sms-gateway/enqueue", payload);
+          if (!smsEnqueueRes?.data?.success) {
+            throw new Error(smsEnqueueRes?.data?.message || "Falha ao enfileirar SMS.");
+          }
           results.push("SMS");
         }
         if (this.instNotifChannels.includes("whatsapp")) {
@@ -2192,6 +2269,7 @@ export default {
         page: page,
         limit: this.perPage,
         search: this.searchValues.trim(),
+        bairro: this.bairroFilter.trim(),
       });
     },
 
@@ -2202,8 +2280,20 @@ export default {
       }, 400);
     },
 
+    onBairroFilterInput() {
+      clearTimeout(this.searchTimeout);
+      this.searchTimeout = setTimeout(() => {
+        this.fetchCustomers(1);
+      }, 400);
+    },
+
     clearSearch() {
       this.searchValues = "";
+      this.fetchCustomers(1);
+    },
+
+    clearBairroFilter() {
+      this.bairroFilter = "";
       this.fetchCustomers(1);
     },
 
@@ -2270,7 +2360,7 @@ export default {
         customerName: "", sex: null, customerEmail: "", customerPhone: "",
         customerNuit: "", customerNationalId: "", issuedAt: "", localOfIssue: "",
         customerDateOfBirth: "", customerMonthlySalary: 0, customerAddress: "",
-        customerProfession: "", customerLocalOfWork: "", maritalStatus: null,
+        customerBairro: "", customerProfession: "", customerLocalOfWork: "", maritalStatus: null,
         customerSpouseName: "", customerSpouseContact: "",
         customerEmergencyPerson: "", customerEmergencyContact: "",
         customerStatus: 0, interestRateId: 0,
@@ -2371,6 +2461,7 @@ export default {
       this.loanForm = {
         capital: 0, juros: null, prestacoes: null,
         loanDescription: "Crédito desembolsado mediante apresentação de garantias",
+        capacityExcessObservation: "",
         dateCreated: "",
       };
 
@@ -2502,6 +2593,15 @@ export default {
         return;
       }
 
+      if (!this.borrowerElegibility && (!this.loanForm.capacityExcessObservation || this.loanForm.capacityExcessObservation.trim().length < 10)) {
+        this.showToast(
+          "Aviso!",
+          "warning",
+          "Como a prestação excede 1/3 do rendimento, informe uma observação com no mínimo 10 caracteres."
+        );
+        return;
+      }
+
       this.$store.commit("LOADING_STATUS", true);
       const passingValues = {
         accountNumber: this.selectedCustomer.accountNumber,
@@ -2512,6 +2612,7 @@ export default {
         creditManager: this.user.id, // O próprio gestor é o creditManager
         dateCreated: this.loanForm.dateCreated,
         loanDescription: this.loanForm.loanDescription,
+        capacityExcessObservation: this.borrowerElegibility ? null : this.loanForm.capacityExcessObservation.trim(),
         status: 0, // Pendente - Admin é quem aprova
       };
 
@@ -2526,6 +2627,7 @@ export default {
             );
             this.$store.dispatch("addLog", logsParams);
             this.borrowerAmortization = [];
+            this.loanForm.capacityExcessObservation = "";
             this.$store.dispatch("getCustomerLoans", this.selectedCustomer.accountNumber);
             this.$store.dispatch("getCompanyLoans", this.company.id);
             this.showToast("Sucesso!", "success", "Crédito submetido para aprovação.");
@@ -2538,6 +2640,9 @@ export default {
     },
 
     // ── Logout ──
+    toggleTheme() {
+      this.$store.dispatch("toggleUiTheme");
+    },
     logoutUser() {
       const logsParams = logs(this.user, `${this.user.email} - ${this.user.name} terminou a sessão.`, "Autenticação");
       this.$store.dispatch("addLog", logsParams).then(() => {

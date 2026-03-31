@@ -1,6 +1,7 @@
 import "./config/env";
 import express, { json } from "express";
 import path from "path";
+import fs from "fs";
 import { db } from "./database/db";
 import { routes } from "./routes";
 import cors from "cors";
@@ -16,18 +17,33 @@ const isCompiled = __dirname.includes(path.sep + "build" + path.sep) || __dirnam
 const projectRoot = isCompiled
   ? path.join(__dirname, "..", "..")
   : path.join(__dirname, "..");
+const resolveDir = (envKey: string, subdir: "public" | "uploads") => {
+  const envDir = process.env[envKey];
+  const candidates = [
+    envDir,
+    path.join(projectRoot, subdir),
+    path.join(process.cwd(), subdir),
+    path.join(__dirname, "..", "..", subdir),
+    path.join(__dirname, "..", subdir),
+  ].filter(Boolean) as string[];
+
+  const found = candidates.find((dir) => fs.existsSync(dir));
+  return found || candidates[0];
+};
+const publicDir = resolveDir("PUBLIC_DIR", "public");
+const uploadsDir = resolveDir("UPLOADS_DIR", "uploads");
 
 app.use(bodyParser.urlencoded({ extended: true, limit: "10mb" }));
 app.use(bodyParser.json({ limit: "10mb" }));
-app.use(express.static(path.join(projectRoot, "uploads")));
-app.use(express.static(path.join(projectRoot, "public")));
+app.use(express.static(uploadsDir));
+app.use(express.static(publicDir));
 app.use(cors());
 app.use(morgan("dev"));
 app.use(routes);
 
 // SPA catch-all: serve index.html for any non-API route
 app.get("*", (req, res) => {
-  res.sendFile(path.join(projectRoot, "public", "index.html"));
+  res.sendFile(path.join(publicDir, "index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
@@ -64,6 +80,150 @@ app.listen(PORT, async () => {
     await qi.changeColumn("customers", "password", {
       type: "VARCHAR(255)",
       allowNull: false,
+    });
+  });
+
+  await runSafe("migração capacityExcessObservation(customer_loans)", async () => {
+    await qi.addColumn("customer_loans", "capacityExcessObservation", {
+      type: "TEXT",
+      allowNull: true,
+    });
+  });
+
+  await runSafe("migração tabela sms_queue", async () => {
+    await qi.createTable("sms_queue", {
+      id: {
+        type: "INT",
+        allowNull: false,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      companyId: {
+        type: "INT",
+        allowNull: false,
+      },
+      accountNumber: {
+        type: "VARCHAR(60)",
+        allowNull: true,
+      },
+      loanId: {
+        type: "INT",
+        allowNull: true,
+      },
+      amortizationLoanId: {
+        type: "INT",
+        allowNull: true,
+      },
+      transactionId: {
+        type: "INT",
+        allowNull: true,
+      },
+      debtId: {
+        type: "INT",
+        allowNull: true,
+      },
+      customerName: {
+        type: "VARCHAR(255)",
+        allowNull: true,
+      },
+      phone: {
+        type: "VARCHAR(20)",
+        allowNull: false,
+      },
+      messageType: {
+        type: "VARCHAR(60)",
+        allowNull: false,
+      },
+      messageBody: {
+        type: "TEXT",
+        allowNull: false,
+      },
+      payloadJson: {
+        type: "LONGTEXT",
+        allowNull: true,
+      },
+      status: {
+        type: "VARCHAR(20)",
+        allowNull: false,
+        defaultValue: "queued",
+      },
+      retries: {
+        type: "INT",
+        allowNull: false,
+        defaultValue: 0,
+      },
+      gatewayMessageId: {
+        type: "VARCHAR(255)",
+        allowNull: true,
+      },
+      errorMessage: {
+        type: "VARCHAR(255)",
+        allowNull: true,
+      },
+      sentAt: {
+        type: "DATETIME",
+        allowNull: true,
+      },
+      lastAttemptAt: {
+        type: "DATETIME",
+        allowNull: true,
+      },
+      createdAt: {
+        type: "DATETIME",
+        allowNull: false,
+        defaultValue: db.literal("CURRENT_TIMESTAMP"),
+      },
+      updatedAt: {
+        type: "DATETIME",
+        allowNull: false,
+        defaultValue: db.literal("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+      },
+    });
+  });
+
+  await runSafe("migração tabela sms_gateway_inbox", async () => {
+    await qi.createTable("sms_gateway_inbox", {
+      id: {
+        type: "INT",
+        allowNull: false,
+        autoIncrement: true,
+        primaryKey: true,
+      },
+      deviceId: {
+        type: "VARCHAR(120)",
+        allowNull: false,
+      },
+      senderPhone: {
+        type: "VARCHAR(30)",
+        allowNull: true,
+      },
+      receiverPhone: {
+        type: "VARCHAR(30)",
+        allowNull: true,
+      },
+      messageBody: {
+        type: "TEXT",
+        allowNull: false,
+      },
+      receivedAt: {
+        type: "DATETIME",
+        allowNull: false,
+      },
+      contentHash: {
+        type: "VARCHAR(64)",
+        allowNull: false,
+        unique: true,
+      },
+      createdAt: {
+        type: "DATETIME",
+        allowNull: false,
+        defaultValue: db.literal("CURRENT_TIMESTAMP"),
+      },
+      updatedAt: {
+        type: "DATETIME",
+        allowNull: false,
+        defaultValue: db.literal("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+      },
     });
   });
 
@@ -113,6 +273,27 @@ app.listen(PORT, async () => {
   await runSafe("índice idx_amortization_loan_loan_installmentOrder", async () => {
     await qi.addIndex("amortization_loan", ["loanId", "installmentOrder"], {
       name: "idx_amortization_loan_loan_installmentOrder",
+    });
+  });
+
+  await runSafe("índice idx_sms_queue_status_created", async () => {
+    await qi.addIndex("sms_queue", ["status", "createdAt"], {
+      name: "idx_sms_queue_status_created",
+    });
+  });
+  await runSafe("índice idx_sms_queue_company_status", async () => {
+    await qi.addIndex("sms_queue", ["companyId", "status"], {
+      name: "idx_sms_queue_company_status",
+    });
+  });
+  await runSafe("índice idx_sms_queue_company_type_ref", async () => {
+    await qi.addIndex("sms_queue", ["companyId", "messageType", "amortizationLoanId"], {
+      name: "idx_sms_queue_company_type_ref",
+    });
+  });
+  await runSafe("índice idx_sms_gateway_inbox_device_received", async () => {
+    await qi.addIndex("sms_gateway_inbox", ["deviceId", "receivedAt"], {
+      name: "idx_sms_gateway_inbox_device_received",
     });
   });
 

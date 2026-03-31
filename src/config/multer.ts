@@ -1,12 +1,21 @@
 import { randomBytes } from "crypto";
+import { mkdirSync } from "fs";
 import { diskStorage, Options } from "multer";
-import { resolve } from "path";
+import { join, sep } from "path";
+
+const isCompiled =
+  __dirname.includes(`${sep}build${sep}`) || __dirname.endsWith(`${sep}build`);
+const projectRoot = isCompiled
+  ? join(__dirname, "..", "..", "..")
+  : join(__dirname, "..", "..");
+const documentsUploadDir = join(projectRoot, "uploads", "documents");
+
+mkdirSync(documentsUploadDir, { recursive: true });
 
 export const multerConfig = {
-  dest: resolve(__dirname, "..", "uploads"),
   storage: diskStorage({
     destination: (request, file, callback) => {
-      callback(null, resolve(__dirname, "..", "uploads"));
+      callback(null, documentsUploadDir);
     },
     filename: (request, file, callback) => {
       randomBytes(16, (error, hash) => {

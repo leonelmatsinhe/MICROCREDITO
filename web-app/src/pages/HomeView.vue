@@ -66,7 +66,26 @@
         </b-col>
       </b-row>
 
-      <b-overlay :show="isLoading" rounded="lg" opacity="0.6">
+      <b-row class="mb-3">
+        <b-col>
+          <b-button-group size="sm">
+            <b-button
+              :variant="activeAdminView === 'dashboard' ? 'mbr-green' : 'outline-secondary'"
+              @click="activeAdminView = 'dashboard'"
+            >
+              <b-icon icon="speedometer2" class="mr-1"></b-icon> Painel
+            </b-button>
+            <b-button
+              :variant="activeAdminView === 'sms-service' ? 'mbr-green' : 'outline-secondary'"
+              @click="openSmsServiceView"
+            >
+              <b-icon icon="chat-left-dots-fill" class="mr-1"></b-icon> Serviço SMS
+            </b-button>
+          </b-button-group>
+        </b-col>
+      </b-row>
+
+      <b-overlay :show="isLoading" rounded="lg" opacity="0.6" v-if="activeAdminView === 'dashboard'">
         <b-row v-if="hasDashboardFilter" class="mb-3">
           <b-col>
             <div class="filter-active-pill">
@@ -490,6 +509,221 @@
           </b-col>
         </b-row>
       </b-overlay>
+
+      <b-overlay :show="smsServiceLoading" rounded="lg" opacity="0.6" v-if="activeAdminView === 'sms-service'">
+        <b-row class="mb-3">
+          <b-col md="7">
+            <h5 class="font-weight-bold text-dark mb-1">
+              <b-icon icon="chat-left-dots-fill" class="text-mbr-green mr-2"></b-icon>
+              Serviço SMS
+            </h5>
+            <p class="text-muted mb-0 small">
+              Monitoria da fila SMS e envio de anúncios para contactos específicos.
+            </p>
+          </b-col>
+          <b-col md="5" class="text-md-right mt-2 mt-md-0">
+            <b-button size="sm" variant="outline-secondary" class="mr-2" @click="clearSmsFilters">
+              Limpar filtros
+            </b-button>
+            <b-button size="sm" variant="mbr-green" @click="loadSmsServiceData">
+              <b-icon icon="arrow-repeat" class="mr-1"></b-icon> Actualizar
+            </b-button>
+          </b-col>
+        </b-row>
+
+        <b-row class="mb-3">
+          <b-col lg="3" md="6" class="mb-2">
+            <b-card class="border-0 shadow-sm stat-card" no-body>
+              <div class="p-3">
+                <div class="kpi-label">Na Fila</div>
+                <h4 class="mb-0 text-warning font-weight-bold">{{ smsQueueStats.queued }}</h4>
+              </div>
+            </b-card>
+          </b-col>
+          <b-col lg="3" md="6" class="mb-2">
+            <b-card class="border-0 shadow-sm stat-card" no-body>
+              <div class="p-3">
+                <div class="kpi-label">Processando</div>
+                <h4 class="mb-0 text-primary font-weight-bold">{{ smsQueueStats.processing }}</h4>
+              </div>
+            </b-card>
+          </b-col>
+          <b-col lg="3" md="6" class="mb-2">
+            <b-card class="border-0 shadow-sm stat-card" no-body>
+              <div class="p-3">
+                <div class="kpi-label">Enviados</div>
+                <h4 class="mb-0 text-success font-weight-bold">{{ smsQueueStats.sent }}</h4>
+              </div>
+            </b-card>
+          </b-col>
+          <b-col lg="3" md="6" class="mb-2">
+            <b-card class="border-0 shadow-sm stat-card" no-body>
+              <div class="p-3">
+                <div class="kpi-label">Falhados</div>
+                <h4 class="mb-0 text-danger font-weight-bold">{{ smsQueueStats.failed }}</h4>
+              </div>
+            </b-card>
+          </b-col>
+        </b-row>
+
+        <b-row class="mb-3">
+          <b-col lg="4" md="6" class="mb-2">
+            <b-form-group label="Data Início" label-size="sm" class="mb-0">
+              <b-form-datepicker
+                v-model="smsHistoryFrom"
+                size="sm"
+                locale="pt-PT"
+                placeholder="Data início"
+                reset-button
+              ></b-form-datepicker>
+            </b-form-group>
+          </b-col>
+          <b-col lg="4" md="6" class="mb-2">
+            <b-form-group label="Data Fim" label-size="sm" class="mb-0">
+              <b-form-datepicker
+                v-model="smsHistoryTo"
+                size="sm"
+                locale="pt-PT"
+                :min="smsHistoryFrom || undefined"
+                placeholder="Data fim"
+                reset-button
+              ></b-form-datepicker>
+            </b-form-group>
+          </b-col>
+          <b-col lg="4" md="6" class="mb-2">
+            <b-form-group label="Estado" label-size="sm" class="mb-0">
+              <b-form-select v-model="smsHistoryStatus" :options="smsStatusOptions" size="sm"></b-form-select>
+            </b-form-group>
+          </b-col>
+        </b-row>
+
+        <b-card class="border-0 shadow-sm mb-4" no-body>
+          <b-card-header class="bg-white border-0 py-2 d-flex justify-content-between align-items-center">
+            <h6 class="font-weight-bold mb-0">Histórico da Fila SMS</h6>
+            <b-button size="sm" variant="mbr-green" @click="fetchSmsQueueHistory">
+              <b-icon icon="search" class="mr-1"></b-icon> Filtrar
+            </b-button>
+          </b-card-header>
+          <b-table
+            :items="smsQueueHistory"
+            :fields="smsHistoryFields"
+            responsive
+            hover
+            small
+            show-empty
+            empty-text="Sem registos para o filtro selecionado."
+            class="mb-0"
+          >
+            <template #cell(status)="data">
+              <b-badge :variant="smsStatusVariant(data.item.status)" pill>{{ data.item.status }}</b-badge>
+            </template>
+            <template #cell(customer)="data">
+              <span>{{ data.item.customerName || "—" }}</span>
+              <small class="text-muted d-block">{{ data.item.accountNumber || "—" }}</small>
+            </template>
+            <template #cell(phone)="data">
+              <span>{{ data.item.phone || "—" }}</span>
+            </template>
+            <template #cell(messageType)="data">
+              <span class="text-uppercase small">{{ data.item.messageType }}</span>
+            </template>
+            <template #cell(messageBody)="data">
+              <span>{{ truncateSmsBody(data.item.messageBody) }}</span>
+            </template>
+            <template #cell(createdAt)="data">
+              <small>{{ formatDateTime(data.item.createdAt) }}</small>
+            </template>
+          </b-table>
+        </b-card>
+
+        <b-card class="border-0 shadow-sm" no-body>
+          <b-card-header class="bg-white border-0 py-2">
+            <h6 class="font-weight-bold mb-0">
+              <b-icon icon="megaphone-fill" class="text-mbr-green mr-2"></b-icon>
+              Enviar SMS de Anúncio
+            </h6>
+          </b-card-header>
+          <b-card-body>
+            <b-row>
+              <b-col md="12" class="mb-2">
+                <b-form-group label="Mensagem do anúncio" label-size="sm" class="mb-0">
+                  <b-form-textarea
+                    v-model="smsAnnouncement.messageBody"
+                    rows="4"
+                    max-rows="8"
+                    placeholder="Escreva a mensagem do anúncio..."
+                  ></b-form-textarea>
+                  <small class="text-muted">{{ smsAnnouncement.messageBody.length }} caracteres</small>
+                </b-form-group>
+              </b-col>
+            </b-row>
+
+            <b-row class="mb-2">
+              <b-col md="6">
+                <b-form-checkbox v-model="smsAnnouncement.sendToAllCustomers">
+                  Enviar para todos os mutuários com telefone válido
+                </b-form-checkbox>
+              </b-col>
+              <b-col md="6">
+                <b-form-group label="Pesquisar contactos" label-size="sm" class="mb-0">
+                  <b-form-input
+                    v-model="smsAnnouncementSearch"
+                    size="sm"
+                    placeholder="Nome, conta ou telefone"
+                    :disabled="smsAnnouncement.sendToAllCustomers"
+                  ></b-form-input>
+                </b-form-group>
+              </b-col>
+            </b-row>
+
+            <b-row>
+              <b-col md="7">
+                <b-form-group label="Contactos do sistema" label-size="sm" class="mb-0">
+                  <b-form-select
+                    v-model="smsAnnouncement.selectedAccounts"
+                    :options="smsAnnouncementContactOptions"
+                    :select-size="8"
+                    multiple
+                    :disabled="smsAnnouncement.sendToAllCustomers"
+                  ></b-form-select>
+                </b-form-group>
+              </b-col>
+              <b-col md="5">
+                <b-form-group label="Números extras (um por linha)" label-size="sm" class="mb-0">
+                  <b-form-textarea
+                    v-model="smsAnnouncement.customPhones"
+                    rows="8"
+                    max-rows="10"
+                    placeholder="841234567&#10;258851112223"
+                    :disabled="smsAnnouncement.sendToAllCustomers"
+                  ></b-form-textarea>
+                </b-form-group>
+              </b-col>
+            </b-row>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+              <small class="text-muted">
+                Destinatários estimados:
+                <strong>{{ smsAnnouncementRecipientsCount }}</strong>
+              </small>
+              <div>
+                <b-button size="sm" variant="outline-secondary" class="mr-2" @click="resetSmsAnnouncement">
+                  Limpar
+                </b-button>
+                <b-button
+                  size="sm"
+                  variant="mbr-green"
+                  :disabled="smsSendingAnnouncement || !canSendSmsAnnouncement"
+                  @click="sendSmsAnnouncement"
+                >
+                  <b-icon icon="send-fill" class="mr-1"></b-icon>
+                  Enfileirar anúncio
+                </b-button>
+              </div>
+            </div>
+          </b-card-body>
+        </b-card>
+      </b-overlay>
     </b-container>
 
     <!-- ===================== MODAL: ENVIAR NOTIFICAÇÃO ===================== -->
@@ -705,6 +939,17 @@
             {{ data.item.installments }}
           </template>
 
+          <template #cell(capacityObs)="data">
+            <small v-if="data.item.capacityExcessObservation" class="text-danger d-block">
+              {{
+                data.item.capacityExcessObservation.length > 80
+                  ? `${data.item.capacityExcessObservation.slice(0, 80)}...`
+                  : data.item.capacityExcessObservation
+              }}
+            </small>
+            <small v-else class="text-muted">—</small>
+          </template>
+
           <template #cell(dateCreated)="data">
             {{ formatDate(data.item.dateCreated) }}
           </template>
@@ -747,6 +992,7 @@ import LoansList from "@/components/loans/LoansList.vue";
 export default {
   data: () => ({
     today: moment(),
+    activeAdminView: "dashboard",
     dashboardDateFrom: "",
     dashboardDateTo: "",
     activeLoans: 0,
@@ -761,6 +1007,43 @@ export default {
     selectedLoanDescription: "",
     selectedLoanList: [],
     selectedLoanType: "pending",
+    smsServiceLoading: false,
+    smsSendingAnnouncement: false,
+    smsQueueHistory: [],
+    smsQueueStats: {
+      queued: 0,
+      processing: 0,
+      sent: 0,
+      failed: 0,
+      cancelled: 0,
+      total: 0,
+    },
+    smsHistoryFrom: "",
+    smsHistoryTo: "",
+    smsHistoryStatus: "",
+    smsStatusOptions: [
+      { value: "", text: "Todos os estados" },
+      { value: "queued", text: "queued" },
+      { value: "processing", text: "processing" },
+      { value: "sent", text: "sent" },
+      { value: "failed", text: "failed" },
+      { value: "cancelled", text: "cancelled" },
+    ],
+    smsHistoryFields: [
+      { key: "status", label: "Estado", class: "text-center" },
+      { key: "customer", label: "Mutuário / Conta" },
+      { key: "phone", label: "Telefone" },
+      { key: "messageType", label: "Tipo" },
+      { key: "messageBody", label: "Mensagem" },
+      { key: "createdAt", label: "Criado em", class: "text-center" },
+    ],
+    smsAnnouncementSearch: "",
+    smsAnnouncement: {
+      messageBody: "",
+      sendToAllCustomers: false,
+      selectedAccounts: [],
+      customPhones: "",
+    },
     // Modal de notificação
     notificationData: {
       customerName: "",
@@ -799,6 +1082,7 @@ export default {
       { key: "amount", label: "Valor do Crédito", class: "text-right" },
       { key: "interestRate", label: "Taxa (%)", class: "text-center" },
       { key: "installments", label: "Parcelas", class: "text-center" },
+      { key: "capacityObs", label: "Obs. Excesso" },
       { key: "dateCreated", label: "Data de Submissão", class: "text-center" },
       { key: "dueDate", label: "Data de Desembolso", class: "text-center" },
     ],
@@ -1003,6 +1287,46 @@ export default {
       }
       return map;
     },
+    smsAnnouncementContactOptions() {
+      const source = this.customers || [];
+      const search = String(this.smsAnnouncementSearch || "").trim().toLowerCase();
+      const filtered = search
+        ? source.filter((customer) => {
+            const name = String(customer.customerName || "").toLowerCase();
+            const account = String(customer.accountNumber || "");
+            const phone = String(customer.customerPhone || "");
+            return (
+              name.includes(search) ||
+              account.includes(search) ||
+              phone.includes(search)
+            );
+          })
+        : source;
+
+      return filtered
+        .filter((customer) => !!customer.customerPhone)
+        .map((customer) => ({
+          value: String(customer.accountNumber),
+          text: `${customer.customerName} (${customer.accountNumber}) - ${customer.customerPhone}`,
+        }));
+    },
+    smsAnnouncementRecipientsCount() {
+      if (this.smsAnnouncement.sendToAllCustomers) {
+        return (this.customers || []).filter((customer) => !!customer.customerPhone).length;
+      }
+      const selected = (this.smsAnnouncement.selectedAccounts || []).length;
+      const custom = String(this.smsAnnouncement.customPhones || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => !!line).length;
+      return selected + custom;
+    },
+    canSendSmsAnnouncement() {
+      return (
+        String(this.smsAnnouncement.messageBody || "").trim().length > 0 &&
+        this.smsAnnouncementRecipientsCount > 0
+      );
+    },
   },
 
   watch: {
@@ -1042,6 +1366,186 @@ export default {
   },
 
   methods: {
+    smsStatusVariant(status) {
+      const normalized = String(status || "").toLowerCase();
+      const map = {
+        queued: "warning",
+        processing: "primary",
+        sent: "success",
+        failed: "danger",
+        cancelled: "secondary",
+      };
+      return map[normalized] || "secondary";
+    },
+    truncateSmsBody(body) {
+      const text = String(body || "");
+      if (text.length <= 90) return text;
+      return `${text.slice(0, 90)}...`;
+    },
+    formatDateTime(value) {
+      if (!value) return "—";
+      const parsed = moment(value);
+      return parsed.isValid() ? parsed.format("DD/MM/YYYY HH:mm") : "—";
+    },
+    openSmsServiceView() {
+      this.activeAdminView = "sms-service";
+      this.loadSmsServiceData();
+    },
+    clearSmsFilters() {
+      this.smsHistoryFrom = "";
+      this.smsHistoryTo = "";
+      this.smsHistoryStatus = "";
+      this.fetchSmsQueueHistory();
+    },
+    async loadSmsServiceData() {
+      this.smsServiceLoading = true;
+      try {
+        await Promise.all([this.fetchSmsQueueHistory(), this.fetchSmsQueuePendingCount()]);
+      } finally {
+        this.smsServiceLoading = false;
+      }
+    },
+    async fetchSmsQueuePendingCount() {
+      if (!this.company || !this.company.id) return;
+      try {
+        const res = await axios.get("/api/sms-gateway/pending", {
+          params: {
+            companyId: this.company.id,
+            limit: 500,
+          },
+        });
+        if (res?.data?.data && Array.isArray(res.data.data)) {
+          const queued = res.data.data.filter((item) => item.status === "queued").length;
+          const processing = res.data.data.filter((item) => item.status === "processing").length;
+          this.smsQueueStats.queued = queued;
+          this.smsQueueStats.processing = processing;
+        }
+      } catch (err) {
+        this.$bvToast.toast("Erro ao carregar pendências SMS.", {
+          title: "Erro!",
+          variant: "danger",
+          solid: true,
+          toaster: "b-toaster-top-center",
+        });
+      }
+    },
+    async fetchSmsQueueHistory() {
+      if (!this.company || !this.company.id) return;
+      try {
+        const params = {
+          companyId: this.company.id,
+          from: this.smsHistoryFrom || undefined,
+          to: this.smsHistoryTo || undefined,
+          status: this.smsHistoryStatus || undefined,
+          limit: 500,
+        };
+        const res = await axios.get("/api/sms-gateway/history", { params });
+        if (res.data && res.data.success) {
+          this.smsQueueHistory = Array.isArray(res.data.result) ? res.data.result : [];
+          const stats = this.smsQueueHistory.reduce(
+            (acc, row) => {
+              const status = String(row.status || "").toLowerCase();
+              if (Object.prototype.hasOwnProperty.call(acc, status)) {
+                acc[status] += 1;
+              }
+              acc.total += 1;
+              return acc;
+            },
+            { queued: 0, processing: 0, sent: 0, failed: 0, cancelled: 0, total: 0 }
+          );
+          this.smsQueueStats = {
+            ...this.smsQueueStats,
+            ...stats,
+          };
+        }
+      } catch (err) {
+        this.$bvToast.toast("Erro ao carregar histórico SMS.", {
+          title: "Erro!",
+          variant: "danger",
+          solid: true,
+          toaster: "b-toaster-top-center",
+        });
+      }
+    },
+    resetSmsAnnouncement() {
+      this.smsAnnouncement = {
+        messageBody: "",
+        sendToAllCustomers: false,
+        selectedAccounts: [],
+        customPhones: "",
+      };
+      this.smsAnnouncementSearch = "";
+    },
+    async sendSmsAnnouncement() {
+      if (!this.company || !this.company.id) return;
+      if (!this.canSendSmsAnnouncement) return;
+
+      const customerMap = {};
+      (this.customers || []).forEach((customer) => {
+        customerMap[String(customer.accountNumber)] = customer;
+      });
+
+      const selectedContacts = (this.smsAnnouncement.selectedAccounts || [])
+        .map((account) => customerMap[String(account)])
+        .filter((customer) => !!customer)
+        .map((customer) => ({
+          accountNumber: customer.accountNumber,
+          customerName: customer.customerName,
+          phone: customer.customerPhone,
+        }));
+
+      const customContacts = String(this.smsAnnouncement.customPhones || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => !!line)
+        .map((phone, index) => ({
+          accountNumber: null,
+          customerName: `Contacto Extra ${index + 1}`,
+          phone,
+        }));
+
+      this.smsSendingAnnouncement = true;
+      try {
+        const payload = {
+          companyId: this.company.id,
+          messageBody: String(this.smsAnnouncement.messageBody || "").trim(),
+          sendToAllCustomers: !!this.smsAnnouncement.sendToAllCustomers,
+          contacts: this.smsAnnouncement.sendToAllCustomers
+            ? []
+            : [...selectedContacts, ...customContacts],
+        };
+
+        const res = await axios.post("/api/sms-gateway/announcements", payload);
+        if (res.data && res.data.success) {
+          const queued = res.data.result?.queued || 0;
+          const skipped = res.data.result?.skipped || 0;
+          this.$bvToast.toast(`Anúncio enfileirado. ${queued} SMS na fila${skipped > 0 ? `, ${skipped} ignorado(s)` : ""}.`, {
+            title: "Sucesso!",
+            variant: "success",
+            solid: true,
+            toaster: "b-toaster-top-center",
+          });
+          this.resetSmsAnnouncement();
+          await this.loadSmsServiceData();
+        } else {
+          this.$bvToast.toast(res.data?.message || "Não foi possível enfileirar o anúncio.", {
+            title: "Aviso!",
+            variant: "warning",
+            solid: true,
+            toaster: "b-toaster-top-center",
+          });
+        }
+      } catch (err) {
+        this.$bvToast.toast("Erro ao enviar anúncio SMS.", {
+          title: "Erro!",
+          variant: "danger",
+          solid: true,
+          toaster: "b-toaster-top-center",
+        });
+      } finally {
+        this.smsSendingAnnouncement = false;
+      }
+    },
     convertMoney(value) {
       return MoneyFormat.formatMoney(value);
     },
@@ -1267,7 +1771,10 @@ export default {
     },
 
     buildNotificationMessage(customer, installment) {
-      return `Prezado(a) ${customer.customerName},\n\nLembramos que a prestação nº ${installment.installmentOrder} no valor de ${MoneyFormat.formatMoney(installment.installment)} vence em breve. Caso já tenha efectuado o pagamento, por favor desconsidere esta mensagem.\n\n${this.company.companyName}`;
+      const dueDateLabel = installment?.dueDate
+        ? moment(installment.dueDate).format("DD/MM/YYYY")
+        : "data indisponível";
+      return `Prezado(a) ${customer.customerName},\n\nLembrete: prestação nº ${installment.installmentOrder}, vencimento ${dueDateLabel}, valor ${MoneyFormat.formatMoney(installment.installment)}.\nSe já pagou, ignore esta mensagem.\n\n${this.company.companyName}`;
     },
 
     openNotificationModal(installment) {
@@ -1323,13 +1830,22 @@ export default {
             return;
           }
           const payload = {
-            receipient: this.notificationData.phone,
-            accountNumber: this.notificationData.accountNumber,
-            sender: this.company.smsSender,
             companyId: this.company.id,
-            smsBody: this.notificationMessage,
+            accountNumber: this.notificationData.accountNumber,
+            customerName: this.notificationData.customerName,
+            phone: this.notificationData.phone,
+            messageType: "upcoming_installment_alert_manual",
+            messageBody: this.notificationMessage,
+            payloadJson: {
+              source: "admin_dashboard_notification_modal",
+              installmentOrder: this.notificationData.installmentOrder,
+              dueDate: this.currentNotificationItem?.dueDate || null,
+            },
           };
-          this.$store.dispatch("sendSMSMessage", payload);
+          const smsEnqueueRes = await axios.post("/api/sms-gateway/enqueue", payload);
+          if (!smsEnqueueRes?.data?.success) {
+            throw new Error(smsEnqueueRes?.data?.message || "Falha ao enfileirar SMS.");
+          }
           results.push("SMS");
         }
 

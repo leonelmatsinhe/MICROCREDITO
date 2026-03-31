@@ -41,9 +41,15 @@ Resposta de sucesso (estrutura):
     },
     "financial": {
       "totalDisbursed": 0,
+      "pendingAmount": 0,
+      "liquidatedAmount": 0,
+      "rejectedAmount": 0,
       "totalCollected": 0,
       "totalInterestCollected": 0,
       "totalLateInterest": 0,
+      "recoveryBaseAmount": 0,
+      "recoveryCollectedAmount": 0,
+      "recoveryRatePct": 0,
       "avgTicket": 0,
       "roiPct": 0
     },

@@ -1,9 +1,7 @@
 import { Request, Response } from "express";
 import { Op } from "sequelize";
 import { SmsModel } from "../database/models/SmsModel";
-import { default as axios } from "axios"
-
-const SMS_API_KEY = process.env.SMS_API_KEY
+import { enqueueSms } from "../services/SmsGatewayService";
 
 const findAllSms = async (req: Request, res: Response) => {
     const { from, to, companyId } = req.query;
@@ -42,36 +40,55 @@ const findSmsByCustomer = async (req: Request, res: Response) => {
 };
 
 const sendSms = async (req: Request, res: Response) => {
-    let { companyId, receipient, sender, accountNumber, smsBody } = req.body;
+    try {
+        let { companyId, receipient, sender, accountNumber, smsBody } = req.body;
+        const parsedCompanyId = Number(companyId);
+        const normalizedBody = String(smsBody || "").trim();
+        const normalizedRecipient = String(receipient || "").trim();
 
-    const sms = await SmsModel.create({
-        companyId,
-        receipient,
-        sender,
-        accountNumber,
-        smsBody,
-    });
-
-    if (sms != null) {
-        const parameters = `apiKey=${SMS_API_KEY}&numbers=${receipient}&sender=${sender}&message=${smsBody}`
-
-        axios.get(`https://api.txtlocal.com/send/?${parameters}`)
-            .then((response: any) => {
-                console.log(response)
-                res.status(200).send({
-                    success: true,
-                    message: "SMS enviado com sucesso",
-                });
-            }).catch((err: { message: any; }) => {
-                res.status(200).send({
-                    success: false,
-                    message: err.message,
-                });
+        if (!parsedCompanyId || Number.isNaN(parsedCompanyId) || !normalizedRecipient || !normalizedBody) {
+            return res.status(400).send({
+                success: false,
+                message: "Campos obrigatórios: companyId, receipient e smsBody.",
             });
-    } else {
-        res.status(200).send({
+        }
+
+        await SmsModel.create({
+            companyId: parsedCompanyId,
+            receipient: normalizedRecipient,
+            sender,
+            accountNumber,
+            smsBody: normalizedBody,
+        });
+
+        const result = await enqueueSms({
+            companyId: parsedCompanyId,
+            accountNumber: accountNumber || null,
+            phone: normalizedRecipient,
+            messageType: "manual_notification",
+            messageBody: normalizedBody,
+            payloadJson: {
+                source: "legacy_sendSms_endpoint",
+                sender: sender || null,
+            },
+        });
+
+        if (!result.created) {
+            return res.status(422).send({
+                success: false,
+                message: "Não foi possível enfileirar o SMS no gateway.",
+                reason: (result as any).reason || "unknown",
+            });
+        }
+
+        return res.status(200).send({
+            success: true,
+            message: "SMS enfileirado com sucesso no gateway.",
+        });
+    } catch (err: any) {
+        return res.status(500).send({
             success: false,
-            result: "There was an error sending SMS.",
+            message: err.message || "Erro interno ao enfileirar SMS.",
         });
     }
 };

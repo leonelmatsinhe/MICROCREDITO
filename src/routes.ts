@@ -1,7 +1,7 @@
 import express, { request } from "express";
 import { Request, Response } from "express";
 import path from "path";
-// import multer from "multer";
+import multer from "multer";
 
 // Determina a raiz do projecto (mesma lógica de app.ts)
 const isCompiled = __dirname.includes(path.sep + "build" + path.sep) || __dirname.endsWith(path.sep + "build");
@@ -98,7 +98,7 @@ import { getAllLoanGuarantees, createGuarantee, deleteGuarantee } from "./contro
 
 import { b2Customer, c2Business } from "./controllers/MpesaPaymentController";
 
-// import { multerConfig } from "./config/multer";
+import { multerConfig } from "./config/multer";
 import { auth } from "./middlewares/auth";
 import {
   getPastAmortizations,
@@ -113,6 +113,16 @@ import {
 import { sendUserCredentials } from "./controllers/UserCredentials";
 
 import { sendSms, findAllSms, findSmsByCustomer } from "./controllers/SmsController";
+import {
+  enqueueLateInterestAlerts,
+  enqueueSmsAnnouncement,
+  enqueueSmsManually,
+  enqueueUpcomingAlerts,
+  getPendingSmsGateway,
+  getSmsQueueHistory,
+  syncSmsInbox,
+  updateGatewaySmsStatus,
+} from "./controllers/SmsGatewayController";
 
 import { customerContract } from "./controllers/PdfController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
@@ -131,6 +141,7 @@ import {
 import { getDashboardOverview } from "./controllers/DashboardController";
 
 const routes = express.Router();
+const documentUpload = multer(multerConfig).single("file");
 
 routes.get("/logo/:image", (req: Request, res: Response) =>
   res.sendFile(path.join(projectRoot, "uploads", "img", req.params.image))
@@ -177,6 +188,21 @@ routes.put("/api/notifications/customer/markAllRead/:companyId/:customerId", mar
 //         });
 //   }
 // );
+routes.post("/api/upload", documentUpload, (req: Request, res: Response) => {
+  const fileName = req.file?.filename;
+
+  return fileName != null
+    ? res.status(201).json({
+        success: true,
+        imageUrl: fileName, // compatibilidade com frontend legado
+        fileName,
+        documentFileUrl: `/documents/${fileName}`,
+      })
+    : res.status(400).json({
+        success: false,
+        message: "Houve um erro no envio do arquivo.",
+      });
+});
 
 routes.get("/api/download/:id", (req: Request, res: Response) => {
   const fileName = req.params.id;
@@ -189,8 +215,22 @@ routes.get("/api/download/:id", (req: Request, res: Response) => {
     });
 });
 
+// Documento público para abertura em nova aba sem header Authorization
+routes.get("/api/document/file/:fileName", (req: Request, res: Response) => {
+  const safeFileName = path.basename(req.params.fileName);
+  return res.sendFile(path.join(projectRoot, "uploads", "documents", safeFileName));
+});
+
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth);
+routes.get("/api/sms-gateway/pending", getPendingSmsGateway);
+routes.patch("/api/sms-gateway/:id/status", updateGatewaySmsStatus);
+routes.post("/api/sms-gateway/enqueue", enqueueSmsManually);
+routes.post("/api/sms-gateway/announcements", enqueueSmsAnnouncement);
+routes.post("/api/sms-gateway/alerts/upcoming", enqueueUpcomingAlerts);
+routes.post("/api/sms-gateway/alerts/late-interest", enqueueLateInterestAlerts);
+routes.post("/api/sms-gateway/inbox/sync", syncSmsInbox);
+routes.get("/api/sms-gateway/history", getSmsQueueHistory);
 routes.post("/api/users", create);
 routes.post("/api/updatePassword", changeUserPassword);
 routes.get("/api/usersAll/:id", findAll);
@@ -210,9 +250,23 @@ routes.post("/api/loan", createLoan);
 // Documents Route
 routes.get("/api/document", findAllDocuments);
 routes.get("/api/document/:id", getCustomerDocuments);
-routes.put("/api/document/:id", updateDocument);
+routes.put("/api/document/:id", documentUpload, updateDocument);
 routes.delete("/api/document/:id", deleteDocument);
-routes.post("/api/document", createDocument);
+routes.post("/api/document", documentUpload, createDocument);
+routes.post("/api/document/upload", documentUpload, (req: Request, res: Response) => {
+  const fileName = req.file?.filename;
+  if (!fileName) {
+    return res.status(400).json({
+      success: false,
+      message: "Ficheiro não enviado.",
+    });
+  }
+  return res.status(201).json({
+    success: true,
+    fileName,
+    documentFileUrl: `/documents/${fileName}`,
+  });
+});
 
 // Logs Routes
 routes.get("/api/logs", findAllLogs);

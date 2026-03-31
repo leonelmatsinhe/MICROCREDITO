@@ -9,11 +9,16 @@ const findAllCustomers = async (req: Request, res: Response) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 15;
   const search = (req.query.search as string) || "";
+  const bairro = (req.query.bairro as string) || "";
   const offset = (page - 1) * limit;
 
   try {
     // Condição base: filtrar por empresa
     const whereClause: any = { companyId: id };
+
+    if (bairro.trim()) {
+      whereClause.customerBairro = { [Op.like]: `%${bairro.trim()}%` };
+    }
 
     // Se houver pesquisa, adicionar filtro por nome, telefone ou conta
     if (search.trim()) {
@@ -106,6 +111,7 @@ const createCustomer = async (req: Request, res: Response) => {
     customerMonthlySalary,
     customerLocalOfWork,
     customerAddress,
+    customerBairro,
     maritalStatus,
     customerSpouseName,
     customerSpouseContact,
@@ -149,6 +155,7 @@ const createCustomer = async (req: Request, res: Response) => {
       customerMonthlySalary,
       customerLocalOfWork,
       customerAddress,
+      customerBairro,
       maritalStatus,
       customerSpouseName,
       customerSpouseContact,
@@ -365,6 +372,7 @@ const bulkCreateCustomers = async (req: Request, res: Response) => {
         customerDateOfBirth: c.customerDateOfBirth || "",
         customerMonthlySalary: c.customerMonthlySalary || "0",
         customerAddress: c.customerAddress || "",
+        customerBairro: c.customerBairro || "",
         customerProfession: c.customerProfession || "",
         customerLocalOfWork: c.customerLocalOfWork || "",
         maritalStatus: c.maritalStatus || "solteiro",

@@ -439,6 +439,24 @@
                         </small>
                       </div>
                     </b-col>
+                    <b-col lg="12" class="mb-2" v-if="!elegibility">
+                      <b-form-group
+                        label="Observação para excesso de capacidade"
+                        label-size="sm"
+                        label-class="font-weight-bold text-danger"
+                        class="mb-0"
+                      >
+                        <b-form-textarea
+                          v-model="loan.capacityExcessObservation"
+                          placeholder="Justifique o motivo para submeter o crédito acima de 1/3 do rendimento mensal..."
+                          rows="3"
+                          size="sm"
+                        ></b-form-textarea>
+                        <small class="text-muted">
+                          Obrigatório quando a prestação simulada excede o limite recomendado.
+                        </small>
+                      </b-form-group>
+                    </b-col>
                   </b-row>
                   <hr class="my-2" />
                   <div class="d-flex justify-content-end">
@@ -453,13 +471,13 @@
                       Cancelar
                     </b-button>
                     <b-button
-                      :disabled="isLoading || !elegibility"
+                      :disabled="isLoading"
                       variant="success"
                       size="sm"
                       class="btn-submit"
                       @click="createLoan()"
                       v-b-tooltip.hover
-                      :title="!elegibility ? 'Prestação excede 1/3 do rendimento mensal' : ''"
+                      :title="!elegibility ? 'Será obrigatório preencher observação de excesso.' : ''"
                     >
                       <b-icon icon="telegram" class="mr-1"></b-icon>
                       Submeter Crédito
@@ -566,6 +584,7 @@ export default {
       creditManager: null,
       loanDescription:
         "Crédito desembolsado mediante apresentação de garantias",
+      capacityExcessObservation: "",
       dateCreated: moment().format("YYYY-MM-DD"),
     },
 
@@ -728,6 +747,15 @@ export default {
         return;
       }
 
+      if (!this.elegibility && (!this.loan.capacityExcessObservation || this.loan.capacityExcessObservation.trim().length < 10)) {
+        this.showToast(
+          "Aviso!",
+          "warning",
+          "Como a prestação excede 1/3 do rendimento, informe uma observação com no mínimo 10 caracteres."
+        );
+        return;
+      }
+
       if (this.loan.prestacoes == null) {
         this.showToast(
           "Avizo!",
@@ -748,6 +776,7 @@ export default {
         creditManager: this.loan.creditManager,
         dateCreated: this.loan.dateCreated,
         loanDescription: this.loan.loanDescription,
+        capacityExcessObservation: this.elegibility ? null : this.loan.capacityExcessObservation.trim(),
         status: 0,
       };
 
@@ -769,6 +798,7 @@ export default {
             );
             this.$store.dispatch("addLog", logsParams);
             this.customerLoanAmortization = [];
+            this.loan.capacityExcessObservation = "";
             this.getCustomerLoans();
           } else {
             this.showToast("Erro!", "danger", data.message);

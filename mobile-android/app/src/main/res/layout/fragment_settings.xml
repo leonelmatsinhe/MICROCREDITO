@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:padding="16dp">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <TextView
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="Configurações do Gateway"
+      android:textSize="20sp"
+      android:textStyle="bold" />
+
+    <com.google.android.material.textfield.TextInputLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="12dp">
+      <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/et_api_base_url"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="URL da API"
+        android:inputType="textUri" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="10dp">
+      <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/et_sync_interval"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Intervalo (minutos)"
+        android:inputType="number" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="10dp">
+      <com.google.android.material.textfield.TextInputEditText
+        android:id="@+id/et_subscription_id"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="ID do SIM (ou -1 para padrão)"
+        android:inputType="numberSigned" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/btn_save_settings"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:text="Guardar Configurações" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/btn_sync_inbox"
+      style="@style/Widget.Material3.Button.OutlinedButton"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="10dp"
+      android:text="Sincronizar SMS recebidas agora" />
+
+    <com.google.android.material.button.MaterialButton
+      android:id="@+id/btn_logout"
+      style="@style/Widget.Material3.Button.OutlinedButton"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="10dp"
+      android:text="Sair da aplicação" />
+  </LinearLayout>
+</ScrollView>
