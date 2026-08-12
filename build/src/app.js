@@ -86,6 +86,12 @@ app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
             allowNull: false,
         });
     }));
+    yield runSafe("migração customerBairro(customers)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("customers", "customerBairro", {
+            type: "VARCHAR(255)",
+            allowNull: true,
+        });
+    }));
     yield runSafe("migração capacityExcessObservation(customer_loans)", () => __awaiter(void 0, void 0, void 0, function* () {
         yield qi.addColumn("customer_loans", "capacityExcessObservation", {
             type: "TEXT",

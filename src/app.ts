@@ -83,6 +83,13 @@ app.listen(PORT, async () => {
     });
   });
 
+  await runSafe("migração customerBairro(customers)", async () => {
+    await qi.addColumn("customers", "customerBairro", {
+      type: "VARCHAR(255)",
+      allowNull: true,
+    });
+  });
+
   await runSafe("migração capacityExcessObservation(customer_loans)", async () => {
     await qi.addColumn("customer_loans", "capacityExcessObservation", {
       type: "TEXT",
