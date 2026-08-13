@@ -2,3 +2,4 @@ dist/
 web-app/
 node_modules/
 .git
+.env

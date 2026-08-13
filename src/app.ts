@@ -10,9 +10,6 @@ import bodyParser from "body-parser";
 
 const app = express();
 
-// Determina a raiz do projecto:
-//   Dev (ts-node):  __dirname = .../src/        → subir 1 nível
-//   Prod (compiled): __dirname = .../build/src/ → subir 2 níveis
 const isCompiled = __dirname.includes(path.sep + "build" + path.sep) || __dirname.endsWith(path.sep + "build");
 const projectRoot = isCompiled
   ? path.join(__dirname, "..", "..")
@@ -46,7 +43,7 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, async () => {
   // await db.sync();
