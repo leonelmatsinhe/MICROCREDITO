@@ -22,9 +22,6 @@ const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
 const app = (0, express_1.default)();
-// Determina a raiz do projecto:
-//   Dev (ts-node):  __dirname = .../src/        → subir 1 nível
-//   Prod (compiled): __dirname = .../build/src/ → subir 2 níveis
 const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) || __dirname.endsWith(path_1.default.sep + "build");
 const projectRoot = isCompiled
     ? path_1.default.join(__dirname, "..", "..")
@@ -54,7 +51,7 @@ app.use(routes_1.routes);
 app.get("*", (req, res) => {
     res.sendFile(path_1.default.join(publicDir, "index.html"));
 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
     // await db.sync();
     const qi = db_1.db.getQueryInterface();
