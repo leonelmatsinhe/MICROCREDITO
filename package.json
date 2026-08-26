@@ -9,9 +9,8 @@
     "dev": "tsc && node build/src/app.js",
     "dev:server": "ts-node-dev --respawn --transpile-only src/app.ts",
     "smoke:dashboard": "powershell -ExecutionPolicy Bypass -File scripts/smoke-dashboard-contract.ps1",
-    "deploy:pm2": "powershell -ExecutionPolicy Bypass -File scripts/deploy-pm2.ps1",
     "pm2:startup": "powershell -ExecutionPolicy Bypass -File scripts/pm2-install-startup.ps1",
-    "deploy": "git add . && git commit -m deploy && git push heroku main"
+    "push": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1"
   },
   "engines": {
     "node": "18.x"
