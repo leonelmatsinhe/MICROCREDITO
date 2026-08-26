@@ -2,7 +2,8 @@
 #
 # deploy.sh - Script de deploy para o SERVIDOR (Ubuntu)
 #
-# Flujo: git pull -> instalar deps -> compilar backend -> build frontend -> reiniciar PM2
+# Flujo: git pull -> instalar deps -> compilar backend -> reiniciar PM2
+# (O build do frontend e feito manualmente e fica na pasta public/)
 #
 # Uso:
 #   ./scripts/deploy.sh              # pull da branch main
@@ -22,7 +23,7 @@ echo "=========================================="
 
 # 1. Pull do GitHub
 echo ""
-echo "[1/5] A obter alteracoes do GitHub..."
+echo "[1/4] A obter alteracoes do GitHub..."
 git fetch origin
 git checkout "$BRANCH"
 git pull origin "$BRANCH"
@@ -30,30 +31,19 @@ echo "  -> Codigo atualizado."
 
 # 2. Instalar dependencias (caso haja novas)
 echo ""
-echo "[2/5] A verificar dependencias..."
+echo "[2/4] A verificar dependencias..."
 npm install --production=false
-cd web-app
-npm install
-cd "$PROJECT_ROOT"
 echo "  -> Dependencias atualizadas."
 
 # 3. Compilar backend (TypeScript -> build/)
 echo ""
-echo "[3/5] A compilar o backend (tsc)..."
+echo "[3/4] A compilar o backend (tsc)..."
 npx tsc
 echo "  -> Backend compilado."
 
-# 4. Build do frontend (Vue -> public/)
+# 4. Reiniciar PM2
 echo ""
-echo "[4/5] A compilar o frontend (Vue)..."
-cd web-app
-npm run build
-cd "$PROJECT_ROOT"
-echo "  -> Frontend compilado."
-
-# 5. Reiniciar PM2
-echo ""
-echo "[5/5] A reiniciar o servidor via PM2..."
+echo "[4/4] A reiniciar o servidor via PM2..."
 pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 echo "  -> PM2 reiniciado."
