@@ -40,28 +40,40 @@ const UserModel_1 = require("../database/models/UserModel");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 const findAll = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const users = yield UserModel_1.UserModel.findAll({
-        where: {
-            companyId: id,
-        },
-        order: [["name", "DESC"]],
-    });
-    return users.length > 0
-        ? res.status(200).json({ success: true, result: users })
-        : res.status(204).json({ success: false, message: "Users not found." });
+    try {
+        const { id } = req.params;
+        const users = yield UserModel_1.UserModel.findAll({
+            where: {
+                companyId: id,
+            },
+            order: [["name", "DESC"]],
+        });
+        return users.length > 0
+            ? res.status(200).json({ success: true, result: users })
+            : res.status(204).json({ success: false, message: "Users not found." });
+    }
+    catch (err) {
+        console.error("Erro ao buscar utilizadores:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+    }
 });
 exports.findAll = findAll;
 const findOne = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const user = yield UserModel_1.UserModel.findOne({
-        where: {
-            id: id,
-        },
-    });
-    return user
-        ? res.status(200).json({ success: true, result: user })
-        : res.status(204).json({ success: false, message: "User not found." });
+    try {
+        const { id } = req.params;
+        const user = yield UserModel_1.UserModel.findOne({
+            where: {
+                id: id,
+            },
+        });
+        return user
+            ? res.status(200).json({ success: true, result: user })
+            : res.status(204).json({ success: false, message: "User not found." });
+    }
+    catch (err) {
+        console.error("Erro ao buscar utilizador:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+    }
 });
 exports.findOne = findOne;
 const create = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -96,122 +108,153 @@ const create = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 });
 exports.create = create;
 const update = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const userUpdation = yield UserModel_1.UserModel.update(req.body, {
-        where: {
-            id: id,
-        },
-    });
-    return userUpdation != null
-        ? res.status(201).send(JSON.stringify({
-            success: true,
-            message: "User successfully updated.",
-        }))
-        : res.status(204).send(JSON.stringify({
-            success: false,
-            message: "There was an error updating this user.",
-        }));
+    try {
+        const { id } = req.params;
+        const userUpdation = yield UserModel_1.UserModel.update(req.body, {
+            where: {
+                id: id,
+            },
+        });
+        return userUpdation != null
+            ? res.status(201).send(JSON.stringify({
+                success: true,
+                message: "User successfully updated.",
+            }))
+            : res.status(204).send(JSON.stringify({
+                success: false,
+                message: "There was an error updating this user.",
+            }));
+    }
+    catch (err) {
+        console.error("Erro ao atualizar utilizador:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+    }
 });
 exports.update = update;
 const destroy = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const deleteUser = yield UserModel_1.UserModel.destroy({ where: { id: id } });
-    return deleteUser != null
-        ? res.status(201).send(JSON.stringify({
-            success: true,
-            message: "User deleted successfully.",
-        }))
-        : res.status(204).send(JSON.stringify({
-            success: false,
-            message: "There was an error deleting this user.",
-        }));
+    try {
+        const { id } = req.params;
+        const deleteUser = yield UserModel_1.UserModel.destroy({ where: { id: id } });
+        return deleteUser != null
+            ? res.status(201).send(JSON.stringify({
+                success: true,
+                message: "User deleted successfully.",
+            }))
+            : res.status(204).send(JSON.stringify({
+                success: false,
+                message: "There was an error deleting this user.",
+            }));
+    }
+    catch (err) {
+        console.error("Erro ao eliminar utilizador:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+    }
 });
 exports.destroy = destroy;
 const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { email, password } = req.body;
-    console.log(email, password);
-    const user = yield UserModel_1.UserModel.findOne({
-        where: {
-            email,
-            status: 1,
-        },
-    });
-    if ((user === null || user === void 0 ? void 0 : user.getDataValue.length) == 1) {
-        if (yield bcryptjs_1.default.compare(password, user.getDataValue("password"))) {
-            const token = jwt.sign({ id: user.getDataValue("id") }, process.env.APP_SECRET + "", {
-                expiresIn: "1h",
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "E-mail e senha são obrigatórios.",
             });
-            const data = [
-                {
-                    id: user.getDataValue("id"),
-                    companyId: user.getDataValue("companyId"),
-                    name: user.getDataValue("name"),
-                    email: user.getDataValue("email"),
-                    phone: user.getDataValue("phone"),
-                    userRole: user.getDataValue("userRole"),
-                    updatedPassword: user.getDataValue("updatedPassword"),
-                    status: user.getDataValue("status"),
-                    token: token,
-                    createdAt: user.getDataValue("createdAt"),
-                    updatedAt: user.getDataValue("updatedAt"),
-                },
-            ];
-            return res.send(JSON.stringify({ success: true, result: data }));
         }
-        else {
+        const user = yield UserModel_1.UserModel.findOne({
+            where: {
+                email,
+                status: 1,
+            },
+        });
+        if (!user) {
+            return res.status(200).json({ success: false, message: "Utilizador não encontrado." });
+        }
+        const storedPassword = user.getDataValue("password");
+        const isPasswordValid = yield bcryptjs_1.default.compare(password + "", storedPassword);
+        if (!isPasswordValid) {
             return res
                 .status(200)
-                .send(JSON.stringify({ success: false, message: "Wrong password" }));
+                .send(JSON.stringify({ success: false, message: "Senha incorreta." }));
         }
+        const token = jwt.sign({ id: user.getDataValue("id") }, process.env.APP_SECRET + "", {
+            expiresIn: "1h",
+        });
+        const data = [
+            {
+                id: user.getDataValue("id"),
+                companyId: user.getDataValue("companyId"),
+                name: user.getDataValue("name"),
+                email: user.getDataValue("email"),
+                phone: user.getDataValue("phone"),
+                userRole: user.getDataValue("userRole"),
+                updatedPassword: user.getDataValue("updatedPassword"),
+                status: user.getDataValue("status"),
+                token: token,
+                createdAt: user.getDataValue("createdAt"),
+                updatedAt: user.getDataValue("updatedAt"),
+            },
+        ];
+        return res.send(JSON.stringify({ success: true, result: data }));
     }
-    else {
-        return res.status(200).json({ success: false, message: "User not found" });
+    catch (err) {
+        console.error("Erro no login:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
     }
 });
 exports.loginUser = loginUser;
 const changeUserPassword = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { email, password, newPassword, updatedPassword } = req.body;
-    const user = yield UserModel_1.UserModel.findOne({
-        where: {
-            email,
-        },
-    });
-    if ((user === null || user === void 0 ? void 0 : user.getDataValue.length) === 1) {
-        if (yield bcryptjs_1.default.compare(password + "", user.getDataValue("password"))) {
-            bcryptjs_1.default.hash(newPassword + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
-                if (hashError) {
-                    return res.status(500).json({
-                        success: false,
-                        message: hashError,
-                    });
-                }
-                else {
-                    const userUpdation = yield UserModel_1.UserModel.update({ password: hash, updatedPassword: updatedPassword }, {
-                        where: {
-                            id: user.getDataValue("id"),
-                        },
-                    });
-                    return userUpdation != null
-                        ? res.status(201).send(JSON.stringify({
-                            success: true,
-                            message: "Password successfully updated.",
-                        }))
-                        : res.send(JSON.stringify({
-                            success: false,
-                            message: "There was an error updating the user password.",
-                        }));
-                }
-            }));
+    try {
+        const { email, password, newPassword, updatedPassword } = req.body;
+        if (!email || !password || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: "E-mail, senha actual e nova senha são obrigatórios.",
+            });
         }
-        else {
+        const user = yield UserModel_1.UserModel.findOne({
+            where: {
+                email,
+            },
+        });
+        if (!user) {
+            return res.send(JSON.stringify({ success: false, message: "Utilizador não encontrado." }));
+        }
+        const storedPassword = user.getDataValue("password");
+        const isPasswordValid = yield bcryptjs_1.default.compare(password + "", storedPassword);
+        if (!isPasswordValid) {
             return res.send(JSON.stringify({
                 success: false,
-                message: "There was an error updating your password. Please try again later.",
+                message: "Senha incorreta. Tente novamente.",
             }));
         }
+        bcryptjs_1.default.hash(newPassword + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
+            if (hashError) {
+                return res.status(500).json({
+                    success: false,
+                    message: hashError,
+                });
+            }
+            else {
+                const userUpdation = yield UserModel_1.UserModel.update({ password: hash, updatedPassword: updatedPassword }, {
+                    where: {
+                        id: user.getDataValue("id"),
+                    },
+                });
+                return userUpdation != null
+                    ? res.status(201).send(JSON.stringify({
+                        success: true,
+                        message: "Senha atualizada com sucesso.",
+                    }))
+                    : res.send(JSON.stringify({
+                        success: false,
+                        message: "Erro ao atualizar a senha.",
+                    }));
+            }
+        }));
     }
-    else {
-        return res.send(JSON.stringify({ success: false, message: "User not found" }));
+    catch (err) {
+        console.error("Erro ao alterar senha:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
     }
 });
 exports.changeUserPassword = changeUserPassword;
