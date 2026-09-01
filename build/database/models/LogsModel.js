@@ -26,8 +26,20 @@ exports.LogsModel = db_1.db.define("user_logs", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
     },
+    userRole: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+    },
     action: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
+    },
+    module: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+    },
+    ipAddress: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
     },
 });

@@ -57,8 +57,11 @@ const simulator = (loan: Simulator) => {
 
   for (let index = 0; index < numberOfInstallments; index++) {
     // Todas as prestações são mensais
-    // Adiciona o número de meses correspondente à ordem da prestação
-    const dueDate = moment(loan.dueDate).add(index + 1, "M");
+    // Adiciona 1 mês à data de desembolso para cada prestação
+    // Usa Date nativo para consistência com o frontend
+    const baseDate = new Date(loan.dueDate);
+    const dueDate = new Date(baseDate);
+    dueDate.setMonth(dueDate.getMonth() + (index + 1));
 
     // Calcula os juros sobre o saldo devedor atual
     const rateAmount = remainingBalance * rate;
@@ -87,7 +90,7 @@ const simulator = (loan: Simulator) => {
         rateAmount: Math.round(rateAmount * 100) / 100,
         installment: Math.round(adjustedInstallment * 100) / 100,
         remainingBalance: 0,
-        dueDate: dueDate.toDate(),
+        dueDate: dueDate,
       });
     } else {
       amortizationPlan.push({
@@ -100,7 +103,7 @@ const simulator = (loan: Simulator) => {
         rateAmount: Math.round(rateAmount * 100) / 100,
         installment: Math.round(installment * 100) / 100,
         remainingBalance: Math.round(remainingBalance * 100) / 100,
-        dueDate: dueDate.toDate(),
+        dueDate: dueDate,
       });
     }
   }

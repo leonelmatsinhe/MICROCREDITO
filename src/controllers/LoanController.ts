@@ -348,6 +348,73 @@ const destroyLoan = async (req: Request, res: Response) => {
     );
 };
 
+// Actualizar datas das prestações com base na nova data de desembolso
+const updateLoanInstallmentDates = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { disbursementDate } = req.body;
+
+    if (!disbursementDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Data de desembolso é obrigatória.",
+      });
+    }
+
+    // Buscar o loan para obter informações
+    const loan: any = await LoanModel.findByPk(id);
+    if (!loan) {
+      return res.status(404).json({
+        success: false,
+        message: "Empréstimo não encontrado.",
+      });
+    }
+
+    // Buscar todas as prestações
+    const installments = await AmorizationLoanModel.findAll({
+      where: { loanId: id },
+      order: [["installmentOrder", "ASC"]],
+    });
+
+    if (!installments || installments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Nenhuma prestação encontrada para este empréstimo.",
+      });
+    }
+
+    // Calcular novas datas com base na data de desembolso
+    const baseDate = new Date(disbursementDate);
+    const updates: Promise<any>[] = [];
+
+    for (let i = 0; i < installments.length; i++) {
+      const newDueDate = new Date(baseDate);
+      newDueDate.setMonth(newDueDate.getMonth() + (i + 1));
+
+      const installment: any = installments[i];
+      updates.push(
+        AmorizationLoanModel.update(
+          { dueDate: newDueDate },
+          { where: { id: installment.id } }
+        )
+      );
+    }
+
+    await Promise.all(updates);
+
+    return res.status(200).json({
+      success: true,
+      message: `Datas de ${installments.length} prestações actualizadas com sucesso.`,
+    });
+  } catch (error: any) {
+    console.error("Erro ao actualizar datas:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Erro ao actualizar datas das prestações.",
+    });
+  }
+};
+
 export {
   findAllLoans,
   findLoanByCustomer,
@@ -355,4 +422,5 @@ export {
   createLoan,
   updateLoan,
   destroyLoan,
+  updateLoanInstallmentDates,
 };

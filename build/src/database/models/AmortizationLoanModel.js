@@ -51,4 +51,10 @@ exports.AmorizationLoanModel = db_1.db.define("amortization_loan", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    paidAmount: {
+        type: sequelize_1.DataTypes.FLOAT,
+        allowNull: true,
+        defaultValue: 0,
+        comment: "Valor total pago nesta prestação (para pagamentos parciais)",
+    },
 });

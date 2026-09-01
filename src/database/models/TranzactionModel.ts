@@ -64,4 +64,18 @@ export const TranzactionModel = db.define("tranzactions", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+  discountApplied: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    defaultValue: false,
+  },
+  discountAmount: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: 0,
+  },
 });

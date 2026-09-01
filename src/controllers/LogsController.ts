@@ -89,7 +89,7 @@ const findLogsByCompany = async (req: Request, res: Response) => {
 };
 
 const createLog = async (req: Request, res: Response) => {
-  let { userId, companyId, description, userName, action } = req.body;
+  let { userId, companyId, description, userName, action, userRole, module, ipAddress } = req.body;
 
   const logs = await LogsModel.create({
     companyId,
@@ -97,6 +97,9 @@ const createLog = async (req: Request, res: Response) => {
     description,
     userName,
     action,
+    userRole,
+    module,
+    ipAddress,
   });
   return logs != null
     ? res.status(200).send({ success: true, result: "Log added successfully." })
@@ -106,4 +109,58 @@ const createLog = async (req: Request, res: Response) => {
       });
 };
 
-export { findAllLogs, findLogsByCompany, createLog };
+/**
+ * Eliminar logs (apenas Admin)
+ * Aceita: { ids: [1,2,3] } ou { companyId: 1, olderThan: "2024-01-01" }
+ */
+const deleteLogs = async (req: Request, res: Response) => {
+  try {
+    const { ids, companyId, olderThan } = req.body;
+    let deletedCount = 0;
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Eliminar logs específicos por IDs
+      const result = await LogsModel.destroy({
+        where: {
+          id: { [Op.in]: ids }
+        }
+      });
+      deletedCount = result;
+    } else if (companyId && olderThan) {
+      // Eliminar logs anteriores a uma data
+      const result = await LogsModel.destroy({
+        where: {
+          companyId,
+          createdAt: {
+            [Op.lt]: new Date(olderThan)
+          }
+        }
+      });
+      deletedCount = result;
+    } else if (companyId) {
+      // Eliminar todos os logs de uma empresa
+      const result = await LogsModel.destroy({
+        where: { companyId }
+      });
+      deletedCount = result;
+    } else {
+      return res.status(400).send({
+        success: false,
+        message: "Parâmetros inválidos. Envie 'ids', 'companyId' ou 'companyId' + 'olderThan'."
+      });
+    }
+
+    return res.status(200).send({
+      success: true,
+      message: `${deletedCount} logs eliminados com sucesso.`,
+      deletedCount
+    });
+  } catch (error: any) {
+    return res.status(500).send({
+      success: false,
+      message: error.message || "Erro ao eliminar logs.",
+    });
+  }
+};
+
+export { findAllLogs, findLogsByCompany, createLog, deleteLogs };

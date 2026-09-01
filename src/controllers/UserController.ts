@@ -155,11 +155,12 @@ const loginUser = async (req: Request, res: Response) => {
         .send(JSON.stringify({ success: false, message: "Senha incorreta." }));
     }
 
+    // Token com expiração longa (24h) - a expiração por inactividade é controlada pelo frontend
     const token = jwt.sign(
       { id: user.getDataValue("id") },
       process.env.APP_SECRET + "",
       {
-        expiresIn: "1h",
+        expiresIn: "24h",
       }
     );
 
@@ -257,6 +258,34 @@ const changeUserPassword = async (req: Request, res: Response) => {
   }
 };
 
+const refreshToken = async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: "Token required" });
+    }
+
+    const [, token] = authHeader.split(" ");
+    try {
+      const decoded = jwt.verify(token, process.env.APP_SECRET + "") as any;
+      
+      // Gerar novo token com 24h de validade
+      const newToken = jwt.sign(
+        { id: decoded.id },
+        process.env.APP_SECRET + "",
+        { expiresIn: "24h" }
+      );
+
+      return res.json({ success: true, token: newToken });
+    } catch (error) {
+      return res.status(401).json({ success: false, message: "Token invalid or expired" });
+    }
+  } catch (err: any) {
+    console.error("Erro ao renovar token:", err.message);
+    return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+  }
+};
+
 export {
   findAll,
   findOne,
@@ -265,4 +294,5 @@ export {
   update,
   loginUser,
   changeUserPassword,
+  refreshToken,
 };

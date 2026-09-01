@@ -66,4 +66,18 @@ exports.TranzactionModel = db_1.db.define("tranzactions", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
     },
+    notes: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+    },
+    discountApplied: {
+        type: sequelize_1.DataTypes.BOOLEAN,
+        allowNull: true,
+        defaultValue: false,
+    },
+    discountAmount: {
+        type: sequelize_1.DataTypes.FLOAT,
+        allowNull: true,
+        defaultValue: 0,
+    },
 });

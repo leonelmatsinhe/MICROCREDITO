@@ -98,6 +98,11 @@ exports.CustomerModel = db_1.db.define("customers", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: true,
     },
+    customerPPE: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 0,
+    },
     customerStatus: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,

@@ -49,8 +49,9 @@ export const CompanyModel = db.define("company", {
     allowNull: false,
   },
   companyLogo: {
-    type: DataTypes.BLOB,
-    allowNull: false,
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: '',
   },
   forfeit: {
     type: DataTypes.INTEGER,
@@ -59,5 +60,11 @@ export const CompanyModel = db.define("company", {
   companyStatus: {
     type: DataTypes.INTEGER,
     allowNull: false,
+  },
+  paymentMethods: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    defaultValue: '1:Numerário,2:Cheque,3:Transferência Bancária,4:Depósito Bancário,7:M-Pesa',
+    comment: 'Meios de pagamento separados por vírgula: id:nome,id:nome',
   },
 });

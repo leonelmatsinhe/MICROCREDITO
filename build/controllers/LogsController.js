@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createLog = exports.findLogsByCompany = exports.findAllLogs = void 0;
+exports.deleteLogs = exports.createLog = exports.findLogsByCompany = exports.findAllLogs = void 0;
 const sequelize_1 = require("sequelize");
 const LogsModel_1 = require("../database/models/LogsModel");
 const findAllLogs = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -96,13 +96,16 @@ const findLogsByCompany = (req, res) => __awaiter(void 0, void 0, void 0, functi
 });
 exports.findLogsByCompany = findLogsByCompany;
 const createLog = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { userId, companyId, description, userName, action } = req.body;
+    let { userId, companyId, description, userName, action, userRole, module, ipAddress } = req.body;
     const logs = yield LogsModel_1.LogsModel.create({
         companyId,
         userId,
         description,
         userName,
         action,
+        userRole,
+        module,
+        ipAddress,
     });
     return logs != null
         ? res.status(200).send({ success: true, result: "Log added successfully." })
@@ -112,3 +115,59 @@ const createLog = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         });
 });
 exports.createLog = createLog;
+/**
+ * Eliminar logs (apenas Admin)
+ * Aceita: { ids: [1,2,3] } ou { companyId: 1, olderThan: "2024-01-01" }
+ */
+const deleteLogs = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { ids, companyId, olderThan } = req.body;
+        let deletedCount = 0;
+        if (ids && Array.isArray(ids) && ids.length > 0) {
+            // Eliminar logs específicos por IDs
+            const result = yield LogsModel_1.LogsModel.destroy({
+                where: {
+                    id: { [sequelize_1.Op.in]: ids }
+                }
+            });
+            deletedCount = result;
+        }
+        else if (companyId && olderThan) {
+            // Eliminar logs anteriores a uma data
+            const result = yield LogsModel_1.LogsModel.destroy({
+                where: {
+                    companyId,
+                    createdAt: {
+                        [sequelize_1.Op.lt]: new Date(olderThan)
+                    }
+                }
+            });
+            deletedCount = result;
+        }
+        else if (companyId) {
+            // Eliminar todos os logs de uma empresa
+            const result = yield LogsModel_1.LogsModel.destroy({
+                where: { companyId }
+            });
+            deletedCount = result;
+        }
+        else {
+            return res.status(400).send({
+                success: false,
+                message: "Parâmetros inválidos. Envie 'ids', 'companyId' ou 'companyId' + 'olderThan'."
+            });
+        }
+        return res.status(200).send({
+            success: true,
+            message: `${deletedCount} logs eliminados com sucesso.`,
+            deletedCount
+        });
+    }
+    catch (error) {
+        return res.status(500).send({
+            success: false,
+            message: error.message || "Erro ao eliminar logs.",
+        });
+    }
+});
+exports.deleteLogs = deleteLogs;

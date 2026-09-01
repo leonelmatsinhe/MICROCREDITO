@@ -17,6 +17,7 @@ import {
   update,
   loginUser,
   changeUserPassword,
+  refreshToken,
 } from "./controllers/UserController";
 
 import {
@@ -83,6 +84,7 @@ import {
   findAllLogs,
   findLogsByCompany,
   createLog,
+  deleteLogs,
 } from "./controllers/LogsController";
 
 import {
@@ -92,6 +94,7 @@ import {
   findLoanByCustomer,
   getLoanAmortization,
   updateLoan,
+  updateLoanInstallmentDates,
 } from "./controllers/LoanController";
 
 import { getAllLoanGuarantees, createGuarantee, deleteGuarantee } from "./controllers/GuaranteesController"
@@ -139,6 +142,8 @@ import {
   deleteNotification,
 } from "./controllers/NotificationController";
 import { getDashboardOverview } from "./controllers/DashboardController";
+import { getBMReport } from "./controllers/BMReportController";
+
 
 const routes = express.Router();
 const documentUpload = multer(multerConfig).single("file");
@@ -150,6 +155,7 @@ routes.get("/logo/:image", (req: Request, res: Response) =>
 routes.post("/api/userCredentials", sendUserCredentials);
 // Login Routes
 routes.post("/api/login", loginUser);
+routes.post("/api/auth/refresh", refreshToken);
 routes.post("/api/customer/login", loginCustomer);
 routes.post("/api/customer/changePassword", changeCustomerPassword);
 
@@ -244,6 +250,7 @@ routes.get("/api/loan/amortization/:id", getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", findAllLoans);
 routes.put("/api/loan/:id", updateLoan);
+routes.put("/api/loan/:id/update-dates", updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", destroyLoan);
 routes.post("/api/loan", createLoan);
 
@@ -272,6 +279,7 @@ routes.post("/api/document/upload", documentUpload, (req: Request, res: Response
 routes.get("/api/logs", findAllLogs);
 routes.get("/api/logs/:id", findLogsByCompany);
 routes.post("/api/logs", createLog);
+routes.delete("/api/logs", deleteLogs);
 
 // Company Routes
 routes.get("/api/company", findAllCompanies);
@@ -338,5 +346,10 @@ routes.delete("/api/notifications/:id", deleteNotification);
 
 // Dashboard agregado (KPIs, PAR, risco e alertas)
 routes.get("/api/dashboard/:companyId", getDashboardOverview);
+
+// Relatório Banco de Moçambique
+routes.get("/api/reports/banco-mocambique/:companyId", getBMReport);
+
+
 
 export { routes };

@@ -6,4 +6,5 @@ exports.db = new sequelize_1.Sequelize(process.env.DATABASE_NAME + '', process.e
     dialect: "mysql",
     host: process.env.DATABASE_HOST,
     port: 3306,
+    logging: false,
 });

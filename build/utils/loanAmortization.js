@@ -1,10 +1,6 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.calculateFrenchAmortizationInstallment = exports.simulator = void 0;
-const moment_1 = __importDefault(require("moment"));
 /**
  * Calcula a prestação usando a fórmula do sistema de amortização francês (Price)
  * PMT = PV * [i(1+i)^n] / [(1+i)^n - 1]
@@ -46,8 +42,11 @@ const simulator = (loan) => {
     let remainingBalance = loanAmount; // Saldo devedor inicial
     for (let index = 0; index < numberOfInstallments; index++) {
         // Todas as prestações são mensais
-        // Adiciona o número de meses correspondente à ordem da prestação
-        const dueDate = (0, moment_1.default)(loan.dueDate).add(index + 1, "M");
+        // Adiciona 1 mês à data de desembolso para cada prestação
+        // Usa Date nativo para consistência com o frontend
+        const baseDate = new Date(loan.dueDate);
+        const dueDate = new Date(baseDate);
+        dueDate.setMonth(dueDate.getMonth() + (index + 1));
         // Calcula os juros sobre o saldo devedor atual
         const rateAmount = remainingBalance * rate;
         // Calcula a amortização (capital) da prestação
@@ -71,7 +70,7 @@ const simulator = (loan) => {
                 rateAmount: Math.round(rateAmount * 100) / 100,
                 installment: Math.round(adjustedInstallment * 100) / 100,
                 remainingBalance: 0,
-                dueDate: dueDate.toDate(),
+                dueDate: dueDate,
             });
         }
         else {
@@ -85,7 +84,7 @@ const simulator = (loan) => {
                 rateAmount: Math.round(rateAmount * 100) / 100,
                 installment: Math.round(installment * 100) / 100,
                 remainingBalance: Math.round(remainingBalance * 100) / 100,
-                dueDate: dueDate.toDate(),
+                dueDate: dueDate,
             });
         }
     }

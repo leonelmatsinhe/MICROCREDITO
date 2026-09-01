@@ -1,0 +1,36 @@
+{
+  "name": "mbr-microcredito-v2",
+  "version": "1.0.0",
+  "description": "MBR Microcrédito - Sistema de Gestão de Crédito",
+  "productName": "MBR Microcrédito",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@quasar/extras": "^1.16.12",
+    "axios": "^1.7.9",
+    "chart.js": "^4.5.1",
+    "date-fns": "^4.4.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
+    "pdfmake": "^0.3.11",
+    "pinia": "^2.3.0",
+    "pinia-plugin-persistedstate": "^3.2.3",
+    "quasar": "^2.17.5",
+    "quill": "^2.0.3",
+    "vue": "^3.5.13",
+    "vue-chartjs": "^5.3.4",
+    "vue-router": "^4.5.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@quasar/app-vite": "^2.0.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "sass": "^1.83.4",
+    "vite": "^6.0.7"
+  }
+}

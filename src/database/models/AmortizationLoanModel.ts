@@ -49,4 +49,10 @@ export const AmorizationLoanModel = db.define("amortization_loan", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  paidAmount: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: 0,
+    comment: "Valor total pago nesta prestação (para pagamentos parciais)",
+  },
 });

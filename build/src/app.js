@@ -22,9 +22,6 @@ const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
 const app = (0, express_1.default)();
-// Determina a raiz do projecto:
-//   Dev (ts-node):  __dirname = .../src/        → subir 1 nível
-//   Prod (compiled): __dirname = .../build/src/ → subir 2 níveis
 const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) || __dirname.endsWith(path_1.default.sep + "build");
 const projectRoot = isCompiled
     ? path_1.default.join(__dirname, "..", "..")
@@ -54,7 +51,7 @@ app.use(routes_1.routes);
 app.get("*", (req, res) => {
     res.sendFile(path_1.default.join(publicDir, "index.html"));
 });
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
     // await db.sync();
     const qi = db_1.db.getQueryInterface();
@@ -94,6 +91,12 @@ app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
     }));
     yield runSafe("migração capacityExcessObservation(customer_loans)", () => __awaiter(void 0, void 0, void 0, function* () {
         yield qi.addColumn("customer_loans", "capacityExcessObservation", {
+            type: "TEXT",
+            allowNull: true,
+        });
+    }));
+    yield runSafe("migração borrowerInfo(customer_loans)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("customer_loans", "borrowerInfo", {
             type: "TEXT",
             allowNull: true,
         });
@@ -308,6 +311,107 @@ app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
     yield runSafe("índice idx_customers_company_phone", () => __awaiter(void 0, void 0, void 0, function* () {
         yield qi.addIndex("customers", ["companyId", "customerPhone"], {
             name: "idx_customers_company_phone",
+        });
+    }));
+    // Migration: companyLogo de BLOB para STRING (armazena filename, não binário)
+    yield runSafe("migração companyLogo(companies) BLOB→STRING", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.changeColumn("companies", "companyLogo", {
+            type: "VARCHAR(500)",
+            allowNull: true,
+            defaultValue: "",
+        });
+    }));
+    // Migration: adicionar coluna paidAmount em amortization_loans
+    yield runSafe("migração paidAmount(amortization_loans)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("amortization_loans", "paidAmount", {
+            type: "FLOAT",
+            allowNull: true,
+            defaultValue: 0,
+        });
+    }));
+    // Migration: backfill paidAmount a partir de transacções existentes
+    yield runSafe("backfill paidAmount das transacções", () => __awaiter(void 0, void 0, void 0, function* () {
+        var _a;
+        // Buscar todas as prestações pagas (status=1) com paidAmount=0
+        const [installments] = yield db_1.db.query(`SELECT al.id, al.installment, al.status, al.paidAmount, al.loanId, al.accountNumber, al.companyId
+       FROM amortization_loans al
+       WHERE al.status = 1 AND (al.paidAmount IS NULL OR al.paidAmount = 0)`);
+        for (const inst of installments) {
+            // Somar transacções para esta prestação
+            const [txns] = yield db_1.db.query(`SELECT COALESCE(SUM(amount), 0) AS totalPaid
+         FROM tranzactions
+         WHERE amortizationLoanId = ${inst.id}`);
+            const totalPaid = Number((_a = txns[0]) === null || _a === void 0 ? void 0 : _a.totalPaid) || 0;
+            const installmentValue = Number(inst.installment) || 0;
+            if (totalPaid > 0 && totalPaid < installmentValue - 0.01) {
+                // Pagamento parcial — corrigir status para -1
+                console.log(`[backfill] Prestação ${inst.id}: parcial ${totalPaid}/${installmentValue}, corrigindo status para -1`);
+                yield db_1.db.query(`UPDATE amortization_loans
+           SET paidAmount = ${totalPaid}, status = -1, remainingBalance = ${installmentValue - totalPaid}
+           WHERE id = ${inst.id}`);
+            }
+            else if (totalPaid >= installmentValue - 0.01) {
+                // Pagamento total — manter status 1
+                console.log(`[backfill] Prestação ${inst.id}: total ${totalPaid}/${installmentValue}, actualizando paidAmount`);
+                yield db_1.db.query(`UPDATE amortization_loans
+           SET paidAmount = ${Math.min(totalPaid, installmentValue)}, remainingBalance = 0
+           WHERE id = ${inst.id}`);
+            }
+        }
+    }));
+    // Migration: adicionar coluna paymentMethods em companies
+    yield runSafe("migração paymentMethods(companies)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("companies", "paymentMethods", {
+            type: "TEXT",
+            allowNull: true,
+            defaultValue: "1:Numerário,2:Cheque,3:Transferência Bancária,4:Depósito Bancário,7:M-Pesa",
+        });
+    }));
+    // Migration: adicionar colunas notes e discountApplied em tranzactions
+    yield runSafe("migração notes(tranzactions)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("tranzactions", "notes", {
+            type: "TEXT",
+            allowNull: true,
+        });
+    }));
+    yield runSafe("migração discountApplied(tranzactions)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("tranzactions", "discountApplied", {
+            type: "BOOLEAN",
+            allowNull: true,
+            defaultValue: false,
+        });
+    }));
+    yield runSafe("migração discountAmount(tranzactions)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("tranzactions", "discountAmount", {
+            type: "FLOAT",
+            allowNull: true,
+            defaultValue: 0,
+        });
+    }));
+    yield runSafe("migração customerPPE(customers)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("customers", "customerPPE", {
+            type: "INT",
+            allowNull: true,
+            defaultValue: 0,
+        });
+    }));
+    // Migration: adicionar colunas userRole, module, ipAddress em user_logs
+    yield runSafe("migração userRole(user_logs)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("user_logs", "userRole", {
+            type: "INT",
+            allowNull: true,
+        });
+    }));
+    yield runSafe("migração module(user_logs)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("user_logs", "module", {
+            type: "VARCHAR(100)",
+            allowNull: true,
+        });
+    }));
+    yield runSafe("migração ipAddress(user_logs)", () => __awaiter(void 0, void 0, void 0, function* () {
+        yield qi.addColumn("user_logs", "ipAddress", {
+            type: "VARCHAR(50)",
+            allowNull: true,
         });
     }));
     console.log(`MBR Server is running on PORT ${PORT}`);

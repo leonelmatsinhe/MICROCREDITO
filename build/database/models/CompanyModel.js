@@ -51,8 +51,9 @@ exports.CompanyModel = db_1.db.define("company", {
         allowNull: false,
     },
     companyLogo: {
-        type: sequelize_1.DataTypes.BLOB,
-        allowNull: false,
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+        defaultValue: '',
     },
     forfeit: {
         type: sequelize_1.DataTypes.INTEGER,
@@ -61,5 +62,11 @@ exports.CompanyModel = db_1.db.define("company", {
     companyStatus: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
+    },
+    paymentMethods: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+        defaultValue: '1:Numerário,2:Cheque,3:Transferência Bancária,4:Depósito Bancário,7:M-Pesa',
+        comment: 'Meios de pagamento separados por vírgula: id:nome,id:nome',
     },
 });

@@ -10,7 +10,8 @@
     "dev:server": "ts-node-dev --respawn --transpile-only src/app.ts",
     "smoke:dashboard": "powershell -ExecutionPolicy Bypass -File scripts/smoke-dashboard-contract.ps1",
     "pm2:startup": "powershell -ExecutionPolicy Bypass -File scripts/pm2-install-startup.ps1",
-    "push": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1"
+    "push": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
+    "seed:contracts": "ts-node --transpile-only src/scripts/seedContracts.ts"
   },
   "engines": {
     "node": "18.x"

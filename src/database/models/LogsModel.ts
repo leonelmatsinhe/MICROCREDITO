@@ -24,8 +24,20 @@ export const LogsModel = db.define("user_logs", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  userRole: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   action: {
     type: DataTypes.STRING,
     allowNull: false,
+  },
+  module: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  ipAddress: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
 });

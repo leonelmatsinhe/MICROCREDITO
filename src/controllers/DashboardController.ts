@@ -161,6 +161,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
           "amount",
           "latePaymentInterest",
           "interestRateAmount",
+          "discountAmount",
           "createdAt",
         ],
       });
@@ -254,8 +255,9 @@ const getDashboardOverview = async (req: Request, res: Response) => {
     const liquidatedLoansList = loans.filter((l: any) => Number(l.status) === 3);
     const rejectedLoansList = loans.filter((l: any) => [2, -1].includes(Number(l.status)));
 
-    // "Desembolsado" no dashboard corresponde ao montante de créditos ativos.
-    const totalDisbursed = activeLoansList.reduce(
+    // "Desembolsado" corresponde ao montante total de créditos efectivamente desembolsados (activos + liquidados).
+    const disbursedLoansList = loans.filter((l: any) => [1, 3].includes(Number(l.status)));
+    const totalDisbursed = disbursedLoansList.reduce(
       (sum: number, l: any) => sum + toNumber(l.amount),
       0
     );
@@ -271,8 +273,13 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       (sum: number, l: any) => sum + toNumber(l.amount),
       0
     );
+    // Capital recuperado: soma do capital das prestações pagas (valor pago - juros normais - juros de mora)
     const totalCollected = transactions.reduce(
       (sum: number, t: any) => sum + toNumber(t.amount),
+      0
+    );
+    const capitalRecovered = transactions.reduce(
+      (sum: number, t: any) => sum + (toNumber(t.amount) - toNumber(t.interestRateAmount) - toNumber(t.latePaymentInterest)),
       0
     );
     const totalLateInterest = transactions.reduce(
@@ -283,6 +290,13 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       (sum: number, t: any) => sum + toNumber(t.interestRateAmount),
       0
     );
+    // Total de descontos aplicados (pagamento antecipado)
+    const totalDiscount = transactions.reduce(
+      (sum: number, t: any) => sum + toNumber(t.discountAmount),
+      0
+    );
+    // Juros recebidos: juros normais + juros de mora - descontos
+    const totalInterestReceived = totalInterestCollected + totalLateInterest - totalDiscount;
     const totalRecoveryCollected = totalCollected + totalLateInterest;
 
     // Base da recuperação: créditos efetivamente desembolsados (ativos + liquidados).
@@ -393,15 +407,26 @@ const getDashboardOverview = async (req: Request, res: Response) => {
           pendingAmount: Number(pendingAmount.toFixed(2)),
           liquidatedAmount: Number(liquidatedAmount.toFixed(2)),
           rejectedAmount: Number(rejectedAmount.toFixed(2)),
+
           totalCollected: Number(totalCollected.toFixed(2)),
+          // Capital recuperado: soma do capital das prestações pagas (valor pago - juros)
+          capitalRecovered: Number(capitalRecovered.toFixed(2)),
+          // Total com Juros: crédito desembolsado com seus juros (base de recuperação)
+          totalWithInterest: Number(recoveryBaseAmount.toFixed(2)),
           totalInterestCollected: Number(totalInterestCollected.toFixed(2)),
+          // Total de descontos aplicados (pagamento antecipado)
+          totalDiscount: Number(totalDiscount.toFixed(2)),
+          // Total de juros recebidos: juros normais + juros de mora - descontos aplicados
+          totalInterestReceived: Number(totalInterestReceived.toFixed(2)),
+          // Total Reembolsado: total do dinheiro reembolsado no período
+          totalReimbursed: Number(totalCollected.toFixed(2)),
           totalLateInterest: Number(totalLateInterest.toFixed(2)),
           recoveryBaseAmount: Number(recoveryBaseAmount.toFixed(2)),
           recoveryCollectedAmount: Number(totalRecoveryCollected.toFixed(2)),
           recoveryRatePct,
           avgTicket:
-            activeLoansList.length > 0
-              ? Number((totalDisbursed / activeLoansList.length).toFixed(2))
+            disbursedLoansList.length > 0
+              ? Number((totalDisbursed / disbursedLoansList.length).toFixed(2))
               : 0,
           roiPct:
             totalDisbursed > 0
@@ -437,6 +462,12 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       },
       riskByManager,
       alerts,
+
+      // Chart data: monthly breakdown of disbursements and payments
+      chartData: generateChartData(loans, transactions),
+
+      // Upcoming installments (next 30 days)
+      upcomingInstallments: generateUpcomingInstallments(amortizations, loanMap, managerNameMap),
     });
   } catch (error: any) {
     console.error("Erro ao obter visão agregada do dashboard:", error);
@@ -446,5 +477,84 @@ const getDashboardOverview = async (req: Request, res: Response) => {
     });
   }
 };
+
+function generateChartData(loans: any[], transactions: any[]) {
+  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  // Initialize arrays for current year (up to current month)
+  const disbursed = new Array(currentMonth + 1).fill(0);
+  const payments = new Array(currentMonth + 1).fill(0);
+  const labels = months.slice(0, currentMonth + 1);
+
+  // Aggregate disbursements by month
+  loans.forEach((loan: any) => {
+    const date = new Date(loan.dateCreated);
+    if (date.getFullYear() === currentYear) {
+      const month = date.getMonth();
+      if (month <= currentMonth) {
+        disbursed[month] += toNumber(loan.amount);
+      }
+    }
+  });
+
+  // Aggregate payments by month
+  transactions.forEach((tx: any) => {
+    const date = new Date(tx.createdAt);
+    if (date.getFullYear() === currentYear) {
+      const month = date.getMonth();
+      if (month <= currentMonth) {
+        payments[month] += toNumber(tx.amount);
+      }
+    }
+  });
+
+  return {
+    labels,
+    disbursed: disbursed.map(v => Math.round(v * 100) / 100),
+    payments: payments.map(v => Math.round(v * 100) / 100)
+  };
+}
+
+function generateUpcomingInstallments(amortizations: any[], loanMap: Record<number, any>, managerNameMap: Record<number, string>) {
+  const now = moment();
+  const thirtyDaysFromNow = moment().add(30, 'days');
+
+  return amortizations
+    .filter((a: any) => {
+      const status = Number(a.status);
+      // Only pending (0) or partial (-1)
+      if (status !== 0 && status !== -1) return false;
+      const due = parseDateSafe(a.dueDate);
+      if (!due) return false;
+      // Due date is between now and 30 days from now
+      return due.isAfter(now) && due.isBefore(thirtyDaysFromNow);
+    })
+    .sort((a: any, b: any) => {
+      const dateA = parseDateSafe(a.dueDate);
+      const dateB = parseDateSafe(b.dueDate);
+      return (dateA?.unix() || 0) - (dateB?.unix() || 0);
+    })
+    .slice(0, 10)
+    .map((a: any) => {
+      const loan = loanMap[toNumber(a.loanId)];
+      const managerId = loan ? Number(loan.creditManager) : 0;
+      const due = parseDateSafe(a.dueDate);
+      const daysUntilDue = due ? due.diff(now, 'days') : 0;
+      return {
+        id: a.id,
+        loanId: a.loanId,
+        accountNumber: a.accountNumber,
+        customerName: loan ? `Conta ${a.accountNumber}` : `Conta ${a.accountNumber}`,
+        amount: toNumber(a.installment),
+        dueDate: a.dueDate,
+        daysUntilDue,
+        status: Number(a.status),
+        managerName: managerNameMap[managerId] || `Gestor #${managerId}`
+      };
+    });
+}
 
 export { getDashboardOverview };

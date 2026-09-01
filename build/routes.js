@@ -35,6 +35,7 @@ const PdfController_1 = require("./controllers/PdfController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
 const NotificationController_1 = require("./controllers/NotificationController");
 const DashboardController_1 = require("./controllers/DashboardController");
+const BMReportController_1 = require("./controllers/BMReportController");
 const routes = express_1.default.Router();
 exports.routes = routes;
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
@@ -42,6 +43,7 @@ routes.get("/logo/:image", (req, res) => res.sendFile(path_1.default.join(projec
 routes.post("/api/userCredentials", UserCredentials_1.sendUserCredentials);
 // Login Routes
 routes.post("/api/login", UserController_1.loginUser);
+routes.post("/api/auth/refresh", UserController_1.refreshToken);
 routes.post("/api/customer/login", CustomerController_1.loginCustomer);
 routes.post("/api/customer/changePassword", CustomerController_1.changeCustomerPassword);
 // Customer Contrats
@@ -124,6 +126,7 @@ routes.get("/api/loan/amortization/:id", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", LoanController_1.findAllLoans);
 routes.put("/api/loan/:id", LoanController_1.updateLoan);
+routes.put("/api/loan/:id/update-dates", LoanController_1.updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", LoanController_1.destroyLoan);
 routes.post("/api/loan", LoanController_1.createLoan);
 // Documents Route
@@ -151,6 +154,7 @@ routes.post("/api/document/upload", documentUpload, (req, res) => {
 routes.get("/api/logs", LogsController_1.findAllLogs);
 routes.get("/api/logs/:id", LogsController_1.findLogsByCompany);
 routes.post("/api/logs", LogsController_1.createLog);
+routes.delete("/api/logs", LogsController_1.deleteLogs);
 // Company Routes
 routes.get("/api/company", CompanyController_1.findAllCompanies);
 routes.get("/api/company/:id", CompanyController_1.findOneCompany);
@@ -207,3 +211,5 @@ routes.put("/api/notifications/markAllRead/:companyId", NotificationController_1
 routes.delete("/api/notifications/:id", NotificationController_1.deleteNotification);
 // Dashboard agregado (KPIs, PAR, risco e alertas)
 routes.get("/api/dashboard/:companyId", DashboardController_1.getDashboardOverview);
+// Relatório Banco de Moçambique
+routes.get("/api/reports/banco-mocambique/:companyId", BMReportController_1.getBMReport);

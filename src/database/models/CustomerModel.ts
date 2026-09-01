@@ -96,6 +96,11 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  customerPPE: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: 0,
+  },
   customerStatus: {
     type: DataTypes.INTEGER,
     allowNull: false,

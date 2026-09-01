@@ -48,4 +48,8 @@ export const LoanModel = db.define("customer_loans", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  borrowerInfo: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
 });

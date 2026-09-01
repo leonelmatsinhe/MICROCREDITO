@@ -50,4 +50,8 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    borrowerInfo: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+    },
 });

@@ -35,7 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.changeUserPassword = exports.loginUser = exports.update = exports.destroy = exports.create = exports.findOne = exports.findAll = void 0;
+exports.refreshToken = exports.changeUserPassword = exports.loginUser = exports.update = exports.destroy = exports.create = exports.findOne = exports.findAll = void 0;
 const UserModel_1 = require("../database/models/UserModel");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
@@ -176,8 +176,9 @@ const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 .status(200)
                 .send(JSON.stringify({ success: false, message: "Senha incorreta." }));
         }
+        // Token com expiração longa (24h) - a expiração por inactividade é controlada pelo frontend
         const token = jwt.sign({ id: user.getDataValue("id") }, process.env.APP_SECRET + "", {
-            expiresIn: "1h",
+            expiresIn: "24h",
         });
         const data = [
             {
@@ -258,3 +259,26 @@ const changeUserPassword = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.changeUserPassword = changeUserPassword;
+const refreshToken = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) {
+            return res.status(401).json({ success: false, message: "Token required" });
+        }
+        const [, token] = authHeader.split(" ");
+        try {
+            const decoded = jwt.verify(token, process.env.APP_SECRET + "");
+            // Gerar novo token com 24h de validade
+            const newToken = jwt.sign({ id: decoded.id }, process.env.APP_SECRET + "", { expiresIn: "24h" });
+            return res.json({ success: true, token: newToken });
+        }
+        catch (error) {
+            return res.status(401).json({ success: false, message: "Token invalid or expired" });
+        }
+    }
+    catch (err) {
+        console.error("Erro ao renovar token:", err.message);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+    }
+});
+exports.refreshToken = refreshToken;

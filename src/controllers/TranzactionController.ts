@@ -248,7 +248,43 @@ const addTranzaction = async (req: Request, res: Response) => {
     staffName,
     loanId,
     paymentDate,
+    discountApplied,
+    notes,
   } = req.body;
+
+  // ── Buscar a prestação para comparar valores ──
+  const installment: any = await AmorizationLoanModel.findByPk(amortizationLoanId);
+  if (!installment) {
+    return res.status(404).send({ success: false, message: "Prestação não encontrada." });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // LÓGICA DE PAGAMENTO:
+  // - amount = valor que o cliente PAGA efectivamente (vai para a prestação)
+  // - latePaymentInterest = penalidade por atraso (NÃO entra no paidAmount)
+  // - paidAmount = soma de todos os pagamentos efectivos nesta prestação
+  // - isFullPayment = paidAmount total >= valor da prestação
+  // ═══════════════════════════════════════════════════════════════
+  const installmentValue = Number(installment.installment) || 0;
+  const currentPayment = Number(amount) || 0; // Valor efectivo pago pelo cliente
+  const previousPaid = Number(installment.paidAmount) || 0; // Já pago anteriormente
+  const newTotalPaid = previousPaid + currentPayment; // APENAS pagamentos efectivos
+
+  // Determinar se é pagamento total ou parcial
+  // Se houver desconto aplicado, considerar como pagamento total
+  const isFullPayment = discountApplied ? true : (newTotalPaid >= installmentValue - 0.01);
+  const newStatus = isFullPayment ? 1 : -1; // 1=pago, -1=parcial
+  // Nunca exceder o valor da prestação
+  const finalPaidAmount = Math.min(newTotalPaid, installmentValue);
+
+  // Se pagamento parcial, calcular saldo restante
+  const debtAmount = isFullPayment ? 0 : Math.max(0, installmentValue - finalPaidAmount);
+
+  // Calcular valor do desconto se aplicado
+  let discountAmount = 0;
+  if (discountApplied && installmentValue > 0 && currentPayment < installmentValue) {
+    discountAmount = Math.round((installmentValue - currentPayment) * 100) / 100;
+  }
 
   const tranzaction = await TranzactionModel.create({
     companyId,
@@ -265,11 +301,17 @@ const addTranzaction = async (req: Request, res: Response) => {
     staffName,
     loanId,
     paymentDate,
+    notes: notes || null,
+    discountApplied: discountApplied || false,
+    discountAmount,
   });
   if (tranzaction != null) {
+    // Actualizar status da prestação: 1=pago, -1=parcial, 0=pendente
     const updateAmortizationLoan = await AmorizationLoanModel.update(
       {
-        status: 1,
+        status: newStatus,
+        paidAmount: finalPaidAmount,
+        remainingBalance: isFullPayment ? 0 : debtAmount,
       },
       {
         where: {
@@ -277,6 +319,37 @@ const addTranzaction = async (req: Request, res: Response) => {
         },
       }
     );
+
+    // Se pagamento parcial, registar/regenerar dívida
+    if (!isFullPayment) {
+      try {
+        const { DebtModel } = await import("../database/models/DebtModel");
+        const existingDebt = await DebtModel.findOne({
+          where: { amortisationId: amortizationLoanId }
+        });
+        if (existingDebt) {
+          await DebtModel.update({ debtAmount }, { where: { id: (existingDebt as any).id } });
+        } else {
+          await DebtModel.create({
+            companyId,
+            accountNumber: String(accountNumber),
+            loanId: loanId || installment.loanId,
+            amortisationId: amortizationLoanId,
+            debtAmount,
+            updatedBy: staffName || '',
+            dateInserted: paymentDate || new Date().toISOString().split('T')[0],
+          });
+        }
+      } catch (debtErr) {
+        console.error("Erro ao registar dívida parcial:", debtErr);
+      }
+    } else {
+      // Pagamento total — remover registo de dívida se existir
+      try {
+        const { DebtModel } = await import("../database/models/DebtModel");
+        await DebtModel.destroy({ where: { amortisationId: amortizationLoanId } });
+      } catch {}
+    }
 
     // Notificar o cliente sobre o pagamento recebido
     try {

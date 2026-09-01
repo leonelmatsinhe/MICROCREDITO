@@ -172,6 +172,7 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     "amount",
                     "latePaymentInterest",
                     "interestRateAmount",
+                    "discountAmount",
                     "createdAt",
                 ],
             });
@@ -242,14 +243,21 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         const pendingLoansList = loans.filter((l) => Number(l.status) === 0);
         const liquidatedLoansList = loans.filter((l) => Number(l.status) === 3);
         const rejectedLoansList = loans.filter((l) => [2, -1].includes(Number(l.status)));
-        // "Desembolsado" no dashboard corresponde ao montante de créditos ativos.
-        const totalDisbursed = activeLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
+        // "Desembolsado" corresponde ao montante total de créditos efectivamente desembolsados (activos + liquidados).
+        const disbursedLoansList = loans.filter((l) => [1, 3].includes(Number(l.status)));
+        const totalDisbursed = disbursedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
         const pendingAmount = pendingLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
         const liquidatedAmount = liquidatedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
         const rejectedAmount = rejectedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
+        // Capital recuperado: soma do capital das prestações pagas (valor pago - juros normais - juros de mora)
         const totalCollected = transactions.reduce((sum, t) => sum + toNumber(t.amount), 0);
+        const capitalRecovered = transactions.reduce((sum, t) => sum + (toNumber(t.amount) - toNumber(t.interestRateAmount) - toNumber(t.latePaymentInterest)), 0);
         const totalLateInterest = transactions.reduce((sum, t) => sum + toNumber(t.latePaymentInterest), 0);
         const totalInterestCollected = transactions.reduce((sum, t) => sum + toNumber(t.interestRateAmount), 0);
+        // Total de descontos aplicados (pagamento antecipado)
+        const totalDiscount = transactions.reduce((sum, t) => sum + toNumber(t.discountAmount), 0);
+        // Juros recebidos: juros normais + juros de mora - descontos
+        const totalInterestReceived = totalInterestCollected + totalLateInterest - totalDiscount;
         const totalRecoveryCollected = totalCollected + totalLateInterest;
         // Base da recuperação: créditos efetivamente desembolsados (ativos + liquidados).
         const disbursedRecoveryLoans = loans.filter((l) => [1, 3].includes(Number(l.status)));
@@ -347,13 +355,23 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     liquidatedAmount: Number(liquidatedAmount.toFixed(2)),
                     rejectedAmount: Number(rejectedAmount.toFixed(2)),
                     totalCollected: Number(totalCollected.toFixed(2)),
+                    // Capital recuperado: soma do capital das prestações pagas (valor pago - juros)
+                    capitalRecovered: Number(capitalRecovered.toFixed(2)),
+                    // Total com Juros: crédito desembolsado com seus juros (base de recuperação)
+                    totalWithInterest: Number(recoveryBaseAmount.toFixed(2)),
                     totalInterestCollected: Number(totalInterestCollected.toFixed(2)),
+                    // Total de descontos aplicados (pagamento antecipado)
+                    totalDiscount: Number(totalDiscount.toFixed(2)),
+                    // Total de juros recebidos: juros normais + juros de mora - descontos aplicados
+                    totalInterestReceived: Number(totalInterestReceived.toFixed(2)),
+                    // Total Reembolsado: total do dinheiro reembolsado no período
+                    totalReimbursed: Number(totalCollected.toFixed(2)),
                     totalLateInterest: Number(totalLateInterest.toFixed(2)),
                     recoveryBaseAmount: Number(recoveryBaseAmount.toFixed(2)),
                     recoveryCollectedAmount: Number(totalRecoveryCollected.toFixed(2)),
                     recoveryRatePct,
-                    avgTicket: activeLoansList.length > 0
-                        ? Number((totalDisbursed / activeLoansList.length).toFixed(2))
+                    avgTicket: disbursedLoansList.length > 0
+                        ? Number((totalDisbursed / disbursedLoansList.length).toFixed(2))
                         : 0,
                     roiPct: totalDisbursed > 0
                         ? Number((((totalInterestCollected + totalLateInterest) / totalDisbursed) * 100).toFixed(2))
@@ -382,6 +400,10 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             },
             riskByManager,
             alerts,
+            // Chart data: monthly breakdown of disbursements and payments
+            chartData: generateChartData(loans, transactions),
+            // Upcoming installments (next 30 days)
+            upcomingInstallments: generateUpcomingInstallments(amortizations, loanMap, managerNameMap),
         });
     }
     catch (error) {
@@ -393,3 +415,77 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
     }
 });
 exports.getDashboardOverview = getDashboardOverview;
+function generateChartData(loans, transactions) {
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    // Initialize arrays for current year (up to current month)
+    const disbursed = new Array(currentMonth + 1).fill(0);
+    const payments = new Array(currentMonth + 1).fill(0);
+    const labels = months.slice(0, currentMonth + 1);
+    // Aggregate disbursements by month
+    loans.forEach((loan) => {
+        const date = new Date(loan.dateCreated);
+        if (date.getFullYear() === currentYear) {
+            const month = date.getMonth();
+            if (month <= currentMonth) {
+                disbursed[month] += toNumber(loan.amount);
+            }
+        }
+    });
+    // Aggregate payments by month
+    transactions.forEach((tx) => {
+        const date = new Date(tx.createdAt);
+        if (date.getFullYear() === currentYear) {
+            const month = date.getMonth();
+            if (month <= currentMonth) {
+                payments[month] += toNumber(tx.amount);
+            }
+        }
+    });
+    return {
+        labels,
+        disbursed: disbursed.map(v => Math.round(v * 100) / 100),
+        payments: payments.map(v => Math.round(v * 100) / 100)
+    };
+}
+function generateUpcomingInstallments(amortizations, loanMap, managerNameMap) {
+    const now = (0, moment_1.default)();
+    const thirtyDaysFromNow = (0, moment_1.default)().add(30, 'days');
+    return amortizations
+        .filter((a) => {
+        const status = Number(a.status);
+        // Only pending (0) or partial (-1)
+        if (status !== 0 && status !== -1)
+            return false;
+        const due = parseDateSafe(a.dueDate);
+        if (!due)
+            return false;
+        // Due date is between now and 30 days from now
+        return due.isAfter(now) && due.isBefore(thirtyDaysFromNow);
+    })
+        .sort((a, b) => {
+        const dateA = parseDateSafe(a.dueDate);
+        const dateB = parseDateSafe(b.dueDate);
+        return ((dateA === null || dateA === void 0 ? void 0 : dateA.unix()) || 0) - ((dateB === null || dateB === void 0 ? void 0 : dateB.unix()) || 0);
+    })
+        .slice(0, 10)
+        .map((a) => {
+        const loan = loanMap[toNumber(a.loanId)];
+        const managerId = loan ? Number(loan.creditManager) : 0;
+        const due = parseDateSafe(a.dueDate);
+        const daysUntilDue = due ? due.diff(now, 'days') : 0;
+        return {
+            id: a.id,
+            loanId: a.loanId,
+            accountNumber: a.accountNumber,
+            customerName: loan ? `Conta ${a.accountNumber}` : `Conta ${a.accountNumber}`,
+            amount: toNumber(a.installment),
+            dueDate: a.dueDate,
+            daysUntilDue,
+            status: Number(a.status),
+            managerName: managerNameMap[managerId] || `Gestor #${managerId}`
+        };
+    });
+}
