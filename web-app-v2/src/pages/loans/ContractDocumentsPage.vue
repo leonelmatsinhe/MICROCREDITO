@@ -406,7 +406,7 @@ async function generateContract() {
     const amount = parseFloat(l.amount) || 0
     const rate = (l.interestRate * 100).toFixed(1)
     const totalWithInterest = amount + (amount * l.interestRate * l.numberOfInstallments)
-    const preparationFee = amount * 0.01
+    const preparationFee = amount * 0.0
     const companyName = c.companyName || 'MBR Microcrédito'
     const companyAbbr = companyName.replace(/\s+/g, '').substring(0, 10).toUpperCase()
 
@@ -575,7 +575,7 @@ async function generateContract() {
         // CLÁUSULA SÉTIMA
         { text: '\nCLÁUSULA SÉTIMA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
         { text: '(Comissão de Preparos)', fontSize: 9, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },
-        { text: [{ text: 'Pela operação o Mutuário paga uma taxa de preparos de ' }, { text: `${formatMoney(preparationFee)} (${numberToWords(preparationFee)} meticais)`, bold: true }, { text: ', correspondentes a 1% sobre o capital do empréstimo.' }], fontSize: 8, alignment: 'justify' },
+        { text: [{ text: 'Pela operação o Mutuário paga uma taxa de preparos de ' }, { text: `${formatMoney(preparationFee)} (${numberToWords(preparationFee)} meticais)`, bold: true }, { text: ', correspondentes a 0% sobre o capital do empréstimo.' }], fontSize: 8, alignment: 'justify' },
         // CLÁUSULA OITAVA
         { text: '\nCLÁUSULA OITAVA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
         { text: '(Mora e Incumprimento)', fontSize: 9, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },
