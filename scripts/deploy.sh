@@ -59,32 +59,55 @@ echo "  -> Codigo atualizado."
 
 # 3. Instalar dependencias (caso haja novas)
 echo ""
-echo "[3/6] A verificar dependencias..."
+echo "[3/8] A verificar dependencias..."
 npm install --production=false
 echo "  -> Dependencias atualizadas."
 
+# 3.1 Instalar dependencias do frontend
+echo ""
+echo "[3.1/8] A instalar dependencias do frontend..."
+cd web-app-v2
+npm install
+echo "  -> Dependencias do frontend atualizadas."
+
 # 4. Compilar backend (TypeScript -> build/)
 echo ""
-echo "[4/6] A compilar o backend (tsc)..."
+echo "[4/8] A compilar o backend (tsc)..."
+cd "$PROJECT_ROOT/src"
 npx tsc
+cd "$PROJECT_ROOT"
 echo "  -> Backend compilado."
 
-# 5. Reiniciar PM2
+# 5. Compilar frontend (Vite -> public-v2/)
 echo ""
-echo "[5/6] A reiniciar o servidor via PM2..."
+echo "[5/8] A compilar o frontend (Vite)..."
+cd web-app-v2
+npx vite build
+cd "$PROJECT_ROOT"
+echo "  -> Frontend compilado."
+
+# 6. Reiniciar PM2
+echo ""
+echo "[6/8] A reiniciar o servidor via PM2..."
 pm2 start ecosystem.config.cjs --update-env
 pm2 save
 echo "  -> PM2 iniciado."
 
-# 6. Verificar se esta a correr
+# 7. Verificar se esta a correr
 echo ""
-echo "[6/6] A verificar estado do servidor..."
+echo "[7/8] A verificar estado do servidor..."
 sleep 2
 if pm2 list | grep -q "online"; then
   echo "  -> Servidor ONLINE!"
 else
   echo "  -> AVISO: Servidor pode nao estar a correr. Verifique: pm2 logs"
 fi
+
+# 8. Limpar backups antigos
+echo ""
+echo "[8/8] A limpar backups antigos..."
+rm -rf /tmp/uploads_backup_* 2>/dev/null || true
+echo "  -> Backups limpos."
 
 echo ""
 echo "=========================================="

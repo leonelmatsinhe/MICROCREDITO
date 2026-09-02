@@ -4,5 +4,6 @@ node_modules/
 .git
 .env
 uploads/
-public-v2/
 build/
+web-app-v2/node_modules/
+web-app-v2/dist/
