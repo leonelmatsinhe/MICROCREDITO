@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.routes = void 0;
 const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
 // Determina a raiz do projecto (mesma lógica de app.ts)
 const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) || __dirname.endsWith(path_1.default.sep + "build");
@@ -31,6 +32,8 @@ const ProvinceController_1 = require("./controllers/ProvinceController");
 const UserCredentials_1 = require("./controllers/UserCredentials");
 const SmsController_1 = require("./controllers/SmsController");
 const SmsGatewayController_1 = require("./controllers/SmsGatewayController");
+const WhatsAppController_1 = require("./controllers/WhatsAppController");
+const CustomerPortalController_1 = require("./controllers/CustomerPortalController");
 const PdfController_1 = require("./controllers/PdfController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
 const NotificationController_1 = require("./controllers/NotificationController");
@@ -39,18 +42,47 @@ const BMReportController_1 = require("./controllers/BMReportController");
 const routes = express_1.default.Router();
 exports.routes = routes;
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
-routes.get("/logo/:image", (req, res) => res.sendFile(path_1.default.join(projectRoot, "uploads", "img", req.params.image)));
+routes.get("/logo/:image", (req, res) => {
+    // Suporta tanto "filename" como "/documents/filename"
+    const raw = req.params.image || '';
+    const fileName = path_1.default.basename(raw);
+    // Primeiro tenta uploads/img, depois uploads/documents
+    const imgPath = path_1.default.join(projectRoot, 'uploads', 'img', fileName);
+    const docPath = path_1.default.join(projectRoot, 'uploads', 'documents', fileName);
+    if (fs_1.default.existsSync(imgPath))
+        return res.sendFile(imgPath);
+    if (fs_1.default.existsSync(docPath))
+        return res.sendFile(docPath);
+    return res.status(404).json({ success: false, message: 'Logo não encontrado.' });
+});
+// Rota para servir documentos (fotos de garantias, logotipos, etc.)
+routes.get("/documents/:fileName", (req, res) => {
+    const safeFileName = path_1.default.basename(req.params.fileName);
+    const filePath = path_1.default.join(projectRoot, 'uploads', 'documents', safeFileName);
+    if (fs_1.default.existsSync(filePath))
+        return res.sendFile(filePath);
+    return res.status(404).json({ success: false, message: 'Ficheiro não encontrado.' });
+});
 routes.post("/api/userCredentials", UserCredentials_1.sendUserCredentials);
 // Login Routes
 routes.post("/api/login", UserController_1.loginUser);
 routes.post("/api/auth/refresh", UserController_1.refreshToken);
 routes.post("/api/customer/login", CustomerController_1.loginCustomer);
 routes.post("/api/customer/changePassword", CustomerController_1.changeCustomerPassword);
+// Customer Portal routes
+routes.get("/api/portal/:companyId/:customerId/dashboard", CustomerPortalController_1.getCustomerDashboard);
+routes.get("/api/portal/:companyId/:customerId/loan/:loanId", CustomerPortalController_1.getCustomerLoanDetail);
+routes.post("/api/portal/mpesa/initiate", CustomerPortalController_1.initiateMpesaPayment);
+routes.post("/api/portal/mpesa/confirm", CustomerPortalController_1.confirmMpesaPayment);
+routes.post("/api/portal/send-credentials", CustomerPortalController_1.sendCustomerCredentials);
 // Customer Contrats
 routes.get("/contract/:companyId/:accountNumber/:loanId", PdfController_1.customerContract);
 routes.get("/api/findAllSms", SmsController_1.findAllSms);
 routes.get("/api/findSmsByCustomer/:id", SmsController_1.findSmsByCustomer);
 routes.post("/api/sendSms", SmsController_1.sendSms);
+// WhatsApp routes
+routes.post("/api/whatsapp/send", WhatsAppController_1.sendWhatsApp);
+routes.get("/api/whatsapp/messages", WhatsAppController_1.listWhatsApp);
 routes.get("/api/debt", DebtController_1.findAllDebts);
 routes.get("/api/debt/:id", DebtController_1.findAllDebts);
 routes.post("/api/debt", DebtController_1.createDebt);
@@ -175,6 +207,7 @@ routes.put("/api/customer/:id", CustomerController_1.updateCustomer);
 routes.delete("/api/customer/:id", CustomerController_1.deleteCustomer);
 routes.post("/api/customer/bulk", CustomerController_1.bulkCreateCustomers);
 routes.post("/api/customer", CustomerController_1.createCustomer);
+routes.post("/api/customer/set-password", CustomerController_1.setCustomerPassword);
 // Account Routes
 routes.get("/api/accounts/:id", AccountController_1.findAllaccounts);
 routes.get("/api/account/:id", AccountController_1.findOneAccount);

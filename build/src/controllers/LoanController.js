@@ -333,8 +333,10 @@ const updateLoanInstallmentDates = (req, res) => __awaiter(void 0, void 0, void 
         for (let i = 0; i < installments.length; i++) {
             const newDueDate = new Date(baseDate);
             newDueDate.setMonth(newDueDate.getMonth() + (i + 1));
+            // Converter para string YYYY-MM-DD (formato esperado pelo model)
+            const dueDateStr = newDueDate.toISOString().split('T')[0];
             const installment = installments[i];
-            updates.push(AmortizationLoanModel_1.AmorizationLoanModel.update({ dueDate: newDueDate }, { where: { id: installment.id } }));
+            updates.push(AmortizationLoanModel_1.AmorizationLoanModel.update({ dueDate: dueDateStr }, { where: { id: installment.id } }));
         }
         yield Promise.all(updates);
         return res.status(200).json({

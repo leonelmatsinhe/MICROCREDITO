@@ -391,10 +391,13 @@ const updateLoanInstallmentDates = async (req: Request, res: Response) => {
       const newDueDate = new Date(baseDate);
       newDueDate.setMonth(newDueDate.getMonth() + (i + 1));
 
+      // Converter para string YYYY-MM-DD (formato esperado pelo model)
+      const dueDateStr = newDueDate.toISOString().split('T')[0];
+
       const installment: any = installments[i];
       updates.push(
         AmorizationLoanModel.update(
-          { dueDate: newDueDate },
+          { dueDate: dueDateStr },
           { where: { id: installment.id } }
         )
       );

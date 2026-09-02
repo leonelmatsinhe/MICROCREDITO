@@ -3,3 +3,6 @@ web-app/
 node_modules/
 .git
 .env
+uploads/
+public-v2/
+build/

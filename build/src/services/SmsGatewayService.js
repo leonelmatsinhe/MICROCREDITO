@@ -12,13 +12,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.hydrateSmsQueuePayload = exports.listSmsQueueHistory = exports.getPendingSmsQueue = exports.enqueueOutstandingLateInterestAlerts = exports.enqueueUpcomingInstallmentAlerts = exports.enqueueLateInterestSms = exports.enqueuePaymentSms = exports.enqueueDisbursementSms = exports.enqueueSms = void 0;
+exports.getWhatsAppTemplates = exports.enqueuePasswordResetSms = exports.hydrateSmsQueuePayload = exports.listSmsQueueHistory = exports.getPendingSmsQueue = exports.enqueueOutstandingLateInterestAlerts = exports.enqueueUpcomingInstallmentAlerts = exports.enqueueLateInterestSms = exports.enqueuePaymentSms = exports.enqueueDisbursementSms = exports.enqueueSms = void 0;
 const moment_1 = __importDefault(require("moment"));
 const sequelize_1 = require("sequelize");
 const SmsQueueModel_1 = require("../database/models/SmsQueueModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const DebtModel_1 = require("../database/models/DebtModel");
+const CompanyModel_1 = require("../database/models/CompanyModel");
 const normalizePhoneForGateway = (phone) => {
     if (!phone)
         return null;
@@ -81,7 +82,8 @@ const enqueueDisbursementSms = (params) => __awaiter(void 0, void 0, void 0, fun
     const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
     if (!customer)
         return { created: false, reason: "customer_not_found" };
-    const msg = `Credito desembolsado com sucesso. Valor: ${safeMoney(params.amount)} MZN. Prestacoes: ${params.installments}. ${params.firstDueDate ? `Primeiro vencimento: ${params.firstDueDate}. ` : ""}Conta: ${params.accountNumber}.`;
+    // Template: max 160 chars, sem caracteres especiais
+    const msg = `Ola ${customer.customerName}. Seu credito de ${safeMoney(params.amount)} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${params.firstDueDate}.` : ''} Obrigado.`;
     return (0, exports.enqueueSms)({
         companyId: params.companyId,
         loanId: params.loanId,
@@ -105,7 +107,8 @@ const enqueuePaymentSms = (params) => __awaiter(void 0, void 0, void 0, function
     if (!customer)
         return { created: false, reason: "customer_not_found" };
     const interest = Number(params.latePaymentInterest || 0);
-    const msg = `Pagamento recebido. Valor: ${safeMoney(params.paidAmount)} MZN.${interest > 0 ? ` Juros de mora: ${safeMoney(interest)} MZN.` : ""} Ref: ${params.reference || "N/A"}. Obrigado.`;
+    // Template: max 160 chars, sem caracteres especiais
+    const msg = `Ola ${customer.customerName}. Pagamento de ${safeMoney(params.paidAmount)} MZN confirmado.${interest > 0 ? ` Mora: ${safeMoney(interest)} MZN.` : ''} Ref: ${params.reference || 'N/A'}. Obrigado.`;
     return (0, exports.enqueueSms)({
         companyId: params.companyId,
         loanId: (_a = params.loanId) !== null && _a !== void 0 ? _a : null,
@@ -131,7 +134,8 @@ const enqueueLateInterestSms = (params) => __awaiter(void 0, void 0, void 0, fun
     const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
     if (!customer)
         return { created: false, reason: "customer_not_found" };
-    const msg = `Aviso de juros de mora. Conta ${params.accountNumber} possui ${safeMoney(params.debtAmount)} MZN em mora${params.dueDate ? ` (vencimento ${params.dueDate})` : ""}. Regularize para evitar agravamento.`;
+    // Template: max 160 chars, sem caracteres especiais
+    const msg = `Ola ${customer.customerName}. Sua prestacao esta em atraso. Valor: ${safeMoney(params.debtAmount)} MZN. ${params.dueDate ? `Vencimento: ${params.dueDate}.` : ''} Regularize para evitar juros.`;
     return (0, exports.enqueueSms)({
         companyId: params.companyId,
         loanId: (_c = params.loanId) !== null && _c !== void 0 ? _c : null,
@@ -190,7 +194,8 @@ const enqueueUpcomingInstallmentAlerts = (params) => __awaiter(void 0, void 0, v
             customerName: customer.customerName,
             phone: normalizedPhone,
             messageType: "upcoming_installment_alert",
-            messageBody: `Lembrete: a sua prestacao vence em ${installment.dueDate}. Valor: ${safeMoney(installment.installment)} MZN. Evite juros de mora efetuando o pagamento atempadamente.`,
+            // Template: max 160 chars, sem caracteres especiais
+            messageBody: `Ola ${customer.customerName}. Sua prestacao de ${safeMoney(installment.installment)} MZN vence em ${installment.dueDate}. Evite juros facendo o pagamento.`,
             payloadJson: JSON.stringify({
                 installment_id: installment.id,
                 loan_id: installment.loanId,
@@ -293,3 +298,57 @@ const hydrateSmsQueuePayload = (row) => {
     return plain;
 };
 exports.hydrateSmsQueuePayload = hydrateSmsQueuePayload;
+// Template para reenvio de senha
+const enqueuePasswordResetSms = (params) => __awaiter(void 0, void 0, void 0, function* () {
+    var _e;
+    const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
+    if (!customer)
+        return { created: false, reason: "customer_not_found" };
+    // Buscar nome da empresa
+    const company = yield CompanyModel_1.CompanyModel.findByPk(params.companyId);
+    const companyName = ((_e = company === null || company === void 0 ? void 0 : company.toJSON()) === null || _e === void 0 ? void 0 : _e.companyName) || 'MBR Microcrédito';
+    // Template: max 160 chars, sem caracteres especiais
+    const msg = `Ola ${customer.customerName}. Sua senha de acesso ao portal da ${companyName} e: ${params.newPassword}. Telefone: ${customer.customerPhone}. Altere apos o primeiro acesso.`;
+    return (0, exports.enqueueSms)({
+        companyId: params.companyId,
+        accountNumber: params.accountNumber,
+        customerName: customer.customerName,
+        phone: customer.customerPhone,
+        messageType: "password_reset",
+        messageBody: msg,
+        payloadJson: {
+            account_number: params.accountNumber,
+            new_password: params.newPassword,
+        },
+    });
+});
+exports.enqueuePasswordResetSms = enqueuePasswordResetSms;
+// Templates de WhatsApp (mesma estrutura, formato diferente)
+const getWhatsAppTemplates = () => ({
+    disbursement: {
+        name: "Credito Desembolsado",
+        template: "Ola {nome}. Seu credito de {valor} MZN foi desembolsado. Parcelas: {parcelas}. Vence: {vencimento}. Obrigado.",
+        placeholders: ["nome", "valor", "parcelas", "vencimento"],
+    },
+    payment: {
+        name: "Pagamento Confirmado",
+        template: "Ola {nome}. Pagamento de {valor} MZN confirmado. Ref: {referencia}. Obrigado.",
+        placeholders: ["nome", "valor", "referencia"],
+    },
+    upcoming: {
+        name: "Lembrete de Prestacao",
+        template: "Ola {nome}. Sua prestacao de {valor} MZN vence em {data}. Evite juros facendo o pagamento.",
+        placeholders: ["nome", "valor", "data"],
+    },
+    latePayment: {
+        name: "Prestacao em Atraso",
+        template: "Ola {nome}. Sua prestacao esta em atraso. Valor: {valor} MZN. Regularize para evitar juros.",
+        placeholders: ["nome", "valor"],
+    },
+    passwordReset: {
+        name: "Redefinicao de Senha",
+        template: "Ola {nome}. Sua nova senha: {senha}. Altere apos o primeiro acesso.",
+        placeholders: ["nome", "senha"],
+    },
+});
+exports.getWhatsAppTemplates = getWhatsAppTemplates;

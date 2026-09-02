@@ -417,10 +417,14 @@ async function downloadPDF() {
 
     let companyLogo = null
     const company = companyStore.company
-    if (company?.companyLogo) {
+    const logo = company?.companyLogo
+    if (logo && logo !== '/logo.png') {
       try {
-        const resp = await fetch(`/api/logo/${company.companyLogo}`)
-        if (resp.ok) {
+        const token = localStorage.getItem('applicationMicroToken')
+        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+        const resp = await fetch(logo, { headers })
+        const contentType = resp.headers.get('content-type') || ''
+        if (resp.ok && contentType.includes('image/')) {
           const blob = await resp.blob()
           companyLogo = await new Promise((resolve) => {
             const reader = new FileReader()

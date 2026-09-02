@@ -20,6 +20,7 @@ const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const DebtModel_1 = require("../database/models/DebtModel");
 const UserModel_1 = require("../database/models/UserModel");
+const CustomerModel_1 = require("../database/models/CustomerModel");
 const parseDateSafe = (value) => {
     if (!value)
         return null;
@@ -212,6 +213,21 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         loans.forEach((l) => {
             loanMap[l.id] = l;
         });
+        // Fetch customer names for upcoming installments
+        const accountNumbers = [...new Set(loans.map((l) => l.accountNumber).filter(Boolean))];
+        const customerNameMap = {};
+        if (accountNumbers.length > 0) {
+            const customers = yield CustomerModel_1.CustomerModel.findAll({
+                where: {
+                    companyId: companyIdNum,
+                    accountNumber: { [sequelize_1.Op.in]: accountNumbers },
+                },
+                attributes: ['accountNumber', 'customerName'],
+            });
+            customers.forEach((c) => {
+                customerNameMap[c.accountNumber] = c.customerName;
+            });
+        }
         const now = (0, moment_1.default)();
         const openInstallments = amortizations.filter((a) => [0, -1].includes(Number(a.status)));
         const installmentExposure = (a) => {
@@ -401,9 +417,9 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             riskByManager,
             alerts,
             // Chart data: monthly breakdown of disbursements and payments
-            chartData: generateChartData(loans, transactions),
+            chartData: generateChartData(loans.filter((l) => [1, 3].includes(Number(l.status))), transactions),
             // Upcoming installments (next 30 days)
-            upcomingInstallments: generateUpcomingInstallments(amortizations, loanMap, managerNameMap),
+            upcomingInstallments: generateUpcomingInstallments(amortizations, loanMap, managerNameMap, customerNameMap),
         });
     }
     catch (error) {
@@ -420,17 +436,36 @@ function generateChartData(loans, transactions) {
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-    // Initialize arrays for current year (up to current month)
-    const disbursed = new Array(currentMonth + 1).fill(0);
-    const payments = new Array(currentMonth + 1).fill(0);
-    const labels = months.slice(0, currentMonth + 1);
+    // Find the earliest month with data in the current year
+    let earliestMonth = currentMonth; // default: current month
+    loans.forEach((loan) => {
+        const date = new Date(loan.dateCreated);
+        if (date.getFullYear() === currentYear) {
+            const m = date.getMonth();
+            if (m < earliestMonth)
+                earliestMonth = m;
+        }
+    });
+    transactions.forEach((tx) => {
+        const date = new Date(tx.createdAt);
+        if (date.getFullYear() === currentYear) {
+            const m = date.getMonth();
+            if (m < earliestMonth)
+                earliestMonth = m;
+        }
+    });
+    // Build arrays only from earliest month to current month
+    const monthCount = currentMonth - earliestMonth + 1;
+    const disbursed = new Array(monthCount).fill(0);
+    const payments = new Array(monthCount).fill(0);
+    const labels = months.slice(earliestMonth, currentMonth + 1);
     // Aggregate disbursements by month
     loans.forEach((loan) => {
         const date = new Date(loan.dateCreated);
         if (date.getFullYear() === currentYear) {
             const month = date.getMonth();
-            if (month <= currentMonth) {
-                disbursed[month] += toNumber(loan.amount);
+            if (month >= earliestMonth && month <= currentMonth) {
+                disbursed[month - earliestMonth] += toNumber(loan.amount);
             }
         }
     });
@@ -439,8 +474,8 @@ function generateChartData(loans, transactions) {
         const date = new Date(tx.createdAt);
         if (date.getFullYear() === currentYear) {
             const month = date.getMonth();
-            if (month <= currentMonth) {
-                payments[month] += toNumber(tx.amount);
+            if (month >= earliestMonth && month <= currentMonth) {
+                payments[month - earliestMonth] += toNumber(tx.amount);
             }
         }
     });
@@ -450,7 +485,7 @@ function generateChartData(loans, transactions) {
         payments: payments.map(v => Math.round(v * 100) / 100)
     };
 }
-function generateUpcomingInstallments(amortizations, loanMap, managerNameMap) {
+function generateUpcomingInstallments(amortizations, loanMap, managerNameMap, customerNameMap) {
     const now = (0, moment_1.default)();
     const thirtyDaysFromNow = (0, moment_1.default)().add(30, 'days');
     return amortizations
@@ -475,12 +510,12 @@ function generateUpcomingInstallments(amortizations, loanMap, managerNameMap) {
         const loan = loanMap[toNumber(a.loanId)];
         const managerId = loan ? Number(loan.creditManager) : 0;
         const due = parseDateSafe(a.dueDate);
-        const daysUntilDue = due ? due.diff(now, 'days') : 0;
+        const daysUntilDue = due ? Math.ceil(due.diff(now, 'milliseconds') / (1000 * 60 * 60 * 24)) : 0;
         return {
             id: a.id,
             loanId: a.loanId,
             accountNumber: a.accountNumber,
-            customerName: loan ? `Conta ${a.accountNumber}` : `Conta ${a.accountNumber}`,
+            customerName: customerNameMap[a.accountNumber] || `Conta ${a.accountNumber}`,
             amount: toNumber(a.installment),
             dueDate: a.dueDate,
             daysUntilDue,

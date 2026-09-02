@@ -50,10 +50,10 @@ export function buildCompanyHeader(company, logoBase64, title) {
             comp.companyWebsite ? { text: `Website: ${comp.companyWebsite}`, fontSize: 8, color: '#444' } : null
           ].filter(Boolean)
         },
-        // Logo à direita
+        // Logo à direita — mantém proporções originais
         logoBase64
-          ? { image: logoBase64, width: 80, height: 80, margin: [15, 0, 0, 0] }
-          : { text: '', width: 95 }
+          ? { image: logoBase64, width: 75, margin: [15, 0, 0, 0] }
+          : { text: '', width: 90 }
       ],
       margin: [30, 15, 30, 10]
     },

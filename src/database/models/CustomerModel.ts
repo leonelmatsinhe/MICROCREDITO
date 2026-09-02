@@ -105,4 +105,5 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+
 });

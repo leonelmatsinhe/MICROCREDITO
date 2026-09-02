@@ -84,8 +84,8 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             }
         }
         catch (_a) { }
-        // 3. Buscar créditos do período
-        const loanWhere = { companyId: companyIdNum };
+        // 3. Buscar créditos do período — apenas desembolsados (status 1)
+        const loanWhere = { companyId: companyIdNum, status: 1 };
         // Filtrar por período se especificado (data de desembolso)
         if (from && to) {
             loanWhere.dateCreated = {
@@ -169,8 +169,14 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 disbursementDate: formatDateBR(loanData.dateCreated),
                 // (4) Montante do Desembolso
                 disbursementAmount: Number(loanData.amount) || 0,
-                // (5) Finalidade do Crédito
-                creditPurpose: loanData.loanDescription || "-",
+                // (5) Finalidade do Crédito — usar borrowerInfo.finalidade se disponível, senão loanDescription
+                creditPurpose: (() => { try {
+                    const bi = loanData.borrowerInfo ? (typeof loanData.borrowerInfo === 'string' ? JSON.parse(loanData.borrowerInfo) : loanData.borrowerInfo) : null;
+                    return (bi === null || bi === void 0 ? void 0 : bi.finalidade) || loanData.loanDescription || '-';
+                }
+                catch (_a) {
+                    return loanData.loanDescription || '-';
+                } })(),
                 // (6) Valor da Prestação
                 installmentValue: firstInstallment ? Number(firstInstallment.installment) || 0 : 0,
                 // (7) Periodicidade dos Pagamentos

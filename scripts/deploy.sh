@@ -30,36 +30,55 @@ fuser -k "$PORT/tcp" 2>/dev/null || true
 sleep 1
 echo "  -> Porta $PORT livre."
 
-# 1. Pull do GitHub
+# 1. Preservar uploads (ficheiros sensíveis)
 echo ""
-echo "[1/5] A obter alteracoes do GitHub..."
+echo "[1/6] A preservar pasta uploads..."
+if [ -d "uploads" ]; then
+  cp -r uploads /tmp/uploads_backup_$(date +%s) 2>/dev/null || true
+  echo "  -> Backup de uploads criado em /tmp/"
+fi
+
+# 2. Pull do GitHub
+echo ""
+echo "[2/6] A obter alteracoes do GitHub..."
 git fetch origin
 git checkout "$BRANCH"
+git stash 2>/dev/null || true
 git pull origin "$BRANCH"
+
+# Restaurar uploads após pull
+if [ -d "/tmp/uploads_backup_"* ]; then
+  LATEST_BACKUP=$(ls -dt /tmp/uploads_backup_* | head -1)
+  if [ -n "$LATEST_BACKUP" ]; then
+    cp -rn "$LATEST_BACKUP"/* uploads/ 2>/dev/null || true
+    rm -rf "$LATEST_BACKUP"
+    echo "  -> Uploads restaurados."
+  fi
+fi
 echo "  -> Codigo atualizado."
 
-# 2. Instalar dependencias (caso haja novas)
+# 3. Instalar dependencias (caso haja novas)
 echo ""
-echo "[2/5] A verificar dependencias..."
+echo "[3/6] A verificar dependencias..."
 npm install --production=false
 echo "  -> Dependencias atualizadas."
 
-# 3. Compilar backend (TypeScript -> build/)
+# 4. Compilar backend (TypeScript -> build/)
 echo ""
-echo "[3/5] A compilar o backend (tsc)..."
+echo "[4/6] A compilar o backend (tsc)..."
 npx tsc
 echo "  -> Backend compilado."
 
-# 4. Reiniciar PM2
+# 5. Reiniciar PM2
 echo ""
-echo "[4/5] A reiniciar o servidor via PM2..."
+echo "[5/6] A reiniciar o servidor via PM2..."
 pm2 start ecosystem.config.cjs --update-env
 pm2 save
 echo "  -> PM2 iniciado."
 
-# 5. Verificar se esta a correr
+# 6. Verificar se esta a correr
 echo ""
-echo "[5/5] A verificar estado do servidor..."
+echo "[6/6] A verificar estado do servidor..."
 sleep 2
 if pm2 list | grep -q "online"; then
   echo "  -> Servidor ONLINE!"

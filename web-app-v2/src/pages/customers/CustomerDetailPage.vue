@@ -50,6 +50,9 @@
             </div>
             <!-- Action icons -->
             <div class="col-auto">
+              <q-btn flat round dense icon="lock_open" color="warning" size="md" @click="showCredentialsModal = true">
+                <q-tooltip>Enviar Credenciais</q-tooltip>
+              </q-btn>
               <q-btn flat round dense icon="description" color="primary" size="md" @click="showDocsModal = true">
                 <q-tooltip>Documentos</q-tooltip>
               </q-btn>
@@ -731,6 +734,98 @@
       <CustomerFormModal v-model="showEditModal" :customer="customer" @saved="onCustomerSaved" />
       <GuaranteesModal v-model="showGuarantees" :loan-id="selectedLoanId" />
       <BorrowerInfoModal v-model="showBorrowerInfoModal" :loan="selectedLoanForInfo" :customer="customer" @saved="onBorrowerInfoSaved" />
+
+      <!-- Modal de Envio de Credenciais -->
+      <q-dialog v-model="showCredentialsModal" persistent @show="generateNewPassword">
+        <q-card style="border-radius: 16px; min-width: 380px; max-width: 95vw">
+          <q-card-section class="row items-center bg-warning text-white">
+            <q-icon name="lock_open" size="24px" class="q-mr-sm" />
+            <div class="text-h6">Enviar Credenciais</div>
+            <q-space />
+            <q-btn flat round dense icon="close" @click="showCredentialsModal = false" />
+          </q-card-section>
+
+          <q-card-section class="q-pa-md">
+            <!-- Aviso se já enviado -->
+            <q-banner v-if="credentialsAlreadySent" class="bg-warning text-white q-mb-md" rounded>
+              <template v-slot:avatar>
+                <q-icon name="warning" size="24px" />
+              </template>
+              <div class="text-weight-bold">Credenciais já enviadas</div>
+              <div class="text-caption">Enviadas em {{ credentialsSentAt ? new Date(credentialsSentAt).toLocaleString('pt-MZ') : 'data desconhecida' }}. Enviar novamente?</div>
+            </q-banner>
+
+            <div v-else class="text-body2 text-grey-6 q-mb-md">
+              Envie as credenciais de acesso ao portal para o mutuário.
+            </div>
+
+            <!-- Dados do Mutuário -->
+            <q-card flat bordered class="q-mb-md credentials-card" style="border-radius: 8px">
+              <q-card-section>
+                <div class="row q-col-gutter-sm">
+                  <div class="col-12">
+                    <div class="text-caption credentials-label">Mutuário</div>
+                    <div class="text-weight-bold credentials-value">{{ customer.customerName }}</div>
+                  </div>
+                  <div class="col-6">
+                    <div class="text-caption credentials-label">Telefone</div>
+                    <div class="text-weight-bold credentials-value">{{ customer.customerPhone || 'Não informado' }}</div>
+                  </div>
+                  <div class="col-6">
+                    <div class="text-caption credentials-label">Conta</div>
+                    <div class="text-weight-bold credentials-value">{{ customer.accountNumber }}</div>
+                  </div>
+                  <div class="col-12">
+                    <div class="text-caption credentials-label">Nova Senha</div>
+                    <div class="text-weight-bold text-warning" style="font-size: 18px; letter-spacing: 2px">{{ generatedPassword }}</div>
+                  </div>
+                </div>
+              </q-card-section>
+            </q-card>
+
+            <!-- Canal de Envio -->
+            <div class="text-subtitle2 credentials-label q-mb-sm">Canal de Envio</div>
+            <q-btn-toggle
+              v-model="credentialsChannel"
+              :options="[
+                { label: 'SMS', value: 'sms', icon: 'sms' },
+                { label: 'WhatsApp', value: 'whatsapp', icon: 'chat' }
+              ]"
+              push
+              glossy
+              no-caps
+              class="q-mb-md full-width"
+              toggle-color="warning"
+            />
+
+            <!-- Preview da Mensagem -->
+            <q-card flat bordered class="q-mb-md credentials-card" style="border-radius: 8px">
+              <q-card-section class="q-py-sm">
+                <div class="text-caption credentials-label">Preview da Mensagem</div>
+              </q-card-section>
+              <q-card-section class="q-pt-none">
+                <div class="credentials-message" style="white-space: pre-wrap; font-size: 13px">
+Ola {{ customer.customerName }}. Sua senha de acesso ao portal da {{ companyName }} e: {{ generatedPassword }}. Telefone: {{ customer.customerPhone }}. Altere apos o primeiro acesso.</div>
+              </q-card-section>
+            </q-card>
+          </q-card-section>
+
+          <q-card-actions align="right" class="q-pa-md">
+            <q-btn flat label="Cancelar" color="grey" no-caps @click="showCredentialsModal = false" />
+            <q-btn
+              unelevated
+              :label="credentialsChannel === 'sms' ? 'Enviar SMS' : 'Enviar WhatsApp'"
+              :color="credentialsChannel === 'sms' ? 'primary' : 'positive'"
+              :icon="credentialsChannel === 'sms' ? 'sms' : 'chat'"
+              no-caps
+              rounded
+              :loading="sendingCredentials"
+              :disable="!customer.customerPhone"
+              @click="sendCredentials"
+            />
+          </q-card-actions>
+        </q-card>
+      </q-dialog>
     </template>
   </div>
 </template>
@@ -750,6 +845,7 @@ import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
 import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
 import BorrowerInfoModal from '@/components/modals/BorrowerInfoModal.vue'
 import { canRegisterPayment, canApproveLoan, canDeleteCustomer } from '@/utils/permissions'
+import { generateSixDigitCode } from '@/utils/codeGenerator'
 import { buildCompanyHeader, buildFooterWithSignature, commonStyles, tableLayout, infoTableLayout } from '@/utils/pdfHeader'
 import { logApproveLoan, logPayment, logPartialPayment, logFullPayment, logDeleteDocument, logCreateGuarantee, logDeleteGuarantee, logUploadDocument, logEditCustomer, logRejectLoan } from '@/utils/logger'
 import { generateAmortizationPlan } from '@/utils/amortization'
@@ -782,6 +878,12 @@ const showEditLoanModal = ref(false)
 const showDocsModal = ref(false)
 const showGlobalPaymentModal = ref(false)
 const showBorrowerInfoModal = ref(false)
+const showCredentialsModal = ref(false)
+const credentialsChannel = ref('sms')
+const sendingCredentials = ref(false)
+const generatedPassword = ref('')
+const credentialsAlreadySent = ref(false)
+const credentialsSentAt = ref('')
 const selectedLoanForInfo = ref(null)
 const globalPaymentSaving = ref(false)
 
@@ -1763,6 +1865,61 @@ function onBorrowerInfoSaved(info) {
   fetchLoans()
 }
 
+function generateNewPassword() {
+  // Verificar se já foram enviadas
+  if (customer.value?.credentialsSent === 1) {
+    credentialsAlreadySent.value = true
+    credentialsSentAt.value = customer.value?.credentialsSentAt || ''
+    generatedPassword.value = customer.value?.password || ''
+  } else {
+    credentialsAlreadySent.value = false
+    generatedPassword.value = generateSixDigitCode()
+  }
+}
+
+const companyName = computed(() => {
+  return companyStore.companyName || 'MBR Microcrédito'
+})
+
+async function sendCredentials() {
+  sendingCredentials.value = true
+  try {
+    const { data } = await api.post('/api/portal/send-credentials', {
+      customerId: customer.value.id,
+      channel: credentialsChannel.value,
+      newPassword: credentialsAlreadySent.value ? undefined : generatedPassword.value,
+    })
+
+    if (data.alreadySent) {
+      // Já foi enviado - mostrar aviso
+      $q.notify({
+        type: 'warning',
+        message: data.message,
+        position: 'top',
+        timeout: 5000
+      })
+      generatedPassword.value = data.password || customer.value?.password || ''
+    } else if (data.success) {
+      $q.notify({
+        type: 'positive',
+        message: data.message || 'Credenciais enviadas com sucesso',
+        position: 'top'
+      })
+      showCredentialsModal.value = false
+      // Actualizar dados do cliente
+      await customerStore.fetchCustomer(authStore.companyId, customer.value.accountNumber)
+    }
+  } catch (e) {
+    $q.notify({
+      type: 'negative',
+      message: e.response?.data?.message || 'Erro ao enviar credenciais',
+      position: 'top'
+    })
+  } finally {
+    sendingCredentials.value = false
+  }
+}
+
 
 function getLoanStatusColor(status) { const s = Number(status); return { 0: 'orange', 1: 'positive', '-1': 'negative', 3: 'grey' }[s] || 'grey' }
 function getLoanStatusText(status) { const s = Number(status); return { 0: 'Pendente', 1: 'Activo', '-1': 'Rejeitado', 3: 'Terminado' }[s] || 'Desconhecido' }
@@ -2043,5 +2200,48 @@ body.body--dark .amort-table {
   border-radius: 8px;
   transition: all 0.2s ease;
   &:hover { transform: scale(1.08); box-shadow: 0 2px 8px rgba(249,115,22,0.3); }
+}
+
+/* Credentials Modal */
+.credentials-card {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+}
+
+.credentials-label {
+  color: #6c757d;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.credentials-value {
+  color: #212529;
+  font-size: 14px;
+}
+
+.credentials-message {
+  background: #e8f5e9;
+  border-radius: 8px;
+  padding: 12px;
+  color: #2e7d32;
+  font-family: monospace;
+}
+
+body.body--dark {
+  .credentials-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .credentials-label {
+    color: rgba(255, 255, 255, 0.6);
+  }
+  .credentials-value {
+    color: rgba(255, 255, 255, 0.87);
+  }
+  .credentials-message {
+    background: rgba(76, 175, 80, 0.15);
+    color: #81c784;
+  }
 }
 </style>

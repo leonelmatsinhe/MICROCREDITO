@@ -153,8 +153,8 @@
           </q-card-section>
           <q-card-section>
             <q-form @submit="uploadCreditDocument" class="q-gutter-md">
-              <q-select v-model="uploadForm.documentType" dense outlined :options="docTypeOptions" label="Tipo de Documento *" emit-value map-options rules="[v => !!v || 'Obrigatório']" input-style="font-size: 13px" />
-              <q-input v-model="uploadForm.documentName" dense outlined label="Nome do Documento *" rules="[v => !!v || 'Obrigatório']" input-style="font-size: 13px" />
+              <q-select v-model="uploadForm.documentType" dense outlined :options="docTypeOptions" label="Tipo de Documento *" emit-value map-options :rules="[v => !!v || 'Obrigatório']" input-style="font-size: 13px" />
+              <q-input v-model="uploadForm.documentName" dense outlined label="Nome do Documento *" :rules="[v => !!v || 'Obrigatório']" input-style="font-size: 13px" />
               <q-input v-model="uploadForm.description" dense outlined label="Descrição" type="textarea" rows="2" input-style="font-size: 13px" />
               <div>
                 <q-file v-model="uploadForm.file" dense outlined label="Ficheiro *" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" :rules="[v => !!v || 'Obrigatório']">
@@ -284,6 +284,7 @@ async function uploadCreditDocument() {
     formData.append('accountNumber', loan.value.accountNumber)
     formData.append('companyId', authStore.companyId)
     formData.append('loanId', loan.value.id)
+    formData.append('uploadedBy', authStore.userName || 'Sistema')
 
     const token = localStorage.getItem('applicationMicroToken')
     const headers = token ? { Authorization: `Bearer ${token}` } : {}

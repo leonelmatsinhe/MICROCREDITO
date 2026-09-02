@@ -120,15 +120,14 @@
           <q-form @submit="handleCustomerLogin" class="q-gutter-sm">
             <q-input
               v-model="customerForm.phone"
-              label="Nº de Telemóvel"
+              label="Telefone ou Email"
               outlined
               dense
-              mask="#########"
               :rules="[val => !!val || 'Campo obrigatório']"
               :disable="customerLoading"
             >
               <template v-slot:prepend>
-                <q-icon name="phone" color="grey-6" size="18px" />
+                <q-icon name="person" color="grey-6" size="18px" />
               </template>
             </q-input>
 

@@ -4,6 +4,7 @@ import { SmsQueueModel } from "../database/models/SmsQueueModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { DebtModel } from "../database/models/DebtModel";
+import { CompanyModel } from "../database/models/CompanyModel";
 
 export type SmsQueueStatus = "queued" | "processing" | "sent" | "failed" | "cancelled";
 
@@ -93,11 +94,8 @@ export const enqueueDisbursementSms = async (params: {
   const customer = await getCustomerForSms(params.companyId, params.accountNumber);
   if (!customer) return { created: false, reason: "customer_not_found" };
 
-  const msg = `Credito desembolsado com sucesso. Valor: ${safeMoney(
-    params.amount
-  )} MZN. Prestacoes: ${params.installments}. ${
-    params.firstDueDate ? `Primeiro vencimento: ${params.firstDueDate}. ` : ""
-  }Conta: ${params.accountNumber}.`;
+  // Template: max 160 chars, sem caracteres especiais
+  const msg = `Ola ${customer.customerName}. Seu credito de ${safeMoney(params.amount)} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${params.firstDueDate}.` : ''} Obrigado.`;
 
   return enqueueSms({
     companyId: params.companyId,
@@ -131,9 +129,8 @@ export const enqueuePaymentSms = async (params: {
   if (!customer) return { created: false, reason: "customer_not_found" };
 
   const interest = Number(params.latePaymentInterest || 0);
-  const msg = `Pagamento recebido. Valor: ${safeMoney(params.paidAmount)} MZN.${
-    interest > 0 ? ` Juros de mora: ${safeMoney(interest)} MZN.` : ""
-  } Ref: ${params.reference || "N/A"}. Obrigado.`;
+  // Template: max 160 chars, sem caracteres especiais
+  const msg = `Ola ${customer.customerName}. Pagamento de ${safeMoney(params.paidAmount)} MZN confirmado.${interest > 0 ? ` Mora: ${safeMoney(interest)} MZN.` : ''} Ref: ${params.reference || 'N/A'}. Obrigado.`;
 
   return enqueueSms({
     companyId: params.companyId,
@@ -167,9 +164,8 @@ export const enqueueLateInterestSms = async (params: {
   const customer = await getCustomerForSms(params.companyId, params.accountNumber);
   if (!customer) return { created: false, reason: "customer_not_found" };
 
-  const msg = `Aviso de juros de mora. Conta ${params.accountNumber} possui ${safeMoney(
-    params.debtAmount
-  )} MZN em mora${params.dueDate ? ` (vencimento ${params.dueDate})` : ""}. Regularize para evitar agravamento.`;
+  // Template: max 160 chars, sem caracteres especiais
+  const msg = `Ola ${customer.customerName}. Sua prestacao esta em atraso. Valor: ${safeMoney(params.debtAmount)} MZN. ${params.dueDate ? `Vencimento: ${params.dueDate}.` : ''} Regularize para evitar juros.`;
 
   return enqueueSms({
     companyId: params.companyId,
@@ -237,9 +233,8 @@ export const enqueueUpcomingInstallmentAlerts = async (params: {
       customerName: customer.customerName,
       phone: normalizedPhone,
       messageType: "upcoming_installment_alert",
-      messageBody: `Lembrete: a sua prestacao vence em ${installment.dueDate}. Valor: ${safeMoney(
-        installment.installment
-      )} MZN. Evite juros de mora efetuando o pagamento atempadamente.`,
+      // Template: max 160 chars, sem caracteres especiais
+      messageBody: `Ola ${customer.customerName}. Sua prestacao de ${safeMoney(installment.installment)} MZN vence em ${installment.dueDate}. Evite juros facendo o pagamento.`,
       payloadJson: JSON.stringify({
         installment_id: installment.id,
         loan_id: installment.loanId,
@@ -352,3 +347,62 @@ export const hydrateSmsQueuePayload = (row: any) => {
   plain.payloadJson = parsePayload(plain.payloadJson);
   return plain;
 };
+
+// Template para reenvio de senha
+export const enqueuePasswordResetSms = async (params: {
+  companyId: number;
+  accountNumber: string | number;
+  newPassword: string;
+}) => {
+  const customer = await getCustomerForSms(params.companyId, params.accountNumber);
+  if (!customer) return { created: false, reason: "customer_not_found" };
+
+  // Buscar nome da empresa
+  const company = await CompanyModel.findByPk(params.companyId) as any;
+  const companyName = company?.toJSON()?.companyName || 'MBR Microcrédito';
+
+  // Template: max 160 chars, sem caracteres especiais
+  const msg = `Ola ${customer.customerName}. Sua senha de acesso ao portal da ${companyName} e: ${params.newPassword}. Telefone: ${customer.customerPhone}. Altere apos o primeiro acesso.`;
+
+  return enqueueSms({
+    companyId: params.companyId,
+    accountNumber: params.accountNumber,
+    customerName: customer.customerName,
+    phone: customer.customerPhone,
+    messageType: "password_reset",
+    messageBody: msg,
+    payloadJson: {
+      account_number: params.accountNumber,
+      new_password: params.newPassword,
+    },
+  });
+};
+
+// Templates de WhatsApp (mesma estrutura, formato diferente)
+export const getWhatsAppTemplates = () => ({
+  disbursement: {
+    name: "Credito Desembolsado",
+    template: "Ola {nome}. Seu credito de {valor} MZN foi desembolsado. Parcelas: {parcelas}. Vence: {vencimento}. Obrigado.",
+    placeholders: ["nome", "valor", "parcelas", "vencimento"],
+  },
+  payment: {
+    name: "Pagamento Confirmado",
+    template: "Ola {nome}. Pagamento de {valor} MZN confirmado. Ref: {referencia}. Obrigado.",
+    placeholders: ["nome", "valor", "referencia"],
+  },
+  upcoming: {
+    name: "Lembrete de Prestacao",
+    template: "Ola {nome}. Sua prestacao de {valor} MZN vence em {data}. Evite juros facendo o pagamento.",
+    placeholders: ["nome", "valor", "data"],
+  },
+  latePayment: {
+    name: "Prestacao em Atraso",
+    template: "Ola {nome}. Sua prestacao esta em atraso. Valor: {valor} MZN. Regularize para evitar juros.",
+    placeholders: ["nome", "valor"],
+  },
+  passwordReset: {
+    name: "Redefinicao de Senha",
+    template: "Ola {nome}. Sua nova senha: {senha}. Altere apos o primeiro acesso.",
+    placeholders: ["nome", "senha"],
+  },
+});

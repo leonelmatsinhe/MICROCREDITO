@@ -1,26 +1,5 @@
 <template>
   <div class="q-pa-md">
-    <!-- Header -->
-    <div class="row items-center q-mb-md">
-      <div class="col">
-        <div class="text-h6 text-weight-bold">Mutuários</div>
-        <div class="text-caption text-grey-5">
-          Gestão de mutuários da empresa
-        </div>
-      </div>
-      <div class="col-auto">
-        <q-btn
-          color="primary"
-          icon="person_add"
-          label="Novo Mutuário"
-          unelevated
-          rounded
-          size="sm"
-          @click="showCreateModal = true"
-        />
-      </div>
-    </div>
-
     <!-- Search and Filters -->
     <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
       <q-card-section class="q-py-sm">
@@ -86,7 +65,18 @@
               size="sm"
               color="positive"
               @click="exportData"
+              class="q-mr-xs"
             />
+            <q-btn
+              color="primary"
+              icon="person_add"
+              round
+              dense
+              size="sm"
+              @click="showCreateModal = true"
+            >
+              <q-tooltip>Novo Mutuário</q-tooltip>
+            </q-btn>
           </div>
         </div>
       </q-card-section>
@@ -158,18 +148,25 @@
           </q-td>
         </template>
 
-        <!-- Account Number -->
-        <template v-slot:body-cell-account="props">
+        <!-- Pessoa de Contacto -->
+        <template v-slot:body-cell-emergencyPerson="props">
           <q-td :props="props">
-            <q-chip
-              dense
-              size="sm"
-              color="blue-1"
-              text-color="blue-8"
-              class="text-weight-medium"
-            >
-              {{ props.row.accountNumber }}
-            </q-chip>
+            <div v-if="props.row.customerEmergencyPerson" class="row items-center no-wrap">
+              <q-icon name="person" size="14px" color="grey-5" class="q-mr-xs" />
+              <span style="font-size: 12px">{{ props.row.customerEmergencyPerson }}</span>
+            </div>
+            <span v-else class="text-grey-4">-</span>
+          </q-td>
+        </template>
+
+        <!-- Emergency Contact -->
+        <template v-slot:body-cell-emergencyContact="props">
+          <q-td :props="props">
+            <div v-if="props.row.customerEmergencyContact" class="row items-center no-wrap">
+              <q-icon name="emergency" size="14px" color="red-5" class="q-mr-xs" />
+              <span style="font-size: 12px">{{ props.row.customerEmergencyContact }}</span>
+            </div>
+            <span v-else class="text-grey-4">-</span>
           </q-td>
         </template>
 
@@ -250,6 +247,7 @@ import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCustomerStore } from '@/stores/customers'
+import { api } from '@/boot/axios'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
 import { canDeleteCustomer, canEditCustomer } from '@/utils/permissions'
 import { logDeleteCustomer, logDeactivateCustomer } from '@/utils/logger'
@@ -275,8 +273,8 @@ const bairroOptions = ref([])
 
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
-  { name: 'account', label: 'Conta', field: 'accountNumber', align: 'center', sortable: true },
-  { name: 'nuit', label: 'NUIT', field: 'customerNuit', align: 'center', sortable: true },
+  { name: 'emergencyPerson', label: 'Pessoa de Contacto', field: 'customerEmergencyPerson', align: 'left', sortable: true },
+  { name: 'emergencyContact', label: 'Emergência', field: 'customerEmergencyContact', align: 'left', sortable: true },
   { name: 'bairro', label: 'Bairro', field: 'customerBairro', align: 'left', sortable: true },
   { name: 'status', label: 'Estado', field: 'customerStatus', align: 'center', sortable: true },
   { name: 'actions', label: 'Accões', field: 'actions', align: 'center' }
@@ -378,8 +376,92 @@ function onCustomerSaved() {
   loadCustomers(customerStore.pagination.currentPage)
 }
 
-function exportData() {
-  $q.notify({ type: 'info', message: 'Exportação em desenvolvimento', position: 'top' })
+async function exportData() {
+  if (!customers.value || customers.value.length === 0) {
+    $q.notify({ type: 'warning', message: 'Nenhum dado para exportar', position: 'top' })
+    return
+  }
+  try {
+    const pdfMakeMod = await import('pdfmake/build/pdfmake')
+    const pdfMake = pdfMakeMod.default
+    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
+    const pdfFonts = pdfFontsMod.default
+    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
+
+    // Importar header partilhado
+    const { buildCompanyHeader } = await import('@/utils/pdfHeader')
+    const { data: companyData } = await api.get(`/api/company/${authStore.companyId}`)
+    const company = companyData?.result || {}
+
+    // Buscar logo — mesma lógica do ContractDocumentsPage
+    let logoBase64 = null
+    const logo = company.companyLogo
+    if (logo && logo !== '/logo.png') {
+      try {
+        const token = localStorage.getItem('applicationMicroToken')
+        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+        const resp = await fetch(logo, { headers })
+        const contentType = resp.headers.get('content-type') || ''
+        if (resp.ok && contentType.includes('image/')) {
+          const blob = await resp.blob()
+          logoBase64 = await new Promise(r => {
+            const reader = new FileReader()
+            reader.onload = () => r(reader.result)
+            reader.readAsDataURL(blob)
+          })
+        }
+      } catch {}
+    }
+
+    const header = buildCompanyHeader(company, logoBase64, 'LISTA DE MUTUÁRIOS')
+
+    const tableHeader = [
+      { text: 'Mutuário', style: 'tableHeader' },
+      { text: 'Pessoa de Contacto', style: 'tableHeader' },
+      { text: 'Emergência', style: 'tableHeader' },
+      { text: 'Bairro', style: 'tableHeader' },
+      { text: 'Estado', style: 'tableHeader' }
+    ]
+
+    const tableRows = customers.value.map(row => [
+      { text: row.customerName || '-', style: 'cellText' },
+      { text: row.customerEmergencyPerson || '-', style: 'cellText' },
+      { text: row.customerEmergencyContact || '-', style: 'cellText' },
+      { text: row.customerBairro || '-', style: 'cellText' },
+      { text: row.customerStatus === 1 ? 'Activo' : 'Inactivo', style: 'cellCenter' }
+    ])
+
+    const docDefinition = {
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      pageMargins: [20, 20, 20, 30],
+      content: [
+        ...header,
+        {
+          table: {
+            headerRows: 1,
+            widths: ['*', '*', '*', 80, 50],
+            body: [tableHeader, ...tableRows]
+          },
+          layout: 'grid'
+        },
+        { text: `Total: ${customers.value.length} mutuários`, style: 'totalLabel', margin: [0, 10, 0, 0] }
+      ],
+      styles: {
+        sectionTitle: { fontSize: 12, bold: true, color: '#1b5e20' },
+        tableHeader: { fontSize: 9, bold: true, alignment: 'center', fillColor: '#e8eaf6' },
+        cellText: { fontSize: 9 },
+        cellCenter: { fontSize: 9, alignment: 'center' },
+        totalLabel: { fontSize: 10, bold: true, alignment: 'right' }
+      }
+    }
+
+    pdfMake.createPdf(docDefinition).open()
+    $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
+  } catch (e) {
+    console.error('Erro ao gerar PDF:', e)
+    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+  }
 }
 
 onMounted(() => {

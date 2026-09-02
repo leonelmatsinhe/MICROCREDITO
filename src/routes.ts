@@ -1,6 +1,7 @@
 import express, { request } from "express";
 import { Request, Response } from "express";
 import path from "path";
+import fs from "fs";
 import multer from "multer";
 
 // Determina a raiz do projecto (mesma lógica de app.ts)
@@ -38,6 +39,7 @@ import {
   loginCustomer,
   changeCustomerPassword,
   getAllCustomerNames,
+  setCustomerPassword,
 } from "./controllers/CustomerController";
 
 import {
@@ -126,6 +128,14 @@ import {
   syncSmsInbox,
   updateGatewaySmsStatus,
 } from "./controllers/SmsGatewayController";
+import { sendWhatsApp, listWhatsApp } from "./controllers/WhatsAppController";
+import {
+  getCustomerDashboard,
+  getCustomerLoanDetail,
+  initiateMpesaPayment,
+  confirmMpesaPayment,
+  sendCustomerCredentials,
+} from "./controllers/CustomerPortalController";
 
 import { customerContract } from "./controllers/PdfController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
@@ -148,9 +158,25 @@ import { getBMReport } from "./controllers/BMReportController";
 const routes = express.Router();
 const documentUpload = multer(multerConfig).single("file");
 
-routes.get("/logo/:image", (req: Request, res: Response) =>
-  res.sendFile(path.join(projectRoot, "uploads", "img", req.params.image))
-);
+routes.get("/logo/:image", (req: Request, res: Response) => {
+  // Suporta tanto "filename" como "/documents/filename"
+  const raw = req.params.image || '';
+  const fileName = path.basename(raw);
+  // Primeiro tenta uploads/img, depois uploads/documents
+  const imgPath = path.join(projectRoot, 'uploads', 'img', fileName);
+  const docPath = path.join(projectRoot, 'uploads', 'documents', fileName);
+  if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
+  if (fs.existsSync(docPath)) return res.sendFile(docPath);
+  return res.status(404).json({ success: false, message: 'Logo não encontrado.' });
+});
+
+// Rota para servir documentos (fotos de garantias, logotipos, etc.)
+routes.get("/documents/:fileName", (req: Request, res: Response) => {
+  const safeFileName = path.basename(req.params.fileName);
+  const filePath = path.join(projectRoot, 'uploads', 'documents', safeFileName);
+  if (fs.existsSync(filePath)) return res.sendFile(filePath);
+  return res.status(404).json({ success: false, message: 'Ficheiro não encontrado.' });
+});
 
 routes.post("/api/userCredentials", sendUserCredentials);
 // Login Routes
@@ -159,12 +185,23 @@ routes.post("/api/auth/refresh", refreshToken);
 routes.post("/api/customer/login", loginCustomer);
 routes.post("/api/customer/changePassword", changeCustomerPassword);
 
+// Customer Portal routes
+routes.get("/api/portal/:companyId/:customerId/dashboard", getCustomerDashboard);
+routes.get("/api/portal/:companyId/:customerId/loan/:loanId", getCustomerLoanDetail);
+routes.post("/api/portal/mpesa/initiate", initiateMpesaPayment);
+routes.post("/api/portal/mpesa/confirm", confirmMpesaPayment);
+routes.post("/api/portal/send-credentials", sendCustomerCredentials);
+
 // Customer Contrats
 routes.get("/contract/:companyId/:accountNumber/:loanId", customerContract)
 
 routes.get("/api/findAllSms", findAllSms);
 routes.get("/api/findSmsByCustomer/:id", findSmsByCustomer);
 routes.post("/api/sendSms", sendSms);
+
+// WhatsApp routes
+routes.post("/api/whatsapp/send", sendWhatsApp);
+routes.get("/api/whatsapp/messages", listWhatsApp);
 
 routes.get("/api/debt", findAllDebts);
 routes.get("/api/debt/:id", findAllDebts);
@@ -303,6 +340,7 @@ routes.put("/api/customer/:id", updateCustomer);
 routes.delete("/api/customer/:id", deleteCustomer);
 routes.post("/api/customer/bulk", bulkCreateCustomers);
 routes.post("/api/customer", createCustomer);
+routes.post("/api/customer/set-password", setCustomerPassword);
 
 // Account Routes
 routes.get("/api/accounts/:id", findAllaccounts);

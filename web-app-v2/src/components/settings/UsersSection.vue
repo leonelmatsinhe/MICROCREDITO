@@ -87,6 +87,9 @@
             <q-btn flat round dense icon="lock_reset" size="sm" color="warning" @click="resetPassword(user)" v-if="isAdmin">
               <q-tooltip>Resetar Senha</q-tooltip>
             </q-btn>
+            <q-btn flat round dense icon="lock_open" size="sm" color="primary" @click="openCredentialsModal(user)" v-if="isAdmin">
+              <q-tooltip>Enviar Credenciais</q-tooltip>
+            </q-btn>
             <q-btn flat round dense icon="edit" size="sm" color="grey-7" @click="openEdit(user)" v-if="isAdmin">
               <q-tooltip>Editar</q-tooltip>
             </q-btn>
@@ -172,6 +175,13 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Modal de Credenciais -->
+    <UserCredentialsModal
+      v-model="showCredentialsModal"
+      :user="selectedUserForCredentials"
+      @sent="onCredentialsSent"
+    />
   </div>
 </template>
 
@@ -182,6 +192,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { getInitials } from '@/utils/formatters'
 import { logCreateUser, logEditUser, logDeleteUser, logResetPassword } from '@/utils/logger'
+import UserCredentialsModal from '@/components/modals/UserCredentialsModal.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -199,6 +210,8 @@ const showDeleteConfirm = ref(false)
 const showPassword = ref(false)
 const editingUser = ref(null)
 const deletingUser = ref(null)
+const showCredentialsModal = ref(false)
+const selectedUserForCredentials = ref({})
 
 const form = ref({ name: '', email: '', phone: '', userRole: 3, password: '', status: 1 })
 
@@ -227,6 +240,15 @@ function openEdit(user) {
   form.value = { name: user.name, email: user.email, phone: user.phone || '', userRole: user.userRole, password: '', status: user.status }
   showPassword.value = false
   showForm.value = true
+}
+
+function openCredentialsModal(user) {
+  selectedUserForCredentials.value = user
+  showCredentialsModal.value = true
+}
+
+function onCredentialsSent() {
+  settingsStore.fetchUsers(authStore.companyId)
 }
 
 function closeForm() { showForm.value = false; editingUser.value = null }

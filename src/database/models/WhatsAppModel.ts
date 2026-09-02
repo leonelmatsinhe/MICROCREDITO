@@ -1,7 +1,7 @@
 import { DataTypes } from "sequelize";
 import { db } from "../db";
 
-export const UserModel = db.define("user", {
+export const WhatsAppModel = db.define("whatsapp_messages", {
   id: {
     type: DataTypes.INTEGER,
     autoIncrement: true,
@@ -12,33 +12,38 @@ export const UserModel = db.define("user", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  email: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  password: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  updatedPassword: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
   phone: {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  accountNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  customerName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  messageType: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  messageBody: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
   status: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING,
     allowNull: false,
+    defaultValue: "queued",
   },
-  userRole: {
-    type: DataTypes.INTEGER,
+  direction: {
+    type: DataTypes.STRING,
     allowNull: false,
+    defaultValue: "outbound",
   },
-
+  payloadJson: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
 });

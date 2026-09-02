@@ -207,60 +207,89 @@ const deleteCustomer = async (req: Request, res: Response) => {
 };
 
 const loginCustomer = async (req: Request, res: Response) => {
-  const { phone, password } = req.body;
-  console.log(phone, password)
+  try {
+    const { phone, password } = req.body;
+    const loginValue = (phone || '').trim();
+    console.log('[CustomerLogin] login attempt:', loginValue);
 
-  const customer = await CustomerModel.findOne({
-    where: {
-      customerPhone: phone,
-    },
-  });
-  if (customer?.getDataValue.length == 1) {
-    if (
-      await bcryptjs.compare(password, customer?.getDataValue("password"))
-    ) {
-      const token = jwt.sign(
-        { id: customer?.getDataValue("id") },
-        process.env.APP_SECRET + "",
-        {
-          expiresIn: "15d",
-        }
-      );
-
-      const data = [
-        {
-          id: customer?.getDataValue("id"),
-          companyId: customer?.getDataValue("companyId"),
-          accountNumber: customer?.getDataValue("accountNumber"),
-          customerName: customer?.getDataValue("customerName"),
-          customerEmail: customer?.getDataValue("customerEmail"),
-          customerPhone: customer?.getDataValue("customerPhone"),
-          customerNuit: customer?.getDataValue("customerNuit"),
-          customerNationalId: customer?.getDataValue("customerNationalId"),
-          issuedAt: customer?.getDataValue("issuedAt"),
-          localOfIssue: customer?.getDataValue("localOfIssue"),
-          customerDateOfBirth: customer?.getDataValue("customerDateOfBirth"),
-          customerProfession: customer?.getDataValue("customerProfession"),
-          customerMonthlySalary: customer?.getDataValue("customerMonthlySalary"),
-          customerLocalOfWork: customer?.getDataValue("customerLocalOfWork"),
-          customerAddress: customer?.getDataValue("customerAddress"),
-          sex: customer?.getDataValue("sex"),
-          maritalStatus: customer?.getDataValue("maritalStatus"),
-          status: customer?.getDataValue("status"),
-          createdAt: customer?.getDataValue("createdAt"),
-          updatedAt: customer?.getDataValue("updatedAt"),
-        },
-      ];
-      return res.send(JSON.stringify({ success: true, result: data, token }));
-    } else {
-      return res
-        .status(200)
-        .send(JSON.stringify({ success: false, message: "Wrong password" }));
+    if (!loginValue || !password) {
+      return res.status(400).json({ success: false, message: "Telefone/email e senha são obrigatórios." });
     }
-  } else {
-    return res
-      .status(200)
-      .json({ success: false, message: "Customer not found" });
+
+    // Buscar por telefone OU email (Op.or)
+    const { Op } = require('sequelize');
+    const customer = await CustomerModel.findOne({
+      where: {
+        [Op.or]: [
+          { customerPhone: loginValue },
+          { customerEmail: loginValue },
+        ],
+      },
+    });
+
+    if (!customer) {
+      console.log('[CustomerLogin] Customer not found for:', loginValue);
+      return res.status(200).json({ success: false, message: "Cliente não encontrado." });
+    }
+
+    const storedPassword = customer.getDataValue('password');
+
+    // Tentar bcrypt primeiro
+    let passwordMatch = false;
+    try {
+      passwordMatch = await bcryptjs.compare(password, storedPassword);
+    } catch (e) {
+      // Se bcrypt falhar (password pode ser plain text), comparar directamente
+      passwordMatch = (password === storedPassword);
+    }
+
+    // Se bcrypt falhou, tentar comparação plain text
+    if (!passwordMatch && storedPassword === password) {
+      passwordMatch = true;
+      // Re-hash para bcrypt
+      const newHash = await bcryptjs.hash(password, 10);
+      await customer.update({ password: newHash });
+    }
+
+    if (!passwordMatch) {
+      console.log('[CustomerLogin] Wrong password for:', loginValue);
+      return res.status(200).json({ success: false, message: "Senha incorreta." });
+    }
+
+    const token = jwt.sign(
+      { id: customer.getDataValue('id') },
+      process.env.APP_SECRET + "",
+      { expiresIn: "15d" }
+    );
+
+    const data = [{
+      id: customer.getDataValue('id'),
+      companyId: customer.getDataValue('companyId'),
+      accountNumber: customer.getDataValue('accountNumber'),
+      customerName: customer.getDataValue('customerName'),
+      customerEmail: customer.getDataValue('customerEmail'),
+      customerPhone: customer.getDataValue('customerPhone'),
+      customerNuit: customer.getDataValue('customerNuit'),
+      customerNationalId: customer.getDataValue('customerNationalId'),
+      issuedAt: customer.getDataValue('issuedAt'),
+      localOfIssue: customer.getDataValue('localOfIssue'),
+      customerDateOfBirth: customer.getDataValue('customerDateOfBirth'),
+      customerProfession: customer.getDataValue('customerProfession'),
+      customerMonthlySalary: customer.getDataValue('customerMonthlySalary'),
+      customerLocalOfWork: customer.getDataValue('customerLocalOfWork'),
+      customerAddress: customer.getDataValue('customerAddress'),
+      sex: customer.getDataValue('sex'),
+      maritalStatus: customer.getDataValue('maritalStatus'),
+      status: customer.getDataValue('status'),
+      createdAt: customer.getDataValue('createdAt'),
+      updatedAt: customer.getDataValue('updatedAt'),
+    }];
+
+    console.log('[CustomerLogin] Success for:', loginValue);
+    return res.send(JSON.stringify({ success: true, result: data, token }));
+  } catch (err: any) {
+    console.error('[CustomerLogin] Error:', err.message);
+    return res.status(500).json({ success: false, message: "Erro interno do servidor." });
   }
 };
 
@@ -419,6 +448,29 @@ const getAllCustomerNames = async (req: Request, res: Response) => {
   }
 };
 
+// Admin/Gestor define senha do cliente directamente (para teste)
+const setCustomerPassword = async (req: Request, res: Response) => {
+  try {
+    const { customerId, newPassword } = req.body;
+    if (!customerId || !newPassword) {
+      return res.status(400).json({ success: false, message: "customerId e newPassword sao obrigatorios." });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ success: false, message: "A senha deve ter pelo menos 4 caracteres." });
+    }
+    const customer = await CustomerModel.findByPk(customerId);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: "Cliente nao encontrado." });
+    }
+    const hash = await bcryptjs.hash(newPassword, 10);
+    await customer.update({ password: hash });
+    return res.status(200).json({ success: true, message: "Senha do cliente actualizada com sucesso.", customerId });
+  } catch (err: any) {
+    console.error("Erro ao definir senha do cliente:", err.message);
+    return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+  }
+};
+
 export {
   findAllCustomers,
   searchCustomers,
@@ -430,4 +482,5 @@ export {
   loginCustomer,
   changeCustomerPassword,
   getAllCustomerNames,
+  setCustomerPassword,
 };

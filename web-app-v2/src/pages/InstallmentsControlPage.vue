@@ -259,6 +259,14 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Modal de envio SMS/WhatsApp -->
+    <SendMessageModal
+      v-model="showMessageModal"
+      :phone="messagePhone"
+      :account-number="messageAccountNumber"
+      :customer-name="messageCustomerName"
+    />
   </div>
 </template>
 
@@ -269,6 +277,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
 import { getInitials } from '@/utils/formatters'
+import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -278,6 +287,11 @@ const loading = ref(false)
 const installments = ref([])
 const showDetails = ref(false)
 const selectedInstallment = ref(null)
+const showMessageModal = ref(false)
+const messageChannel = ref('sms')
+const messagePhone = ref('')
+const messageAccountNumber = ref('')
+const messageCustomerName = ref('')
 
 const filter = ref({ status: null, search: '', from: '', to: '' })
 const statusOptions = [
@@ -329,8 +343,21 @@ function getAvatarColor(row) {
 }
 function getStatusColor(s) { return { 1: 'positive', 0: 'orange', '-1': 'warning' }[s] || 'grey' }
 function getStatusLabel(s) { return { 1: 'Pago', 0: 'Pendente', '-1': 'Parcial' }[s] || '?' }
-function sendSMS(row) { $q.notify({ type: 'info', message: `SMS para ${row.customerName} — Em desenvolvimento`, position: 'top' }) }
-function sendWhatsApp(row) { $q.notify({ type: 'info', message: `WhatsApp para ${row.customerName} — Em desenvolvimento`, position: 'top' }) }
+function sendSMS(row) {
+  messageChannel.value = 'sms'
+  messagePhone.value = ''
+  messageAccountNumber.value = row.accountNumber || ''
+  messageCustomerName.value = row.customerName || ''
+  showMessageModal.value = true
+}
+
+function sendWhatsApp(row) {
+  messageChannel.value = 'whatsapp'
+  messagePhone.value = ''
+  messageAccountNumber.value = row.accountNumber || ''
+  messageCustomerName.value = row.customerName || ''
+  showMessageModal.value = true
+}
 function viewDetails(row) { selectedInstallment.value = row; showDetails.value = true }
 function formatMoneyRaw(val) { return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) }
 
@@ -344,33 +371,39 @@ async function downloadPDF() {
     const pdfFonts = pdfFontsMod.default
     if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
 
-    let companyLogo = null
-    const company = companyStore.company
-    if (company?.companyLogo) {
+    // Header partilhado — mesma lógica do ContractDocumentsPage
+    const { buildCompanyHeader } = await import('@/utils/pdfHeader')
+    const company = companyStore.company || {}
+
+    let logoBase64 = null
+    const logo = company.companyLogo
+    if (logo && logo !== '/logo.png') {
       try {
-        const resp = await fetch(`/api/logo/${company.companyLogo}`)
-        if (resp.ok) { const blob = await resp.blob(); companyLogo = await new Promise(r => { const reader = new FileReader(); reader.onload = () => r(reader.result); reader.readAsDataURL(blob) }) }
+        const token = localStorage.getItem('applicationMicroToken')
+        const headers = token ? { Authorization: `Bearer ${token}` } : {}
+        const resp = await fetch(logo, { headers })
+        const contentType = resp.headers.get('content-type') || ''
+        if (resp.ok && contentType.includes('image/')) {
+          const blob = await resp.blob()
+          logoBase64 = await new Promise(r => {
+            const reader = new FileReader()
+            reader.onload = () => r(reader.result)
+            reader.readAsDataURL(blob)
+          })
+        }
       } catch {}
     }
 
-    const comp = company || {}
-    const dateStr = `${String(new Date().getDate()).padStart(2, '0')}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
-    const headerImage = companyLogo ? [{ image: companyLogo, width: 50, margin: [0, 0, 15, 0] }] : []
+    const header = buildCompanyHeader(company, logoBase64, 'CONTROLE DE PRESTAÇÕES POR VENCIMENTO')
 
-    // Agrupar por data de vencimento (recente → antigo)
-    const sorted = [...filteredInstallments.value].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-    const groups = {}
-    sorted.forEach(row => {
-      const d = new Date(row.dueDate)
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-      const label = d.toLocaleDateString('pt-MZ', { month: 'long', year: 'numeric' })
-      if (!groups[key]) groups[key] = { label, rows: [] }
-      groups[key].rows.push(row)
-    })
+    // Tabela única — ordenar por vencimento (recente → antigo)
+    const sorted = [...filteredInstallments.value].sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate))
+
+    const dateStr = `${String(new Date().getDate()).padStart(2, '0')}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
 
     const pdfContent = [
-      { columns: [...headerImage, { width: '*', stack: [{ text: comp.companyName || 'Empresa', style: 'headerTitle', margin: [0, 0, 0, 2] }, { text: `NUIT: ${comp.companyNuit || '-'}`, style: 'headerSub' }, { text: `${comp.companyAddress || ''} | Tel: ${comp.companyPhone || ''}`, style: 'headerSub' }] }, { width: 150, stack: [{ text: 'DATA:', style: 'labelText', margin: [0, 0, 0, 2] }, { text: dateStr, style: 'valueText' }, { text: `Registos: ${filteredInstallments.value.length}`, style: 'labelText', margin: [8, 4, 0, 0] }] }], margin: [0, 0, 0, 15] },
-      { text: 'CONTROLE DE PRESTAÇÕES POR VENCIMENTO', style: 'sectionTitle', margin: [0, 0, 0, 10] }
+      ...header,
+      { columns: [{ width: '*', text: '' }, { width: 150, stack: [{ text: 'DATA:', style: 'labelText', margin: [0, 0, 0, 2] }, { text: dateStr, style: 'valueText' }, { text: `Registos: ${filteredInstallments.value.length}`, style: 'labelText', margin: [8, 4, 0, 0] }] }], margin: [0, 0, 0, 10] }
     ]
 
     const tableHeader = [
@@ -379,24 +412,55 @@ async function downloadPDF() {
       { text: 'Mora', style: 'tableHeader' }, { text: 'Total a Pagar', style: 'tableHeader' }
     ]
 
-    Object.values(groups).forEach(group => {
-      pdfContent.push({ text: group.label.toUpperCase(), style: 'groupTitle', margin: [0, 10, 0, 5] })
-      const groupRows = group.rows.map(row => {
-        let obs = row.status === 1 ? 'Liquidado' : row.daysOverdue > 0 ? `${row.daysOverdue} dias vencido` : row.daysUntilDue > 0 ? `${row.daysUntilDue} dias pra vencer` : 'Vence hoje'
-        return [{ text: row.customerName || '-', style: 'cellText' }, { text: formatMoneyRaw(row.installment), style: 'cellRight' }, { text: formatDate(row.dueDate), style: 'cellCenter' }, { text: obs, style: 'cellText' }, { text: formatMoneyRaw(row.lateFee), style: 'cellRight' }, { text: formatMoneyRaw(row.totalToPay), style: 'cellRightBold' }]
-      })
-      const gm = group.rows.reduce((s, r) => s + (r.lateFee || 0), 0)
-      const gt = group.rows.reduce((s, r) => s + (r.totalToPay || 0), 0)
-      groupRows.push([{ text: `Subtotal (${group.rows.length})`, style: 'totalCell' }, { text: '', style: 'totalCell' }, { text: '', style: 'totalCell' }, { text: '', style: 'totalCell' }, { text: formatMoneyRaw(gm), style: 'totalCellRight' }, { text: formatMoneyRaw(gt), style: 'totalCellRight' }])
-      pdfContent.push({ table: { headerRows: 1, widths: ['*', 70, 65, 90, 60, 80], body: [tableHeader, ...groupRows] }, layout: 'grid', margin: [0, 0, 0, 10] })
+    const tableRows = sorted.map(row => {
+      let obs = row.status === 1 ? 'Liquidado' : row.daysOverdue > 0 ? `${row.daysOverdue} dias vencido` : row.daysUntilDue > 0 ? `${row.daysUntilDue} dias pra vencer` : 'Vence hoje'
+      return [
+        { text: row.customerName || '-', style: 'cellText' },
+        { text: formatMoneyRaw(row.installment), style: 'cellRight' },
+        { text: formatDate(row.dueDate), style: 'cellCenter' },
+        { text: obs, style: 'cellText' },
+        { text: formatMoneyRaw(row.lateFee), style: 'cellRight' },
+        { text: formatMoneyRaw(row.totalToPay), style: 'cellRightBold' }
+      ]
     })
 
-    const tm = filteredInstallments.value.reduce((s, r) => s + (r.lateFee || 0), 0)
-    const tg = filteredInstallments.value.reduce((s, r) => s + (r.totalToPay || 0), 0)
-    pdfContent.push({ text: 'TOTAL GERAL', style: 'sectionTitle', margin: [0, 15, 0, 5] })
-    pdfContent.push({ table: { widths: ['*', 70, 65, 90, 60, 80], body: [[{ text: `TOTAL (${filteredInstallments.value.length} prestações)`, style: 'totalCell' }, { text: '', style: 'totalCell' }, { text: '', style: 'totalCell' }, { text: '', style: 'totalCell' }, { text: formatMoneyRaw(tm), style: 'totalCellRight' }, { text: formatMoneyRaw(tg), style: 'totalCellRight' }]] }, layout: 'grid' })
+    const tm = sorted.reduce((s, r) => s + (r.lateFee || 0), 0)
+    const tg = sorted.reduce((s, r) => s + (r.totalToPay || 0), 0)
+    tableRows.push([
+      { text: `TOTAL (${sorted.length} prestações)`, style: 'totalCell' },
+      { text: '', style: 'totalCell' },
+      { text: '', style: 'totalCell' },
+      { text: '', style: 'totalCell' },
+      { text: formatMoneyRaw(tm), style: 'totalCellRight' },
+      { text: formatMoneyRaw(tg), style: 'totalCellRight' }
+    ])
 
-    pdfMake.createPdf({ pageSize: 'A4', pageOrientation: 'landscape', pageMargins: [20, 20, 20, 30], content: pdfContent, styles: { headerTitle: { fontSize: 14, bold: true, color: '#1b5e20' }, headerSub: { fontSize: 8, color: '#37474f' }, sectionTitle: { fontSize: 11, bold: true }, labelText: { fontSize: 8, bold: true }, valueText: { fontSize: 8 }, tableHeader: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e8eaf6' }, cellText: { fontSize: 7 }, cellCenter: { fontSize: 7, alignment: 'center' }, cellRight: { fontSize: 7, alignment: 'right' }, cellRightBold: { fontSize: 7, alignment: 'right', bold: true }, totalCell: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e0e0e0' }, totalCellRight: { fontSize: 7, bold: true, alignment: 'right', fillColor: '#e0e0e0' }, groupTitle: { fontSize: 9, bold: true, color: '#1b5e20' } } }).open()
+    pdfContent.push({
+      table: { headerRows: 1, widths: ['*', 70, 65, 90, 60, 80], body: [tableHeader, ...tableRows] },
+      layout: 'grid'
+    })
+
+    pdfMake.createPdf({
+      pageSize: 'A4',
+      pageOrientation: 'landscape',
+      pageMargins: [20, 20, 20, 30],
+      content: pdfContent,
+      styles: {
+        headerTitle: { fontSize: 14, bold: true, color: '#1b5e20' },
+        headerSub: { fontSize: 8, color: '#37474f' },
+        sectionTitle: { fontSize: 12, bold: true },
+        labelText: { fontSize: 9, bold: true },
+        valueText: { fontSize: 9 },
+        tableHeader: { fontSize: 9, bold: true, alignment: 'center', fillColor: '#e8eaf6' },
+        cellText: { fontSize: 9 },
+        cellCenter: { fontSize: 9, alignment: 'center' },
+        cellRight: { fontSize: 9, alignment: 'right' },
+        cellRightBold: { fontSize: 9, alignment: 'right', bold: true },
+        totalCell: { fontSize: 9, bold: true, alignment: 'center', fillColor: '#e0e0e0' },
+        totalCellRight: { fontSize: 9, bold: true, alignment: 'right', fillColor: '#e0e0e0' },
+        groupTitle: { fontSize: 10, bold: true, color: '#1b5e20' }
+      }
+    }).open()
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) { console.error('Erro ao gerar PDF:', e); $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' }) }
 }
