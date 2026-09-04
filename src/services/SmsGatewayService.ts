@@ -543,7 +543,7 @@ export const enqueuePasswordResetSms = async (params: {
 
   // Buscar nome da empresa
   const company = await CompanyModel.findByPk(params.companyId) as any;
-  const companyName = company?.toJSON()?.companyName || 'MBR Microcrédito';
+  const companyName = company?.toJSON()?.companyName || 'Mais Mola';
 
   // Template: max 160 chars, sem caracteres especiais
   const msg = `Ola ${customer.customerName}. Sua senha de acesso ao portal da ${companyName} e: ${params.newPassword}. Telefone: ${customer.customerPhone}. Altere apos o primeiro acesso.`;

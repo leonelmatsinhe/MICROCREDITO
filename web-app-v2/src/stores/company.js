@@ -10,7 +10,7 @@ export const useCompanyStore = defineStore('company', {
 
   getters: {
     companyId: (state) => state.company?.id ?? null,
-    companyName: (state) => state.company?.companyName || state.company?.smsSender || 'MBR Microcrédito',
+    companyName: (state) => state.company?.companyName || state.company?.smsSender || 'Mais Mola',
     companyLogo: (state) => {
       const logo = state.company?.companyLogo
       if (!logo) return '/logo.png'

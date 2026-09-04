@@ -411,7 +411,7 @@ async function generateContract() {
     const adminFeeRate = parseFloat(l.administrativeFee) || 0
     const preparationFee = Math.round(amount * adminFeeRate * 100) / 100
     const adminFeePct = (adminFeeRate * 100).toFixed(1)
-    const companyName = c.companyName || 'MBR Microcrédito'
+    const companyName = c.companyName || 'Mais Mola'
     const companyAbbr = companyName.replace(/\s+/g, '').substring(0, 10).toUpperCase()
     // Cláusula VIGÉSIMA PRIMEIRA (seguro) — ocultável por empresa em Configurações → Dados da Empresa
     const showInsuranceClause = Number(c.contractHideInsuranceClause || 0) !== 1
@@ -855,7 +855,7 @@ async function generateTerm() {
         },
         { text: ' ' },
         { text: [{ text: 'Cheque (________)    Numerário (________)    Transferência (________)', fontSize: 10 }], alignment: 'left', margin: [0, 0, 0, 6] },
-        { text: [{ text: ' da ' }, { text: c.companyName || 'MBR Microcrédito', bold: true }, { text: '.' }], fontSize: 10, alignment: 'justify' },
+        { text: [{ text: ' da ' }, { text: c.companyName || 'Mais Mola', bold: true }, { text: '.' }], fontSize: 10, alignment: 'justify' },
         { text: '\n\n' },
         { text: 'Sendo expressão da verdade e sem qualquer coação, firmo presente.', fontSize: 10, alignment: 'justify' },
         { text: '\n\n' },

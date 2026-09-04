@@ -131,7 +131,7 @@ const generatedPassword = ref('')
 const alreadySent = ref(false)
 const sentAt = ref('')
 
-const companyName = computed(() => companyStore.companyName || 'MBR Microcrédito')
+const companyName = computed(() => companyStore.companyName || 'Mais Mola')
 
 // SMS desactivado nas configurações da empresa: não envia nada para o servidor
 const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)

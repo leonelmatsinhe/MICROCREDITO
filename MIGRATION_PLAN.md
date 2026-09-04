@@ -1,4 +1,4 @@
-# 🚀 Plano de Migração — MBR Microcrédito
+# 🚀 Plano de Migração — Mais Mola
 
 ## Vue 2 + BootstrapVue → Quasar Framework + Vue 3 + Pinia
 

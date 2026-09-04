@@ -131,7 +131,7 @@ const show = computed({
   set: (val) => emit('update:modelValue', val)
 })
 
-const companyName = computed(() => companyStore.company?.companyName || 'MBR Microcrédito')
+const companyName = computed(() => companyStore.company?.companyName || 'Mais Mola')
 
 const saving = ref(false)
 const guarantees = ref([])

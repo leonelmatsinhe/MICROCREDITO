@@ -162,7 +162,7 @@ const drawerOpen = computed({
 
 const companyName = computed(() => {
   const name = companyStore.companyName
-  return name && name.trim() ? name : 'MBR Microcrédito'
+  return name && name.trim() ? name : 'Mais Mola'
 })
 
 const logoSrc = computed(() => {

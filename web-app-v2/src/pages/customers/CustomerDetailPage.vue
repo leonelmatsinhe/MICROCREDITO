@@ -1891,7 +1891,7 @@ function generateNewPassword() {
 }
 
 const companyName = computed(() => {
-  return companyStore.companyName || 'MBR Microcrédito'
+  return companyStore.companyName || 'Mais Mola'
 })
 
 // SMS desactivado nas configurações da empresa (só o Admin altera)

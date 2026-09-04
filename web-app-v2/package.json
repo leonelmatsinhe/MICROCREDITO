@@ -1,8 +1,8 @@
 {
   "name": "mbr-microcredito-v2",
   "version": "1.0.0",
-  "description": "MBR Microcrédito - Sistema de Gestão de Crédito",
-  "productName": "MBR Microcrédito",
+  "description": "Mais Mola - Sistema de Gestão de Crédito",
+  "productName": "Mais Mola",
   "private": true,
   "scripts": {
     "dev": "vite",

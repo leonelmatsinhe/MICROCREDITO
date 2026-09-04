@@ -230,7 +230,7 @@ function getRoleLabel(role) {
 
 function openCreate() {
   editingUser.value = null
-  form.value = { name: '', email: '', phone: '', userRole: 2, password: '', status: 1 }
+  form.value = { name: '', email: '', phone: '', userRole: 3, password: '', status: 1 }
   showPassword.value = false
   showForm.value = true
 }
