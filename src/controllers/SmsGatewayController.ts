@@ -10,6 +10,9 @@ import {
   getPendingSmsQueue,
   hydrateSmsQueuePayload,
   listSmsQueueHistory,
+  processSmsQueue,
+  flushSmsQueue,
+  isCompanySmsEnabled,
 } from "../services/SmsGatewayService";
 
 const allowedStatuses = new Set(["queued", "processing", "sent", "failed", "cancelled"]);
@@ -115,6 +118,14 @@ const enqueueSmsManually = async (req: Request, res: Response) => {
     });
   }
 
+  // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+  if (!(await isCompanySmsEnabled(Number(companyId)))) {
+    return res.status(403).json({
+      success: false,
+      message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
+    });
+  }
+
   const result = await enqueueSms({
     companyId: Number(companyId),
     accountNumber,
@@ -136,6 +147,9 @@ const enqueueSmsManually = async (req: Request, res: Response) => {
       reason: (result as any).reason || "unknown",
     });
   }
+
+  // Enviar imediatamente via Tsemba (sem bloquear a resposta)
+  flushSmsQueue();
 
   return res.status(201).json({
     success: true,
@@ -159,6 +173,14 @@ const enqueueSmsAnnouncement = async (req: Request, res: Response) => {
     return res.status(400).json({
       success: false,
       message: "messageBody é obrigatório.",
+    });
+  }
+
+  // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+  if (!(await isCompanySmsEnabled(companyId))) {
+    return res.status(403).json({
+      success: false,
+      message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
     });
   }
 
@@ -213,6 +235,9 @@ const enqueueSmsAnnouncement = async (req: Request, res: Response) => {
     else skipped += 1;
   }
 
+  // Enviar o lote imediatamente via Tsemba (sem bloquear a resposta)
+  flushSmsQueue(200);
+
   return res.status(200).json({
     success: true,
     message: "Anúncio SMS processado.",
@@ -229,6 +254,14 @@ const enqueueUpcomingAlerts = async (req: Request, res: Response) => {
   const daysAhead = Number(req.body.daysAhead || req.query.daysAhead || 3);
   if (!companyId || Number.isNaN(companyId)) {
     return res.status(400).json({ success: false, message: "companyId é obrigatório." });
+  }
+
+  // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+  if (!(await isCompanySmsEnabled(companyId))) {
+    return res.status(403).json({
+      success: false,
+      message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
+    });
   }
 
   const result = await enqueueUpcomingInstallmentAlerts({
@@ -250,6 +283,14 @@ const enqueueLateInterestAlerts = async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: "companyId é obrigatório." });
   }
 
+  // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+  if (!(await isCompanySmsEnabled(companyId))) {
+    return res.status(403).json({
+      success: false,
+      message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
+    });
+  }
+
   const result = await enqueueOutstandingLateInterestAlerts({
     companyId,
     limit,
@@ -259,6 +300,25 @@ const enqueueLateInterestAlerts = async (req: Request, res: Response) => {
     success: true,
     message: "Avisos de juros de mora processados.",
     result,
+  });
+};
+
+const processSmsQueueHandler = async (req: Request, res: Response) => {
+  const limit = req.body?.limit ? Number(req.body.limit) : 100;
+  const results = await processSmsQueue({ limit });
+
+  if (!results.configured) {
+    return res.status(503).json({
+      success: false,
+      message: "TSEMBA_API_KEY não configurada no .env — a fila foi mantida intacta.",
+      result: results,
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: `Fila processada: ${results.sent} enviados, ${results.failed} com erro, ${results.deferred} adiados${results.recovered ? `, ${results.recovered} recuperados` : ""}.`,
+    result: results,
   });
 };
 
@@ -353,4 +413,5 @@ export {
   enqueueLateInterestAlerts,
   getSmsQueueHistory,
   syncSmsInbox,
+  processSmsQueueHandler,
 };

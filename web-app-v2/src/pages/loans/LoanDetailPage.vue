@@ -56,7 +56,10 @@
                   </div>
                   <div class="col-6">
                     <div class="text-caption text-grey-5">Taxa de Juros</div>
-                    <div class="text-weight-bold" style="font-size: 20px">
+                    <div v-if="Number(loan.status) === 0" class="text-weight-bold text-grey-6" style="font-size: 20px">
+                      A definir
+                    </div>
+                    <div v-else class="text-weight-bold" style="font-size: 20px">
                       {{ (loan.interestRate * 100).toFixed(1) }}%
                     </div>
                   </div>
@@ -115,7 +118,7 @@
                   class="full-width"
                   no-caps
                   rounded
-                  @click="approveLoan"
+                  @click="showApprovalModal = true"
                 />
 
                 <q-btn
@@ -164,6 +167,13 @@
         </div>
       </div>
     </template>
+
+    <!-- Modal de aprovação com escolha da taxa de juro -->
+    <LoanApprovalModal
+      v-model="showApprovalModal"
+      :loan="loan"
+      @approved="onLoanApproved"
+    />
   </div>
 </template>
 
@@ -174,6 +184,7 @@ import { useQuasar } from 'quasar'
 import { useLoansStore } from '@/stores/loans'
 import { useAuthStore } from '@/stores/auth'
 import { formatMoney } from '@/utils/formatters'
+import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 
 const $q = useQuasar()
 const router = useRouter()
@@ -183,6 +194,7 @@ const authStore = useAuthStore()
 
 const loading = computed(() => loansStore.loading)
 const loan = computed(() => loansStore.currentLoan)
+const showApprovalModal = ref(false)
 
 function getStatusColor(status) {
   const colors = { 0: 'orange', 1: 'positive', '-1': 'negative', 3: 'grey' }
@@ -194,21 +206,12 @@ function getStatusText(status) {
   return texts[status] || 'Desconhecido'
 }
 
-async function approveLoan() {
-  $q.dialog({
-    title: 'Aprovar Crédito',
-    message: 'Tem certeza que deseja aprovar este crédito?',
-    cancel: 'Não',
-    ok: { label: 'Sim, aprovar', color: 'positive' },
-    persistent: true
-  }).onOk(async () => {
-    try {
-      await loansStore.updateLoan(loan.value.id, { ...loan.value, status: 1 })
-      $q.notify({ type: 'positive', message: 'Crédito aprovado', position: 'top' })
-    } catch (error) {
-      $q.notify({ type: 'negative', message: 'Erro ao aprovar', position: 'top' })
-    }
-  })
+async function onLoanApproved() {
+  // Recarregar o crédito para reflectir o novo estado e a taxa escolhida
+  const loanId = route.params.id
+  if (loanId) {
+    await loansStore.fetchLoan(loanId, authStore.companyId)
+  }
 }
 
 async function rejectLoan() {

@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.syncSmsInbox = exports.getSmsQueueHistory = exports.enqueueLateInterestAlerts = exports.enqueueUpcomingAlerts = exports.enqueueSmsAnnouncement = exports.enqueueSmsManually = exports.updateGatewaySmsStatus = exports.getPendingSmsGateway = void 0;
+exports.processSmsQueueHandler = exports.syncSmsInbox = exports.getSmsQueueHistory = exports.enqueueLateInterestAlerts = exports.enqueueUpcomingAlerts = exports.enqueueSmsAnnouncement = exports.enqueueSmsManually = exports.updateGatewaySmsStatus = exports.getPendingSmsGateway = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const SmsQueueModel_1 = require("../database/models/SmsQueueModel");
 const SmsGatewayInboxModel_1 = require("../database/models/SmsGatewayInboxModel");
@@ -100,6 +100,13 @@ const enqueueSmsManually = (req, res) => __awaiter(void 0, void 0, void 0, funct
             message: "Campos obrigatórios: companyId, phone, messageType, messageBody.",
         });
     }
+    // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+    if (!(yield (0, SmsGatewayService_1.isCompanySmsEnabled)(Number(companyId)))) {
+        return res.status(403).json({
+            success: false,
+            message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
+        });
+    }
     const result = yield (0, SmsGatewayService_1.enqueueSms)({
         companyId: Number(companyId),
         accountNumber,
@@ -120,6 +127,8 @@ const enqueueSmsManually = (req, res) => __awaiter(void 0, void 0, void 0, funct
             reason: result.reason || "unknown",
         });
     }
+    // Enviar imediatamente via Tsemba (sem bloquear a resposta)
+    (0, SmsGatewayService_1.flushSmsQueue)();
     return res.status(201).json({
         success: true,
         message: "SMS enfileirado com sucesso.",
@@ -142,6 +151,13 @@ const enqueueSmsAnnouncement = (req, res) => __awaiter(void 0, void 0, void 0, f
         return res.status(400).json({
             success: false,
             message: "messageBody é obrigatório.",
+        });
+    }
+    // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+    if (!(yield (0, SmsGatewayService_1.isCompanySmsEnabled)(companyId))) {
+        return res.status(403).json({
+            success: false,
+            message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
         });
     }
     let finalContacts = [];
@@ -194,6 +210,8 @@ const enqueueSmsAnnouncement = (req, res) => __awaiter(void 0, void 0, void 0, f
         else
             skipped += 1;
     }
+    // Enviar o lote imediatamente via Tsemba (sem bloquear a resposta)
+    (0, SmsGatewayService_1.flushSmsQueue)(200);
     return res.status(200).json({
         success: true,
         message: "Anúncio SMS processado.",
@@ -210,6 +228,13 @@ const enqueueUpcomingAlerts = (req, res) => __awaiter(void 0, void 0, void 0, fu
     const daysAhead = Number(req.body.daysAhead || req.query.daysAhead || 3);
     if (!companyId || Number.isNaN(companyId)) {
         return res.status(400).json({ success: false, message: "companyId é obrigatório." });
+    }
+    // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+    if (!(yield (0, SmsGatewayService_1.isCompanySmsEnabled)(companyId))) {
+        return res.status(403).json({
+            success: false,
+            message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
+        });
     }
     const result = yield (0, SmsGatewayService_1.enqueueUpcomingInstallmentAlerts)({
         companyId,
@@ -228,6 +253,13 @@ const enqueueLateInterestAlerts = (req, res) => __awaiter(void 0, void 0, void 0
     if (!companyId || Number.isNaN(companyId)) {
         return res.status(400).json({ success: false, message: "companyId é obrigatório." });
     }
+    // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+    if (!(yield (0, SmsGatewayService_1.isCompanySmsEnabled)(companyId))) {
+        return res.status(403).json({
+            success: false,
+            message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
+        });
+    }
     const result = yield (0, SmsGatewayService_1.enqueueOutstandingLateInterestAlerts)({
         companyId,
         limit,
@@ -239,6 +271,24 @@ const enqueueLateInterestAlerts = (req, res) => __awaiter(void 0, void 0, void 0
     });
 });
 exports.enqueueLateInterestAlerts = enqueueLateInterestAlerts;
+const processSmsQueueHandler = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _c;
+    const limit = ((_c = req.body) === null || _c === void 0 ? void 0 : _c.limit) ? Number(req.body.limit) : 100;
+    const results = yield (0, SmsGatewayService_1.processSmsQueue)({ limit });
+    if (!results.configured) {
+        return res.status(503).json({
+            success: false,
+            message: "TSEMBA_API_KEY não configurada no .env — a fila foi mantida intacta.",
+            result: results,
+        });
+    }
+    return res.status(200).json({
+        success: true,
+        message: `Fila processada: ${results.sent} enviados, ${results.failed} com erro, ${results.deferred} adiados${results.recovered ? `, ${results.recovered} recuperados` : ""}.`,
+        result: results,
+    });
+});
+exports.processSmsQueueHandler = processSmsQueueHandler;
 const getSmsQueueHistory = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
     const from = req.query.from ? String(req.query.from) : undefined;

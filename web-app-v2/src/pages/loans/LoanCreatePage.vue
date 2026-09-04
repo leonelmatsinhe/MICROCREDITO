@@ -422,6 +422,7 @@ async function submitLoan() {
       amount: form.value.amount,
       numberOfInstallments: form.value.numberOfInstallments,
       interestRate: rate ? rate.tax : 0,
+      administrativeFee: rate ? Number(rate.administrativeFee) || 0 : 0,
       creditManager: form.value.creditManager,
       loanDescription: form.value.loanDescription || 'Crédito registado via sistema',
       capacityExcessObservation: form.value.capacityExcessObservation || '',

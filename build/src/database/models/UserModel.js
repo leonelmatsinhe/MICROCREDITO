@@ -42,4 +42,12 @@ exports.UserModel = db_1.db.define("user", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    credentialsSent: {
+        type: sequelize_1.DataTypes.INTEGER,
+        defaultValue: 0,
+    },
+    credentialsSentAt: {
+        type: sequelize_1.DataTypes.DATE,
+        allowNull: true,
+    },
 });

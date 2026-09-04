@@ -87,6 +87,43 @@
       </div>
     </div>
 
+    <!-- Solicitações de crédito pendentes (aprovadas/rejeitadas com taxa de juro) -->
+    <q-card v-if="!loading && pendingLoans.length > 0" flat bordered class="q-mb-md" style="border-radius: 12px">
+      <q-card-section class="bg-grey-1">
+        <div class="row items-center">
+          <q-icon name="hourglass_top" size="20px" color="orange" class="q-mr-sm" />
+          <div class="text-subtitle1 text-weight-bold">Pedidos de Crédito por Aprovar</div>
+          <q-space />
+          <q-badge color="orange" rounded>{{ pendingLoans.length }} pendente(s)</q-badge>
+        </div>
+      </q-card-section>
+      <q-card-section>
+        <q-list separator>
+          <q-item v-for="req in pendingLoans" :key="req.id" clickable v-ripple @click="router.push(`/loans/${req.id}`)">
+            <q-item-section avatar>
+              <q-avatar color="orange" text-color="white" size="36px">
+                <q-icon name="hourglass_top" size="18px" />
+              </q-avatar>
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>{{ req.customerName }}</q-item-label>
+              <q-item-label caption>
+                Conta {{ req.accountNumber }} | {{ formatMoney(req.amount) }} | {{ req.numberOfInstallments }} meses | {{ req.dateCreated }}
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-badge color="primary" outline rounded class="q-mr-sm">Definir taxa e aprovar</q-badge>
+              <q-icon name="chevron_right" color="grey-5" />
+            </q-item-section>
+          </q-item>
+        </q-list>
+        <div class="text-caption text-grey-6 q-mt-sm">
+          <q-icon name="info" size="14px" class="q-mr-xs" />
+          Clique num pedido para aprovar (escolhendo a taxa de juro) ou rejeitar.
+        </div>
+      </q-card-section>
+    </q-card>
+
     <!-- Loading -->
     <div v-if="loading" class="text-center q-pa-xl">
       <q-spinner-dots size="40px" color="primary" />
@@ -278,6 +315,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
@@ -285,11 +323,13 @@ import { api } from '@/boot/axios'
 import { getInitials } from '@/utils/formatters'
 
 const $q = useQuasar()
+const router = useRouter()
 const authStore = useAuthStore()
 const companyStore = useCompanyStore()
 
 const loading = ref(false)
 const installments = ref([])
+const pendingLoans = ref([])
 const showDetails = ref(false)
 const selectedInstallment = ref(null)
 
@@ -619,6 +659,19 @@ async function loadData() {
     const { data: loansData } = await api.get(`/api/loan/findAllLoans/all/${companyId}`)
     const loans = loansData?.result || []
     console.log('[Gestor] Loans encontrados:', loans.length)
+
+    // Pedidos de crédito pendentes (aguardam aprovação/rejeição com taxa de juro)
+    pendingLoans.value = loans
+      .filter(l => Number(l.status) === 0)
+      .sort((a, b) => String(b.dateCreated || '').localeCompare(String(a.dateCreated || '')))
+      .map(loan => ({
+        id: loan.id,
+        accountNumber: loan.accountNumber,
+        customerName: customerMap[String(loan.accountNumber)] || `Conta ${loan.accountNumber}`,
+        amount: Number(loan.amount) || 0,
+        numberOfInstallments: loan.numberOfInstallments,
+        dateCreated: loan.dateCreated || ''
+      }))
 
     const allInstallments = []
 

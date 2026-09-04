@@ -128,7 +128,7 @@ const getLoanAmortization = (req, res) => __awaiter(void 0, void 0, void 0, func
 });
 exports.getLoanAmortization = getLoanAmortization;
 const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { accountNumber, companyId, amount, numberOfInstallments, interestRate, creditManager, loanDescription, capacityExcessObservation, dateCreated, status, } = req.body;
+    let { accountNumber, companyId, amount, numberOfInstallments, interestRate, administrativeFee, creditManager, loanDescription, capacityExcessObservation, dateCreated, status, } = req.body;
     const capacityValidation = yield validateCapacityRule({
         accountNumber,
         companyId,
@@ -150,6 +150,7 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         amount,
         numberOfInstallments,
         interestRate,
+        administrativeFee: administrativeFee !== undefined ? Number(administrativeFee) || 0 : 0,
         creditManager,
         loanDescription,
         capacityExcessObservation: capacityValidation.normalizedObservation,
@@ -316,10 +317,10 @@ const updateLoanInstallmentDates = (req, res) => __awaiter(void 0, void 0, void 
                 message: "Empréstimo não encontrado.",
             });
         }
-        // Buscar todas as prestações
+        // Buscar todas as prestações — ordem cronológica (data de vencimento)
         const installments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
             where: { loanId: id },
-            order: [["installmentOrder", "ASC"]],
+            order: [["dueDate", "ASC"], ["id", "ASC"]],
         });
         if (!installments || installments.length === 0) {
             return res.status(404).json({

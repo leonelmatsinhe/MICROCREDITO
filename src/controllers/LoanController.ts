@@ -154,6 +154,7 @@ const createLoan = async (req: Request, res: Response) => {
     amount,
     numberOfInstallments,
     interestRate,
+    administrativeFee,
     creditManager,
     loanDescription,
     capacityExcessObservation,
@@ -184,6 +185,7 @@ const createLoan = async (req: Request, res: Response) => {
     amount,
     numberOfInstallments,
     interestRate,
+    administrativeFee: administrativeFee !== undefined ? Number(administrativeFee) || 0 : 0,
     creditManager,
     loanDescription,
     capacityExcessObservation: capacityValidation.normalizedObservation,
@@ -370,10 +372,10 @@ const updateLoanInstallmentDates = async (req: Request, res: Response) => {
       });
     }
 
-    // Buscar todas as prestações
+    // Buscar todas as prestações — ordem cronológica (data de vencimento)
     const installments = await AmorizationLoanModel.findAll({
       where: { loanId: id },
-      order: [["installmentOrder", "ASC"]],
+      order: [["dueDate", "ASC"], ["id", "ASC"]],
     });
 
     if (!installments || installments.length === 0) {

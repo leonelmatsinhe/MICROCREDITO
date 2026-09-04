@@ -77,7 +77,15 @@ const create = async (req: Request, res: Response) => {
 const update = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userUpdation = await UserModel.update(req.body, {
+    const { password, ...rest } = req.body;
+
+    // Nunca guardar a senha em texto simples: hashear sempre que vier no body
+    const data = { ...rest };
+    if (password) {
+      data.password = bcryptjs.hashSync(password + "", 10);
+    }
+
+    const userUpdation = await UserModel.update(data, {
       where: {
         id: id,
       },

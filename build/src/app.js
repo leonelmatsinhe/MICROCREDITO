@@ -15,11 +15,22 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("./config/env");
 const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
-const db_1 = require("./database/db");
 const routes_1 = require("./routes");
+const migrations_1 = require("./migrations");
+const CompanyModel_1 = require("./database/models/CompanyModel");
+const SmsGatewayService_1 = require("./services/SmsGatewayService");
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
+// Express 4 não captura erros de handlers async — um erro não tratado numa rota
+// derrubava o processo inteiro em silêncio (sem log útil). Estes handlers
+// registam o erro e mantêm o servidor vivo.
+process.on("unhandledRejection", (reason) => {
+    console.error("[UNHANDLED_REJECTION] Erro não tratado numa rota:", reason instanceof Error ? reason.stack || reason.message : reason);
+});
+process.on("uncaughtException", (error) => {
+    console.error("[UNCAUGHT_EXCEPTION]", (error === null || error === void 0 ? void 0 : error.stack) || error);
+});
 const app = (0, express_1.default)();
 const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) || __dirname.endsWith(path_1.default.sep + "build");
 const projectRoot = isCompiled
@@ -43,50 +54,52 @@ app.get("*", (req, res) => {
     res.sendFile(path_1.default.join(publicDir, "index.html"));
 });
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => __awaiter(void 0, void 0, void 0, function* () {
-    console.log(`MBR Server is running on PORT ${PORT}`);
-    // Migrações: adicionar colunas novas usando SQL raw (evita problemas de tipo Sequelize)
+const bootstrap = () => __awaiter(void 0, void 0, void 0, function* () {
+    // Migrações de schema: aplicadas ANTES de aceitar pedidos, em todos os
+    // arranques (local, PM2, Ubuntu). Idempotentes — ver src/migrations.
     try {
-        const [cols] = yield db_1.db.query("SHOW COLUMNS FROM customers LIKE 'credentialsSent'").catch(() => [[]]);
-        if (cols.length === 0) {
-            yield db_1.db.query('ALTER TABLE customers ADD COLUMN credentialsSent INTEGER DEFAULT 0');
-            console.log('[Migration] Coluna credentialsSent adicionada a customers');
-        }
-        const [cols2] = yield db_1.db.query("SHOW COLUMNS FROM customers LIKE 'credentialsSentAt'").catch(() => [[]]);
-        if (cols2.length === 0) {
-            yield db_1.db.query('ALTER TABLE customers ADD COLUMN credentialsSentAt VARCHAR(255)');
-            console.log('[Migration] Coluna credentialsSentAt adicionada a customers');
-        }
-        const [uCols] = yield db_1.db.query("SHOW COLUMNS FROM users LIKE 'credentialsSent'").catch(() => [[]]);
-        if (uCols.length === 0) {
-            yield db_1.db.query('ALTER TABLE users ADD COLUMN credentialsSent INTEGER DEFAULT 0');
-            console.log('[Migration] Coluna credentialsSent adicionada a users');
-        }
-        const [uCols2] = yield db_1.db.query("SHOW COLUMNS FROM users LIKE 'credentialsSentAt'").catch(() => [[]]);
-        if (uCols2.length === 0) {
-            yield db_1.db.query('ALTER TABLE users ADD COLUMN credentialsSentAt VARCHAR(255)');
-            console.log('[Migration] Coluna credentialsSentAt adicionada a users');
-        }
-        const [wmExists] = yield db_1.db.query("SHOW TABLES LIKE 'whatsapp_messages'").catch(() => [[]]);
-        if (wmExists.length === 0) {
-            yield db_1.db.query(`CREATE TABLE whatsapp_messages (
-        id INTEGER PRIMARY KEY AUTO_INCREMENT,
-        companyId INTEGER NOT NULL,
-        phone VARCHAR(50) NOT NULL,
-        accountNumber VARCHAR(50),
-        customerName VARCHAR(255),
-        messageType VARCHAR(100) NOT NULL,
-        messageBody TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'queued',
-        direction VARCHAR(50) DEFAULT 'outbound',
-        payloadJson TEXT,
-        createdAt DATETIME,
-        updatedAt DATETIME
-      )`);
-            console.log('[Migration] Tabela whatsapp_messages criada');
+        const migrationResult = yield (0, migrations_1.runMigrations)();
+        console.log(`[Migration] ${migrationResult.applied} aplicadas, ${migrationResult.skipped} já existentes, ${migrationResult.errors.length} erros.`);
+        if (migrationResult.errors.length > 0) {
+            console.error("[Migration] Erros (o servidor arranca na mesma):", migrationResult.errors);
         }
     }
     catch (error) {
-        console.error('[Migration] Erro:', error);
+        console.error("[Migration] Falha ao aplicar migrações:", (error === null || error === void 0 ? void 0 : error.message) || error);
     }
-}));
+    app.listen(PORT, () => {
+        console.log(`MBR Server is running on PORT ${PORT}`);
+        // Fila de SMS (Tsemba): processar mensagens pendentes a cada 60s.
+        // Sem TSEMBA_API_KEY no .env, a fila permanece intacta (sem efeitos).
+        setInterval(() => {
+            (0, SmsGatewayService_1.processSmsQueue)({ limit: 100 }).catch((error) => {
+                console.error("[SMS] Erro ao processar a fila:", (error === null || error === void 0 ? void 0 : error.message) || error);
+            });
+        }, 60000);
+        console.log("[SMS] Fila de SMS activa (Tsemba) — a cada 60s");
+        // Alertas automáticos: prestações a vencer (3 dias) + juros de mora em atraso,
+        // para todas as empresas. Enfileira 30s após o arranque e depois de 6 em 6 horas.
+        // As funções já evitam duplicados (mesma prestação/dívida só entra uma vez).
+        const runAutomaticSmsAlerts = () => __awaiter(void 0, void 0, void 0, function* () {
+            try {
+                const companies = (yield CompanyModel_1.CompanyModel.findAll({
+                    attributes: ["id"],
+                }));
+                for (const company of companies) {
+                    const companyId = Number(company.id);
+                    yield (0, SmsGatewayService_1.enqueueUpcomingInstallmentAlerts)({ companyId, daysAhead: 3 });
+                    yield (0, SmsGatewayService_1.enqueueOutstandingLateInterestAlerts)({ companyId, limit: 200 });
+                }
+                (0, SmsGatewayService_1.flushSmsQueue)(200);
+                console.log(`[SMS] Alertas automáticos enfileirados para ${companies.length} empresa(s)`);
+            }
+            catch (error) {
+                console.error("[SMS] Erro nos alertas automáticos:", (error === null || error === void 0 ? void 0 : error.message) || error);
+            }
+        });
+        setTimeout(runAutomaticSmsAlerts, 30 * 1000);
+        setInterval(runAutomaticSmsAlerts, 6 * 60 * 60 * 1000);
+        console.log("[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h");
+    });
+});
+bootstrap();

@@ -407,7 +407,10 @@ async function generateContract() {
     const amount = parseFloat(l.amount) || 0
     const rate = (l.interestRate * 100).toFixed(1)
     const totalWithInterest = amount + (amount * l.interestRate * l.numberOfInstallments)
-    const preparationFee = amount * 0.0
+    // Taxa de preparos administrativos — dinâmica, definida na concessão do crédito (0 = isento)
+    const adminFeeRate = parseFloat(l.administrativeFee) || 0
+    const preparationFee = Math.round(amount * adminFeeRate * 100) / 100
+    const adminFeePct = (adminFeeRate * 100).toFixed(1)
     const companyName = c.companyName || 'MBR Microcrédito'
     const companyAbbr = companyName.replace(/\s+/g, '').substring(0, 10).toUpperCase()
 
@@ -576,7 +579,7 @@ async function generateContract() {
         // CLÁUSULA SÉTIMA
         { text: '\nCLÁUSULA SÉTIMA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
         { text: '(Comissão de Preparos)', fontSize: 9, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },
-        { text: [{ text: 'Pela operação o Mutuário paga uma taxa de preparos de ' }, { text: `${formatMoney(preparationFee)} (${numberToWords(preparationFee)} meticais)`, bold: true }, { text: ', correspondentes a 0% sobre o capital do empréstimo.' }], fontSize: 8, alignment: 'justify' },
+        { text: [{ text: 'Pela operação o Mutuário ' }, { text: adminFeeRate > 0 ? `paga uma taxa de preparos de ${formatMoney(preparationFee)} (${numberToWords(preparationFee)} meticais), correspondentes a ${adminFeePct}% sobre o capital do empréstimo, sendo estes liquidados de uma só vez na data do desembolso do capital.` : 'está isento do pagamento da taxa de preparos administrativos.', bold: adminFeeRate > 0 }], fontSize: 8, alignment: 'justify' },
         // CLÁUSULA OITAVA
         { text: '\nCLÁUSULA OITAVA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
         { text: '(Mora e Incumprimento)', fontSize: 9, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },

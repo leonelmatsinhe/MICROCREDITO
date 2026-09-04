@@ -186,6 +186,36 @@
           </q-card-section>
         </q-card>
 
+        <!-- Serviço de SMS -->
+        <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
+          <q-card-section>
+            <div class="text-subtitle2 text-weight-bold q-mb-md">
+              <q-icon name="sms" size="16px" class="q-mr-xs" />
+              Serviço de SMS
+            </div>
+            <div class="row items-center no-wrap">
+              <q-icon name="campaign" size="22px" color="primary" class="q-mr-md" />
+              <div class="col" style="min-width: 0">
+                <div class="text-body2">Autorizar envio de SMS</div>
+                <div class="text-caption text-grey-6" style="line-height: 1.4">
+                  Quando desactivado, nenhum SMS é enviado — credenciais de acesso, aprovações de crédito, confirmações de pagamento, alertas e anúncios ficam em fila até voltar a activar.
+                </div>
+                <div v-if="!authStore.isAdmin" class="text-caption text-orange q-mt-xs">
+                  <q-icon name="lock" size="13px" class="q-mr-xs" />Apenas o Administrador pode alterar esta definição.
+                </div>
+              </div>
+              <q-toggle
+                v-model="form.smsEnabled"
+                color="positive"
+                checked-icon="check"
+                unchecked-icon="block"
+                :disable="!authStore.isAdmin"
+                class="q-ml-sm"
+              />
+            </div>
+          </q-card-section>
+        </q-card>
+
         <!-- Save Button -->
         <div class="row justify-end q-mb-lg">
           <q-btn
@@ -235,7 +265,8 @@ const form = ref({
   companyManager: '',
   companyLogo: '',
   forfeit: 0,
-  companyStatus: 1
+  companyStatus: 1,
+  smsEnabled: true
 })
 
 function getLogoUrl(logo) {
@@ -295,8 +326,13 @@ function removeLogo() {
 async function saveCompany() {
   saving.value = true
   try {
-    await companyStore.updateCompany(authStore.companyId, form.value)
-    logUpdateCompany(['Dados gerais', 'Logotipo', 'Meios de pagamento'])
+    // smsEnabled é booleano no formulário; a BD guarda 1/0
+    const payload = {
+      ...form.value,
+      smsEnabled: form.value.smsEnabled ? 1 : 0
+    }
+    await companyStore.updateCompany(authStore.companyId, payload)
+    logUpdateCompany(['Dados gerais', 'Logotipo', 'Meios de pagamento', 'Serviço de SMS'])
     $q.notify({ type: 'positive', message: 'Empresa atualizada com sucesso', position: 'top' })
   } catch (error) {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao guardar', position: 'top' })
@@ -322,7 +358,8 @@ onMounted(async () => {
         companyManager: c.companyManager || '',
         companyLogo: c.companyLogo || '',
         forfeit: c.forfeit || 0,
-        companyStatus: c.companyStatus ?? 1
+        companyStatus: c.companyStatus ?? 1,
+        smsEnabled: c.smsEnabled === 1 || c.smsEnabled == null
       }
     }
   } catch { /* silent */ }

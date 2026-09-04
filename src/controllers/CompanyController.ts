@@ -1,5 +1,21 @@
 import { Request, Response } from "express";
+import * as jwt from "jsonwebtoken";
 import { CompanyModel } from "../database/models/CompanyModel";
+import { UserModel } from "../database/models/UserModel";
+
+// A autorização de envio de SMS (smsEnabled) só pode ser alterada pelo Admin.
+const isAdminFromToken = async (req: Request): Promise<boolean> => {
+  const token = String(req.headers.authorization || "").split(" ")[1] || "";
+  try {
+    const decoded: any = jwt.verify(token, process.env.APP_SECRET + "");
+    const user: any = await UserModel.findByPk(decoded?.id, {
+      attributes: ["id", "userRole"],
+    });
+    return Number(user?.getDataValue?.("userRole")) === 1;
+  } catch (error) {
+    return false;
+  }
+};
 
 const findAllCompanies = async (req: Request, res: Response) => {
   const companies = await CompanyModel.findAll({
@@ -79,6 +95,18 @@ const createCompany = async (req: Request, res: Response) => {
 
 const updateCompany = async (req: Request, res: Response) => {
   const { id } = req.params;
+
+  // smsEnabled (autorizar/desactivar envio de SMS) — operação exclusiva do Admin
+  if (Object.prototype.hasOwnProperty.call(req.body, "smsEnabled")) {
+    const isAdmin = await isAdminFromToken(req);
+    if (!isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: "Apenas o Administrador pode alterar a autorização de envio de SMS.",
+      });
+    }
+  }
+
   const company = await CompanyModel.update(req.body, {
     where: {
       id,

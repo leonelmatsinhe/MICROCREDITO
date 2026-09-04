@@ -136,7 +136,8 @@
         <!-- Interest Rate -->
         <template v-slot:body-cell-rate="props">
           <q-td :props="props">
-            {{ (props.row.interestRate * 100).toFixed(1) }}%
+            <span v-if="Number(props.row.status) === 0" class="text-grey-5">A definir</span>
+            <span v-else>{{ (props.row.interestRate * 100).toFixed(1) }}%</span>
           </q-td>
         </template>
 

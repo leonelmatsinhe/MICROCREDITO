@@ -72,9 +72,9 @@ routes.post("/api/customer/changePassword", CustomerController_1.changeCustomerP
 // Customer Portal routes
 routes.get("/api/portal/:companyId/:customerId/dashboard", CustomerPortalController_1.getCustomerDashboard);
 routes.get("/api/portal/:companyId/:customerId/loan/:loanId", CustomerPortalController_1.getCustomerLoanDetail);
-routes.post("/api/portal/mpesa/initiate", CustomerPortalController_1.initiateMpesaPayment);
-routes.post("/api/portal/mpesa/confirm", CustomerPortalController_1.confirmMpesaPayment);
+routes.post("/api/portal/:companyId/:customerId/payments", CustomerPortalController_1.registerPortalPayment);
 routes.post("/api/portal/send-credentials", CustomerPortalController_1.sendCustomerCredentials);
+routes.post("/api/portal/:companyId/:customerId/loans/request", CustomerPortalController_1.requestCustomerLoan);
 // Customer Contrats
 routes.get("/contract/:companyId/:accountNumber/:loanId", PdfController_1.customerContract);
 routes.get("/api/findAllSms", SmsController_1.findAllSms);
@@ -141,6 +141,7 @@ routes.use("/api", auth_1.auth);
 routes.get("/api/sms-gateway/pending", SmsGatewayController_1.getPendingSmsGateway);
 routes.patch("/api/sms-gateway/:id/status", SmsGatewayController_1.updateGatewaySmsStatus);
 routes.post("/api/sms-gateway/enqueue", SmsGatewayController_1.enqueueSmsManually);
+routes.post("/api/sms-gateway/process", SmsGatewayController_1.processSmsQueueHandler);
 routes.post("/api/sms-gateway/announcements", SmsGatewayController_1.enqueueSmsAnnouncement);
 routes.post("/api/sms-gateway/alerts/upcoming", SmsGatewayController_1.enqueueUpcomingAlerts);
 routes.post("/api/sms-gateway/alerts/late-interest", SmsGatewayController_1.enqueueLateInterestAlerts);

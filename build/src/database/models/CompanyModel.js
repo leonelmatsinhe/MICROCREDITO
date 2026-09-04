@@ -69,4 +69,10 @@ exports.CompanyModel = db_1.db.define("company", {
         defaultValue: '1:Numerário,2:Cheque,3:Transferência Bancária,4:Depósito Bancário,7:M-Pesa',
         comment: 'Meios de pagamento separados por vírgula: id:nome,id:nome',
     },
+    smsEnabled: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+        comment: 'Autorização de envio de SMS (1 = activado, 0 = desactivado). Apenas o Admin altera.',
+    },
 });

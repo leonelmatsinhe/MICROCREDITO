@@ -2,13 +2,31 @@ import "./config/env";
 import express, { json } from "express";
 import path from "path";
 import fs from "fs";
-import { db } from "./database/db";
 import { routes } from "./routes";
+import { runMigrations } from "./migrations";
+import { CompanyModel } from "./database/models/CompanyModel";
+import {
+  processSmsQueue,
+  enqueueUpcomingInstallmentAlerts,
+  enqueueOutstandingLateInterestAlerts,
+  flushSmsQueue,
+} from "./services/SmsGatewayService";
 import cors from "cors";
 import morgan from "morgan";
 import bodyParser from "body-parser";
 
-
+// Express 4 não captura erros de handlers async — um erro não tratado numa rota
+// derrubava o processo inteiro em silêncio (sem log útil). Estes handlers
+// registam o erro e mantêm o servidor vivo.
+process.on("unhandledRejection", (reason: any) => {
+  console.error(
+    "[UNHANDLED_REJECTION] Erro não tratado numa rota:",
+    reason instanceof Error ? reason.stack || reason.message : reason
+  );
+});
+process.on("uncaughtException", (error: any) => {
+  console.error("[UNCAUGHT_EXCEPTION]", error?.stack || error);
+});
 
 const app = express();
 
@@ -40,52 +58,59 @@ app.get("*", (req, res) => {
 
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, async () => {
-  console.log(`MBR Server is running on PORT ${PORT}`);
-
-  // Migrações: adicionar colunas novas usando SQL raw (evita problemas de tipo Sequelize)
+const bootstrap = async () => {
+  // Migrações de schema: aplicadas ANTES de aceitar pedidos, em todos os
+  // arranques (local, PM2, Ubuntu). Idempotentes — ver src/migrations.
   try {
-    const [cols] = await db.query("SHOW COLUMNS FROM customers LIKE 'credentialsSent'").catch(() => [[]] as any);
-    if ((cols as any[]).length === 0) {
-      await db.query('ALTER TABLE customers ADD COLUMN credentialsSent INTEGER DEFAULT 0');
-      console.log('[Migration] Coluna credentialsSent adicionada a customers');
+    const migrationResult = await runMigrations();
+    console.log(
+      `[Migration] ${migrationResult.applied} aplicadas, ${migrationResult.skipped} já existentes, ${migrationResult.errors.length} erros.`
+    );
+    if (migrationResult.errors.length > 0) {
+      console.error("[Migration] Erros (o servidor arranca na mesma):", migrationResult.errors);
     }
-    const [cols2] = await db.query("SHOW COLUMNS FROM customers LIKE 'credentialsSentAt'").catch(() => [[]] as any);
-    if ((cols2 as any[]).length === 0) {
-      await db.query('ALTER TABLE customers ADD COLUMN credentialsSentAt VARCHAR(255)');
-      console.log('[Migration] Coluna credentialsSentAt adicionada a customers');
-    }
-
-    const [uCols] = await db.query("SHOW COLUMNS FROM users LIKE 'credentialsSent'").catch(() => [[]] as any);
-    if ((uCols as any[]).length === 0) {
-      await db.query('ALTER TABLE users ADD COLUMN credentialsSent INTEGER DEFAULT 0');
-      console.log('[Migration] Coluna credentialsSent adicionada a users');
-    }
-    const [uCols2] = await db.query("SHOW COLUMNS FROM users LIKE 'credentialsSentAt'").catch(() => [[]] as any);
-    if ((uCols2 as any[]).length === 0) {
-      await db.query('ALTER TABLE users ADD COLUMN credentialsSentAt VARCHAR(255)');
-      console.log('[Migration] Coluna credentialsSentAt adicionada a users');
-    }
-
-    const [wmExists] = await db.query("SHOW TABLES LIKE 'whatsapp_messages'").catch(() => [[]] as any);
-    if ((wmExists as any[]).length === 0) {
-      await db.query(`CREATE TABLE whatsapp_messages (
-        id INTEGER PRIMARY KEY AUTO_INCREMENT,
-        companyId INTEGER NOT NULL,
-        phone VARCHAR(50) NOT NULL,
-        accountNumber VARCHAR(50),
-        customerName VARCHAR(255),
-        messageType VARCHAR(100) NOT NULL,
-        messageBody TEXT NOT NULL,
-        status VARCHAR(50) DEFAULT 'queued',
-        direction VARCHAR(50) DEFAULT 'outbound',
-        payloadJson TEXT,
-        createdAt DATETIME,
-        updatedAt DATETIME
-      )`);
-      console.log('[Migration] Tabela whatsapp_messages criada');
-    }
-  } catch (error) {
-    console.error('[Migration] Erro:', error);
+  } catch (error: any) {
+    console.error("[Migration] Falha ao aplicar migrações:", error?.message || error);
   }
-});
+
+  app.listen(PORT, () => {
+    console.log(`MBR Server is running on PORT ${PORT}`);
+
+    // Fila de SMS (Tsemba): processar mensagens pendentes a cada 60s.
+    // Sem TSEMBA_API_KEY no .env, a fila permanece intacta (sem efeitos).
+    setInterval(() => {
+      processSmsQueue({ limit: 100 }).catch((error: any) => {
+        console.error("[SMS] Erro ao processar a fila:", error?.message || error);
+      });
+    }, 60000);
+    console.log("[SMS] Fila de SMS activa (Tsemba) — a cada 60s");
+
+    // Alertas automáticos: prestações a vencer (3 dias) + juros de mora em atraso,
+    // para todas as empresas. Enfileira 30s após o arranque e depois de 6 em 6 horas.
+    // As funções já evitam duplicados (mesma prestação/dívida só entra uma vez).
+    const runAutomaticSmsAlerts = async () => {
+      try {
+        const companies: any[] = (await CompanyModel.findAll({
+          attributes: ["id"],
+        })) as any[];
+        for (const company of companies) {
+          const companyId = Number(company.id);
+          await enqueueUpcomingInstallmentAlerts({ companyId, daysAhead: 3 });
+          await enqueueOutstandingLateInterestAlerts({ companyId, limit: 200 });
+        }
+        flushSmsQueue(200);
+        console.log(
+          `[SMS] Alertas automáticos enfileirados para ${companies.length} empresa(s)`
+        );
+      } catch (error: any) {
+        console.error("[SMS] Erro nos alertas automáticos:", error?.message || error);
+      }
+    };
+
+    setTimeout(runAutomaticSmsAlerts, 30 * 1000);
+    setInterval(runAutomaticSmsAlerts, 6 * 60 * 60 * 1000);
+    console.log("[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h");
+  });
+};
+
+bootstrap();

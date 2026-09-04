@@ -114,13 +114,13 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 },
             });
             const customerData = customer ? customer.toJSON() : null;
-            // Buscar amortizações do crédito
+            // Buscar amortizações do crédito (ordem cronológica por vencimento)
             const amortizations = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
                 where: {
                     companyId: companyIdNum,
                     loanId: loanData.id,
                 },
-                order: [["installmentOrder", "ASC"]],
+                order: [["dueDate", "ASC"], ["id", "ASC"]],
             });
             const amortList = amortizations.map((a) => a.toJSON());
             // Buscar transações reais do crédito

@@ -32,6 +32,12 @@ export const LoanModel = db.define("customer_loans", {
     type: DataTypes.FLOAT,
     allowNull: false,
   },
+  administrativeFee: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Taxa de preparos administrativos (fracção, ex.: 0.01 = 1%) aplicada na concessão; 0 = isento.",
+  },
   loanDescription: {
     type: DataTypes.STRING,
     allowNull: false,

@@ -22,6 +22,15 @@
           toggle-color="primary"
         />
 
+        <!-- SMS desactivado: mensagem genérica no modal, sem chamada ao servidor -->
+        <q-banner v-if="smsBlocked" class="bg-negative text-white q-mb-md" rounded>
+          <template v-slot:avatar>
+            <q-icon name="sms_failed" size="24px" />
+          </template>
+          <div class="text-weight-bold">SMS indisponível</div>
+          <div class="text-caption">O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador para o activar.</div>
+        </q-banner>
+
         <!-- Template -->
         <q-select
           v-model="selectedTemplate"
@@ -102,6 +111,7 @@ import { ref, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from '@/boot/axios'
 import { useAuthStore } from '@/stores/auth'
+import { useCompanyStore } from '@/stores/company'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -115,6 +125,11 @@ const emit = defineEmits(['update:modelValue', 'sent'])
 
 const $q = useQuasar()
 const authStore = useAuthStore()
+const companyStore = useCompanyStore()
+
+// SMS desactivado nas configurações da empresa: não envia nada para o servidor
+const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
+const smsBlocked = computed(() => channel.value === 'sms' && smsDisabled.value)
 
 const show = computed({
   get: () => props.modelValue,
@@ -231,6 +246,12 @@ function close() {
 
 async function send() {
   if (!form.value.phone || !form.value.message) return
+
+  // SMS desactivado: não envia nada para o servidor (a mensagem já está no modal)
+  if (smsBlocked.value) {
+    $q.notify({ type: 'warning', message: 'O envio de SMS está desactivado nas configurações da empresa.', position: 'top' })
+    return
+  }
 
   sending.value = true
   try {

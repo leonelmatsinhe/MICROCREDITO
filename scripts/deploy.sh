@@ -78,6 +78,12 @@ npx tsc
 cd "$PROJECT_ROOT"
 echo "  -> Backend compilado."
 
+# 4.1 Aplicar migracoes de base de dados (idempotentes; tambem correm no arranque do servidor)
+echo ""
+echo "[4.1/8] A aplicar migracoes de base de dados..."
+npm run migrate
+echo "  -> Migracoes aplicadas."
+
 # 5. Compilar frontend (Vite -> public-v2/)
 echo ""
 echo "[5/8] A compilar o frontend (Vite)..."

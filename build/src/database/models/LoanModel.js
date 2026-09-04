@@ -34,6 +34,12 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         type: sequelize_1.DataTypes.FLOAT,
         allowNull: false,
     },
+    administrativeFee: {
+        type: sequelize_1.DataTypes.FLOAT,
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Taxa de preparos administrativos (fracção, ex.: 0.01 = 1%) aplicada na concessão; 0 = isento.",
+    },
     loanDescription: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,

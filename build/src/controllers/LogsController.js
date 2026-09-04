@@ -96,23 +96,41 @@ const findLogsByCompany = (req, res) => __awaiter(void 0, void 0, void 0, functi
 });
 exports.findLogsByCompany = findLogsByCompany;
 const createLog = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { userId, companyId, description, userName, action, userRole, module, ipAddress } = req.body;
-    const logs = yield LogsModel_1.LogsModel.create({
-        companyId,
-        userId,
-        description,
-        userName,
-        action,
-        userRole,
-        module,
-        ipAddress,
-    });
-    return logs != null
-        ? res.status(200).send({ success: true, result: "Log added successfully." })
-        : res.status(204).send({
-            success: false,
-            result: "There was an error adding the log.",
+    try {
+        let { userId, companyId, description, userName, action, userRole, module, ipAddress } = req.body;
+        if (!userId || !companyId) {
+            return res.status(400).send({
+                success: false,
+                message: "userId e companyId são obrigatórios.",
+            });
+        }
+        // Normalizar valores para nunca violar NOT NULL (ex.: logout de mutuário sem `name`)
+        const logs = yield LogsModel_1.LogsModel.create({
+            companyId: Number(companyId),
+            userId: Number(userId),
+            description: String(description || "").trim() || "Acção registada",
+            userName: String(userName || "Utilizador").trim() || "Utilizador",
+            action: String(action || "ACÇÃO").trim() || "ACÇÃO",
+            userRole: userRole === undefined || userRole === null || userRole === ""
+                ? null
+                : Number(userRole),
+            module: module ? String(module) : null,
+            ipAddress: ipAddress ? String(ipAddress) : null,
         });
+        return logs != null
+            ? res.status(200).send({ success: true, result: "Log added successfully." })
+            : res.status(204).send({
+                success: false,
+                result: "There was an error adding the log.",
+            });
+    }
+    catch (error) {
+        console.error("Erro ao criar log:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).send({
+            success: false,
+            message: "Erro ao registar o log.",
+        });
+    }
 });
 exports.createLog = createLog;
 /**

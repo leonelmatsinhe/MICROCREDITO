@@ -5,6 +5,7 @@ import { CustomerModel } from "../database/models/CustomerModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { DebtModel } from "../database/models/DebtModel";
 import { CompanyModel } from "../database/models/CompanyModel";
+import { sendTsembaSms, isTsembaConfigured } from "./TsembaSmsProvider";
 
 export type SmsQueueStatus = "queued" | "processing" | "sent" | "failed" | "cancelled";
 
@@ -74,7 +75,31 @@ const buildQueuePayload = (payload: EnqueuePayload) => {
   };
 };
 
+/**
+ * Indica se a empresa autoriza o envio de SMS (configuração smsEnabled).
+ * Ausência do campo/coluna é tratada como autorizado (default 1), para não
+ * bloquear o envio em bases de dados pré-migração.
+ */
+export const isCompanySmsEnabled = async (companyId: number): Promise<boolean> => {
+  if (!companyId) return false;
+  try {
+    const company: any = await CompanyModel.findByPk(companyId, {
+      attributes: ["id", "smsEnabled"],
+    });
+    if (!company) return false;
+    const value = Number((company as any).getDataValue?.("smsEnabled") ?? 1);
+    return value === 1;
+  } catch (error: any) {
+    console.error("[SMS] Erro ao verificar smsEnabled:", error?.message || error);
+    return true;
+  }
+};
+
 export const enqueueSms = async (payload: EnqueuePayload) => {
+  // Se a empresa desactivou o SMS, nenhuma operação de SMS ocorre.
+  if (!(await isCompanySmsEnabled(payload.companyId))) {
+    return { created: false, reason: "sms_disabled" };
+  }
   const queuePayload = buildQueuePayload(payload);
   if (!queuePayload) {
     return { created: false, reason: "invalid_phone" };
@@ -189,6 +214,11 @@ export const enqueueUpcomingInstallmentAlerts = async (params: {
   companyId: number;
   daysAhead: number;
 }): Promise<ReminderResult> => {
+  // Empresa com SMS desactivado: não gera alertas
+  if (!(await isCompanySmsEnabled(params.companyId))) {
+    return { queued: 0, skipped: 0 };
+  }
+
   const today = moment().format("YYYY-MM-DD");
   const endDate = moment().add(Math.max(1, params.daysAhead), "days").format("YYYY-MM-DD");
 
@@ -295,6 +325,160 @@ export const enqueueOutstandingLateInterestAlerts = async (params: {
   }
 
   return { queued, skipped };
+};
+
+const MAX_SMS_RETRIES = 5;
+
+/**
+ * Erros de nível de conta/plataforma (saldo, quota, chave) — transitórios.
+ * Nestes casos a mensagem NÃO queima tentativas nem é marcada como failed:
+ * fica em fila e volta a tentar quando o problema for resolvido (ex.: depois
+ * de comprar unidades na Tsemba).
+ */
+const isTransientGatewayError = (error: string): boolean => {
+  const err = String(error || "").toLowerCase();
+  return (
+    err.includes("tsemba_api_key") ||
+    err.includes("saldo") ||
+    err.includes("insuficiente") ||
+    err.includes("insufficient") ||
+    err.includes("balance") ||
+    err.includes("carteira") ||
+    err.includes("wallet") ||
+    err.includes("quota") ||
+    err.includes("credit")
+  );
+};
+
+/**
+ * Processa a fila de SMS: envia as mensagens pendentes através da API da Tsemba
+ * e actualiza o estado (sent / queued para nova tentativa / failed após retries).
+ *
+ * - Mensagens `failed` por motivos transitórios (ex.: saldo insuficiente) são
+ *   recuperadas automaticamente para `queued` e voltam a ser tentadas.
+ * - Erros transitórios (saldo/quota/chave) não contam como tentativa e param o
+ *   lote (backoff) — evitam queimar 5 tentativas contra uma conta sem saldo.
+ *
+ * Se a chave ainda não estiver configurada no .env, não toca na fila (deferred).
+ */
+export const processSmsQueue = async (params: { limit?: number } = {}) => {
+  const limit = Math.min(200, Math.max(1, params.limit || 50));
+  const results = {
+    sent: 0,
+    failed: 0,
+    deferred: 0,
+    skipped: 0,
+    recovered: 0,
+    disabled: 0,
+    configured: true,
+  };
+
+  if (!isTsembaConfigured()) {
+    // Sem chave: manter tudo na fila até o utilizador colar a API key no .env
+    return { ...results, configured: false };
+  }
+
+  // Empresas que autorizam SMS — mensagens de empresas desactivadas ficam em
+  // fila (não são enviadas) até o Admin voltar a activar o serviço.
+  const companies: any[] = (await CompanyModel.findAll({
+    attributes: ["id", "smsEnabled"],
+  })) as any[];
+  const enabledCompanyIds = new Set<number>();
+  for (const company of companies) {
+    const value = Number(company.getDataValue?.("smsEnabled") ?? 1);
+    if (value === 1) enabledCompanyIds.add(Number(company.id));
+  }
+
+  // Recuperar mensagens paradas por motivos de conta (ex.: saldo insuficiente):
+  //  - `failed` com erro transitório → voltam a `queued` (retries repostos);
+  //  - `queued` com retries esgotadas (retries >= MAX) → repõe retries; no
+  //    código actual nenhuma linha em fila legitima atinge este estado, logo é
+  //    sempre um artefacto de recuperação/versão anterior.
+  const stuckRows: any[] = (await SmsQueueModel.findAll({
+    where: { status: { [Op.in]: ["failed", "queued"] } },
+    order: [["id", "ASC"]],
+    limit: 500,
+  })) as any[];
+  for (const row of stuckRows) {
+    const isFailed = String(row.status) === "failed";
+    const isTransient = isTransientGatewayError(String(row.errorMessage || ""));
+    const exhausted = Number(row.retries || 0) >= MAX_SMS_RETRIES;
+    if (isFailed ? isTransient : exhausted) {
+      await row.update({
+        status: "queued",
+        retries: 0,
+        errorMessage: null,
+        lastAttemptAt: new Date(),
+      });
+      results.recovered += 1;
+    }
+  }
+
+  const rows = await SmsQueueModel.findAll({
+    where: {
+      status: { [Op.in]: ["queued", "processing"] },
+      retries: { [Op.lt]: MAX_SMS_RETRIES },
+    },
+    order: [["createdAt", "ASC"]],
+    limit,
+  });
+
+  results.skipped = rows.length;
+
+  for (const row of rows as any[]) {
+    if (!enabledCompanyIds.has(Number(row.companyId))) {
+      // Empresa com SMS desactivado: mantém em fila, sem enviar
+      results.disabled += 1;
+      continue;
+    }
+
+    const attempt = Number(row.retries || 0) + 1;
+    const result = await sendTsembaSms({
+      to: row.phone,
+      message: row.messageBody,
+    });
+
+    if (result.success) {
+      await row.update({
+        status: "sent",
+        gatewayMessageId: result.gatewayMessageId || null,
+        errorMessage: null,
+        retries: attempt,
+        sentAt: new Date(),
+        lastAttemptAt: new Date(),
+      });
+      results.sent += 1;
+    } else if (isTransientGatewayError(result.error || "")) {
+      // Problema de conta (saldo/quota/chave): mantém em fila sem queimar
+      // tentativas e pára o lote (backoff) para não sobrecarregar a API.
+      await row.update({
+        status: "queued",
+        errorMessage: String(result.error || "").slice(0, 250),
+        lastAttemptAt: new Date(),
+      });
+      results.deferred += 1;
+      break;
+    } else {
+      await row.update({
+        status: attempt >= MAX_SMS_RETRIES ? "failed" : "queued",
+        retries: attempt,
+        errorMessage: String(result.error || "").slice(0, 250),
+        lastAttemptAt: new Date(),
+      });
+      results.failed += 1;
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Dispara o processamento da fila sem bloquear a resposta (fire-and-forget).
+ */
+export const flushSmsQueue = (limit = 100) => {
+  processSmsQueue({ limit }).catch((error) => {
+    console.error("[SMS] Erro ao processar a fila:", error?.message || error);
+  });
 };
 
 export const getPendingSmsQueue = async (filters: {

@@ -5,19 +5,28 @@ import { api } from '@/boot/axios'
  * @param {Object} params - Parâmetros do log
  */
 export async function logAction({ userId, companyId, userName, userRole, action, module, description }) {
+  if (!userId || !companyId) return
   try {
     await api.post('/api/logs', {
       userId,
       companyId,
-      userName,
-      userRole,
-      action,
-      module,
-      description
+      userName: String(userName || 'Utilizador').trim() || 'Utilizador',
+      userRole: userRole === undefined || userRole === null || userRole === '' ? null : userRole,
+      action: String(action || 'ACÇÃO').trim() || 'ACÇÃO',
+      module: module || null,
+      description: String(description || '').trim()
     })
   } catch (error) {
     console.error('Erro ao registar log:', error)
   }
+}
+
+/**
+ * Nome do utilizador — staff usa `name`, mutuário usa `customerName`
+ */
+function resolveUserName(user) {
+  if (!user) return 'Utilizador'
+  return (user.name || user.customerName || 'Cliente').trim()
 }
 
 /**
@@ -37,26 +46,28 @@ function getCurrentUser() {
  * Helper para logs de autenticação
  */
 export async function logLogin(user) {
+  const name = resolveUserName(user)
   return logAction({
     userId: user.id,
     companyId: user.companyId,
-    userName: user.name,
+    userName: name,
     userRole: user.userRole,
     action: 'LOGIN',
     module: 'Autenticação',
-    description: `${user.name} fez login no sistema`
+    description: `${name} fez login no sistema`
   })
 }
 
 export async function logLogout(user) {
+  const name = resolveUserName(user)
   return logAction({
     userId: user.id,
     companyId: user.companyId,
-    userName: user.name,
+    userName: name,
     userRole: user.userRole,
     action: 'LOGOUT',
     module: 'Autenticação',
-    description: `${user.name} fez logout do sistema`
+    description: `${name} fez logout do sistema`
   })
 }
 

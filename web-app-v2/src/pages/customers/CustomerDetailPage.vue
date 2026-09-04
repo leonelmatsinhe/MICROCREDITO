@@ -138,7 +138,10 @@
                       <q-badge :color="getLoanStatusColor(loan.status)" :label="getLoanStatusText(loan.status)" rounded class="q-ml-sm" style="font-size: 10px" />
                     </q-item-label>
                     <q-item-label caption style="font-size: 11px">
-                      {{ loan.numberOfInstallments }}x | {{ (loan.interestRate * 100).toFixed(1) }}% | {{ loan.dateCreated }}
+                      {{ loan.numberOfInstallments }}x |
+                      <template v-if="Number(loan.status) === 0">Taxa a definir |</template>
+                      <template v-else>{{ (loan.interestRate * 100).toFixed(1) }}% |</template>
+                      {{ loan.dateCreated }}
                     </q-item-label>
                   </q-item-section>
                   <q-item-section side>
@@ -148,7 +151,7 @@
                         <q-tooltip>Plano de Amortização</q-tooltip>
                       </q-btn>
                       <!-- Aprovar (apenas pendente) -->
-                      <q-btn v-if="Number(loan.status) === 0 && canApproveLoan(authStore.userRole)" unelevated round dense icon="check_circle" size="sm" color="positive" @click.stop="approveLoan(loan)">
+                      <q-btn v-if="Number(loan.status) === 0 && canApproveLoan(authStore.userRole)" unelevated round dense icon="check_circle" size="sm" color="positive" @click.stop="openLoanApproval(loan)">
                         <q-tooltip>Aprovar Crédito</q-tooltip>
                       </q-btn>
                       <!-- Editar (apenas pendente) -->
@@ -408,7 +411,7 @@
               <div v-if="pendingInstallments.length === 0 && paidInstallments.length === 0" class="text-center q-pa-lg text-grey-5">
                 <q-icon name="info" size="40px" />
                 <div class="text-caption q-mt-sm">Sem prestações registadas.</div>
-                <q-btn v-if="Number(amortLoan?.status) === 0 && canApproveLoan(authStore.userRole)" color="positive" icon="check_circle" label="Aprovar Crédito" unelevated no-caps rounded class="q-mt-md" @click="approveLoan(amortLoan); showAmortizationModal = false" />
+                <q-btn v-if="Number(amortLoan?.status) === 0 && canApproveLoan(authStore.userRole)" color="positive" icon="check_circle" label="Aprovar Crédito" unelevated no-caps rounded class="q-mt-md" @click="openLoanApproval(amortLoan); showAmortizationModal = false" />
               </div>
             </template>
           </q-card-section>
@@ -734,6 +737,7 @@
       <CustomerFormModal v-model="showEditModal" :customer="customer" @saved="onCustomerSaved" />
       <GuaranteesModal v-model="showGuarantees" :loan-id="selectedLoanId" />
       <BorrowerInfoModal v-model="showBorrowerInfoModal" :loan="selectedLoanForInfo" :customer="customer" @saved="onBorrowerInfoSaved" />
+      <LoanApprovalModal v-model="showApprovalModal" :loan="approvalLoan" @approved="onLoanApproved" />
 
       <!-- Modal de Envio de Credenciais -->
       <q-dialog v-model="showCredentialsModal" persistent @show="generateNewPassword">
@@ -798,6 +802,15 @@
               toggle-color="warning"
             />
 
+            <!-- SMS desactivado: mensagem genérica no modal, sem chamada ao servidor -->
+            <q-banner v-if="credentialsSmsBlocked" class="bg-negative text-white q-mb-md" rounded>
+              <template v-slot:avatar>
+                <q-icon name="sms_failed" size="24px" />
+              </template>
+              <div class="text-weight-bold">SMS indisponível</div>
+              <div class="text-caption">O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador para o activar.</div>
+            </q-banner>
+
             <!-- Preview da Mensagem -->
             <q-card flat bordered class="q-mb-md credentials-card" style="border-radius: 8px">
               <q-card-section class="q-py-sm">
@@ -820,7 +833,7 @@ Ola {{ customer.customerName }}. Sua senha de acesso ao portal da {{ companyName
               no-caps
               rounded
               :loading="sendingCredentials"
-              :disable="!customer.customerPhone"
+              :disable="!customer.customerPhone || credentialsSmsBlocked"
               @click="sendCredentials"
             />
           </q-card-actions>
@@ -844,6 +857,7 @@ import { formatMoney, formatDateShort } from '@/utils/formatters'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
 import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
 import BorrowerInfoModal from '@/components/modals/BorrowerInfoModal.vue'
+import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 import { canRegisterPayment, canApproveLoan, canDeleteCustomer } from '@/utils/permissions'
 import { generateSixDigitCode } from '@/utils/codeGenerator'
 import { buildCompanyHeader, buildFooterWithSignature, commonStyles, tableLayout, infoTableLayout } from '@/utils/pdfHeader'
@@ -916,6 +930,10 @@ watch(showGlobalPaymentModal, (val) => {
 })
 
 const selectedLoanId = ref(null)
+
+// Modal de aprovação — taxa de juro definida aqui pelo Admin/Gestor
+const showApprovalModal = ref(false)
+const approvalLoan = ref(null)
 
 // Documents
 const customerDocuments = ref([])
@@ -1356,37 +1374,15 @@ async function saveEditLoan() {
   }
 }
 
-async function approveLoan(loan) {
-  $q.dialog({
-    title: 'Aprovar Crédito',
-    message: `Aprovar o crédito de ${formatMoney(loan.amount)}? Será gerado o plano de amortização automaticamente.`,
-    cancel: 'Não',
-    ok: { label: 'Sim, aprovar', color: 'positive' },
-    persistent: true
-  }).onOk(async () => {
-    try {
-      // Send ALL required fields — backend generates installments AND updates status
-      // Enviar data de desembolso (hoje), não data da 1ª prestação
-      // O backend soma +1 mês automaticamente
-      const disbursementDate = new Date().toISOString().split('T')[0]
-      await loansStore.createAmortization({
-        companyId: authStore.companyId,
-        loanId: loan.id,
-        accountNumber: loan.accountNumber,
-        interestRate: loan.interestRate,
-        numberOfInstallments: loan.numberOfInstallments,
-        amount: loan.amount,
-        dueDate: disbursementDate,
-        status: 0
-      })
-      logApproveLoan(customer.value?.customerName, loan.amount)
-      $q.notify({ type: 'positive', message: 'Crédito aprovado e plano gerado com sucesso', position: 'top' })
-      await fetchLoans()
-    } catch (e) {
-      console.error('Erro ao aprovar:', e)
-      $q.notify({ type: 'negative', message: e.response?.data?.message || 'Erro ao aprovar crédito', position: 'top' })
-    }
-  })
+function openLoanApproval(loan) {
+  approvalLoan.value = loan
+  showApprovalModal.value = true
+}
+
+async function onLoanApproved() {
+  logApproveLoan(customer.value?.customerName, approvalLoan.value?.amount)
+  approvalLoan.value = null
+  await fetchLoans()
 }
 
 function rejectLoan(loan) {
@@ -1870,24 +1866,36 @@ function generateNewPassword() {
   if (customer.value?.credentialsSent === 1) {
     credentialsAlreadySent.value = true
     credentialsSentAt.value = customer.value?.credentialsSentAt || ''
-    generatedPassword.value = customer.value?.password || ''
   } else {
     credentialsAlreadySent.value = false
-    generatedPassword.value = generateSixDigitCode()
   }
+  // A senha na BD é um hash (bcrypt) — nunca é mostrada nem reutilizada:
+  // gera-se sempre um código novo no modal
+  generatedPassword.value = generateSixDigitCode()
 }
 
 const companyName = computed(() => {
   return companyStore.companyName || 'MBR Microcrédito'
 })
 
+// SMS desactivado nas configurações da empresa (só o Admin altera)
+const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
+// Com canal SMS e autorização desactivada: não envia nada para o servidor
+const credentialsSmsBlocked = computed(() => credentialsChannel.value === 'sms' && smsDisabled.value)
+
 async function sendCredentials() {
+  // SMS desactivado: não envia nada para o servidor (a mensagem já está no modal)
+  if (credentialsSmsBlocked.value) {
+    $q.notify({ type: 'warning', message: 'O envio de SMS está desactivado nas configurações da empresa.', position: 'top' })
+    return
+  }
+
   sendingCredentials.value = true
   try {
     const { data } = await api.post('/api/portal/send-credentials', {
       customerId: customer.value.id,
       channel: credentialsChannel.value,
-      newPassword: credentialsAlreadySent.value ? undefined : generatedPassword.value,
+      newPassword: generatedPassword.value,
     })
 
     if (data.alreadySent) {
@@ -1898,7 +1906,6 @@ async function sendCredentials() {
         position: 'top',
         timeout: 5000
       })
-      generatedPassword.value = data.password || customer.value?.password || ''
     } else if (data.success) {
       $q.notify({
         type: 'positive',

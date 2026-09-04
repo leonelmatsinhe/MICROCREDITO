@@ -125,6 +125,7 @@ import {
   enqueueUpcomingAlerts,
   getPendingSmsGateway,
   getSmsQueueHistory,
+  processSmsQueueHandler,
   syncSmsInbox,
   updateGatewaySmsStatus,
 } from "./controllers/SmsGatewayController";
@@ -132,9 +133,9 @@ import { sendWhatsApp, listWhatsApp } from "./controllers/WhatsAppController";
 import {
   getCustomerDashboard,
   getCustomerLoanDetail,
-  initiateMpesaPayment,
-  confirmMpesaPayment,
+  registerPortalPayment,
   sendCustomerCredentials,
+  requestCustomerLoan,
 } from "./controllers/CustomerPortalController";
 
 import { customerContract } from "./controllers/PdfController";
@@ -188,9 +189,9 @@ routes.post("/api/customer/changePassword", changeCustomerPassword);
 // Customer Portal routes
 routes.get("/api/portal/:companyId/:customerId/dashboard", getCustomerDashboard);
 routes.get("/api/portal/:companyId/:customerId/loan/:loanId", getCustomerLoanDetail);
-routes.post("/api/portal/mpesa/initiate", initiateMpesaPayment);
-routes.post("/api/portal/mpesa/confirm", confirmMpesaPayment);
+routes.post("/api/portal/:companyId/:customerId/payments", registerPortalPayment);
 routes.post("/api/portal/send-credentials", sendCustomerCredentials);
+routes.post("/api/portal/:companyId/:customerId/loans/request", requestCustomerLoan);
 
 // Customer Contrats
 routes.get("/contract/:companyId/:accountNumber/:loanId", customerContract)
@@ -269,6 +270,7 @@ routes.use("/api", auth);
 routes.get("/api/sms-gateway/pending", getPendingSmsGateway);
 routes.patch("/api/sms-gateway/:id/status", updateGatewaySmsStatus);
 routes.post("/api/sms-gateway/enqueue", enqueueSmsManually);
+routes.post("/api/sms-gateway/process", processSmsQueueHandler);
 routes.post("/api/sms-gateway/announcements", enqueueSmsAnnouncement);
 routes.post("/api/sms-gateway/alerts/upcoming", enqueueUpcomingAlerts);
 routes.post("/api/sms-gateway/alerts/late-interest", enqueueLateInterestAlerts);

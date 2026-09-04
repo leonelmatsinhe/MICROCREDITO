@@ -14,36 +14,41 @@ const sequelize_1 = require("sequelize");
 const SmsModel_1 = require("../database/models/SmsModel");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
 const findAllSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { from, to, companyId } = req.query;
-    const sms = yield SmsModel_1.SmsModel.findAll({
-        where: {
+    try {
+        const { from, to, companyId } = req.query;
+        // Datas por defeito — chamadas sem filtros não podem derrubar o servidor
+        const fromDate = from ? String(from) : "1900-01-01";
+        const toDate = to ? String(to) : new Date().toISOString().slice(0, 10);
+        const where = {
             createdAt: {
-                [sequelize_1.Op.between]: [from, to],
+                [sequelize_1.Op.between]: [fromDate, toDate],
             },
-            companyId: companyId,
-        },
-    });
-    return sms.length != null
-        ? res.status(200).send({ success: true, result: sms })
-        : res.status(204).send({
-            success: false,
-            message: "No SMS sent as of now.",
-        });
+        };
+        if (companyId)
+            where.companyId = companyId;
+        const sms = yield SmsModel_1.SmsModel.findAll({ where });
+        return res.status(200).send({ success: true, result: sms });
+    }
+    catch (err) {
+        console.error("findAllSms:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).send({ success: false, message: "Erro ao listar SMS." });
+    }
 });
 exports.findAllSms = findAllSms;
 const findSmsByCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const sms = yield SmsModel_1.SmsModel.findAll({
-        where: {
-            accountNumber: id,
-        },
-    });
-    return sms != null
-        ? res.status(200).send({ success: true, result: sms })
-        : res.status(204).send({
-            success: false,
-            result: "No SMS found.",
+    try {
+        const { id } = req.params;
+        const sms = yield SmsModel_1.SmsModel.findAll({
+            where: {
+                accountNumber: id,
+            },
         });
+        return res.status(200).send({ success: true, result: sms });
+    }
+    catch (err) {
+        console.error("findSmsByCustomer:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).send({ success: false, message: "Erro ao listar SMS." });
+    }
 });
 exports.findSmsByCustomer = findSmsByCustomer;
 const sendSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -56,6 +61,13 @@ const sendSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             return res.status(400).send({
                 success: false,
                 message: "Campos obrigatórios: companyId, receipient e smsBody.",
+            });
+        }
+        // Empresa com SMS desactivado: nenhuma operação de SMS ocorre
+        if (!(yield (0, SmsGatewayService_1.isCompanySmsEnabled)(parsedCompanyId))) {
+            return res.status(403).send({
+                success: false,
+                message: "O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador.",
             });
         }
         yield SmsModel_1.SmsModel.create({
@@ -83,6 +95,8 @@ const sendSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 reason: result.reason || "unknown",
             });
         }
+        // Enviar imediatamente via Tsemba (sem bloquear a resposta)
+        (0, SmsGatewayService_1.flushSmsQueue)();
         return res.status(200).send({
             success: true,
             message: "SMS enfileirado com sucesso no gateway.",

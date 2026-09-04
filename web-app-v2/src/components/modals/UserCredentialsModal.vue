@@ -62,6 +62,15 @@
           toggle-color="primary"
         />
 
+        <!-- SMS desactivado: mensagem genérica no modal, sem chamada ao servidor -->
+        <q-banner v-if="smsBlocked" class="bg-negative text-white q-mb-md" rounded>
+          <template v-slot:avatar>
+            <q-icon name="sms_failed" size="24px" />
+          </template>
+          <div class="text-weight-bold">SMS indisponível</div>
+          <div class="text-caption">O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador para o activar.</div>
+        </q-banner>
+
         <!-- Preview da Mensagem -->
         <q-card flat bordered class="q-mb-md credentials-card" style="border-radius: 8px">
           <q-card-section class="q-py-sm">
@@ -84,7 +93,7 @@ Ola {{ user.name }}. Sua senha de acesso ao sistema da {{ companyName }} e: {{ g
           no-caps
           rounded
           :loading="sending"
-          :disable="!user.phone && channel !== 'email'"
+          :disable="(!user.phone && channel !== 'email') || smsBlocked"
           @click="send"
         />
       </q-card-actions>
@@ -124,15 +133,20 @@ const sentAt = ref('')
 
 const companyName = computed(() => companyStore.companyName || 'MBR Microcrédito')
 
+// SMS desactivado nas configurações da empresa: não envia nada para o servidor
+const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
+const smsBlocked = computed(() => channel.value === 'sms' && smsDisabled.value)
+
 function onOpen() {
   if (props.user.credentialsSent === 1) {
     alreadySent.value = true
     sentAt.value = props.user.credentialsSentAt || ''
-    generatedPassword.value = props.user.password || ''
   } else {
     alreadySent.value = false
-    generatedPassword.value = generateSixDigitCode()
   }
+  // A senha na BD é um hash (bcrypt) — nunca é mostrada nem reutilizada:
+  // gera-se sempre um código novo no modal
+  generatedPassword.value = generateSixDigitCode()
 }
 
 function close() {
@@ -142,10 +156,16 @@ function close() {
 }
 
 async function send() {
+  // SMS desactivado: não envia nada para o servidor (a mensagem já está no modal)
+  if (smsBlocked.value) {
+    $q.notify({ type: 'warning', message: 'O envio de SMS está desactivado nas configurações da empresa.', position: 'top' })
+    return
+  }
+
   sending.value = true
   try {
-    // Actualizar senha do utilizador
-    await api.put(`/api/user/${props.user.id}`, {
+    // Actualizar senha do utilizador (rota real: /api/users/:id — plural)
+    await api.put(`/api/users/${props.user.id}`, {
       password: generatedPassword.value,
       credentialsSent: 1,
       credentialsSentAt: new Date().toISOString(),

@@ -40,5 +40,13 @@ export const UserModel = db.define("user", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  credentialsSent: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  credentialsSentAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 
 });
