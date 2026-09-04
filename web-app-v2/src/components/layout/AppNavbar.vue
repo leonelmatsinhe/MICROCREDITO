@@ -150,7 +150,6 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useCustomerStore } from '@/stores/customers'
-import { useLoansStore } from '@/stores/loans'
 import { getInitials, timeAgo } from '@/utils/formatters'
 
 const emit = defineEmits(['toggle-sidebar'])
@@ -161,7 +160,6 @@ const $q = useQuasar()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
 const customerStore = useCustomerStore()
-const loansStore = useLoansStore()
 
 const props = defineProps({
   notifications: { type: Array, default: () => [] },
@@ -182,12 +180,6 @@ const routeTitle = computed(() => {
   if (route.name === 'CustomerDetail' && customerStore.currentCustomer) {
     return customerStore.currentCustomer.customerName || 'Detalhe do Mutuário'
   }
-  if (route.name === 'LoanDetail' && loansStore.currentLoan) {
-    return `Crédito #${loansStore.currentLoan.id}`
-  }
-  if (route.name === 'Amortization' && loansStore.currentLoan) {
-    return `Amortização #${loansStore.currentLoan.id}`
-  }
 
   const titles = {
     Dashboard: 'Painel de Controlo',
@@ -195,9 +187,10 @@ const routeTitle = computed(() => {
     Company: 'Painel da Empresa',
     CustomerList: 'Mutuários',
     CustomerDetail: 'Detalhe do Mutuário',
-    LoanDetail: 'Detalhe do Crédito',
-    Amortization: 'Plano de Amortização',
+    LoanList: 'Créditos',
+    Payments: 'Pagamentos',
     ReportsBM: 'Relatório Banco de Moçambique',
+    SmsPendingCredentials: 'Centro de Mensagens',
     Settings: 'Configurações',
     Profile: 'Meu Perfil',
     Notifications: 'Notificações',
@@ -213,9 +206,10 @@ const routeIcon = computed(() => {
     Company: 'dashboard',
     CustomerList: 'people',
     CustomerDetail: 'person',
-    LoanDetail: 'receipt',
-    Amortization: 'receipt_long',
+    LoanList: 'account_balance_wallet',
+    Payments: 'payments',
     ReportsBM: 'description',
+    SmsPendingCredentials: 'sms',
     Settings: 'settings',
     Profile: 'person',
     Notifications: 'notifications',

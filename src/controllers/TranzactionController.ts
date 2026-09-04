@@ -217,6 +217,78 @@ const findPaginatedTransactions = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Todos os pagamentos de prestações da empresa, enriquecidos com o nome/telefone
+ * do mutuário e com a prestação (nº e vencimento) a que cada pagamento se refere.
+ * Usado pela página dedicada "Pagamentos" (apresentação + exportação PDF/Excel).
+ */
+const findAllPaymentsOverview = async (req: Request, res: Response) => {
+  try {
+    const companyId = parseInt(String(req.params.companyId), 10);
+    if (!Number.isFinite(companyId) || companyId <= 0) {
+      return res.status(400).json({ success: false, message: "companyId inválido." });
+    }
+
+    const tranzactions: any[] = (await TranzactionModel.findAll({
+      where: { companyId },
+      order: [["paymentDate", "DESC"], ["id", "DESC"]],
+      raw: true,
+    })) as any[];
+
+    if (tranzactions.length === 0) {
+      return res.status(200).json({ success: true, result: [] });
+    }
+
+    // Mutuários — nome e telefone por conta
+    const accountNumbers = [...new Set(tranzactions.map((t: any) => t.accountNumber))];
+    const customers: any[] = (await CustomerModel.findAll({
+      where: { companyId, accountNumber: { [Op.in]: accountNumbers } },
+      attributes: ["accountNumber", "customerName", "customerPhone"],
+      raw: true,
+    })) as any[];
+    const customerByAccount: Record<string, any> = {};
+    customers.forEach((c: any) => {
+      customerByAccount[String(c.accountNumber)] = c;
+    });
+
+    // Prestações — nº de ordem e vencimento a que o pagamento se refere
+    const amortIds = [...new Set(
+      tranzactions.map((t: any) => t.amortizationLoanId).filter((v: any) => v != null)
+    )];
+    const amortById: Record<number, any> = {};
+    if (amortIds.length > 0) {
+      const amortizations: any[] = (await AmorizationLoanModel.findAll({
+        where: { id: { [Op.in]: amortIds } },
+        attributes: ["id", "installmentOrder", "dueDate", "installment", "paidAmount", "status"],
+        raw: true,
+      })) as any[];
+      amortizations.forEach((a: any) => {
+        amortById[Number(a.id)] = a;
+      });
+    }
+
+    const result = tranzactions.map((t: any) => {
+      const customer = customerByAccount[String(t.accountNumber)] || null;
+      const amort = amortById[Number(t.amortizationLoanId)] || null;
+      return {
+        ...t,
+        customerName: customer?.customerName || `Conta ${t.accountNumber}`,
+        customerPhone: customer?.customerPhone || "",
+        installmentOrder: amort?.installmentOrder ?? null,
+        installmentDueDate: amort?.dueDate ? String(amort.dueDate).slice(0, 10) : null,
+        installmentValue: amort?.installment ?? null,
+        installmentPaidAmount: amort?.paidAmount ?? null,
+        installmentStatus: amort?.status ?? null,
+      };
+    });
+
+    return res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    console.error("findAllPaymentsOverview:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao listar pagamentos." });
+  }
+};
+
 const getCustomerTranzactions = async (req: Request, res: Response) => {
   const { id } = req.params;
   const tranzaction = await TranzactionModel.findAll({
@@ -528,6 +600,7 @@ export {
   findAlltranzactions,
   findTransactionsByCompany,
   findPaginatedTransactions,
+  findAllPaymentsOverview,
   getCustomerTranzactions,
   addTranzaction,
   updateTranzaction,

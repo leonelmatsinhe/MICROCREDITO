@@ -157,8 +157,9 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         });
         // Insere o plano de amortização no banco de dados
         const bulckInsert = yield AmortizationLoanModel_1.AmorizationLoanModel.bulkCreate(customerAmortizationPlan);
-        // Atualiza o status do empréstimo
-        yield LoanModel_1.LoanModel.update({ status: 1 }, {
+        // Atualiza o status do empréstimo e guarda a data real de desembolso:
+        // o dueDate enviado é a base do plano (a 1ª prestação vence 1 mês depois).
+        yield LoanModel_1.LoanModel.update({ status: 1, disbursementDate: String(dueDate || "").slice(0, 10) || null }, {
             where: {
                 id: loanId
             }

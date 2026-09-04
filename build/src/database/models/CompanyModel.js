@@ -75,4 +75,10 @@ exports.CompanyModel = db_1.db.define("company", {
         defaultValue: 1,
         comment: 'Autorização de envio de SMS (1 = activado, 0 = desactivado). Apenas o Admin altera.',
     },
+    contractHideInsuranceClause: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: 'Oculta a cláusula VIGÉSIMA PRIMEIRA (seguro/garantias) no contrato de concessão (1 = ocultar, 0 = mostrar).',
+    },
 });

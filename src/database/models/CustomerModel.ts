@@ -105,5 +105,15 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  credentialsSent: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Credenciais do portal enviadas ao mutuário (SMS/WhatsApp)",
+  },
+  credentialsSentAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 
 });

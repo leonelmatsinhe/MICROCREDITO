@@ -119,6 +119,10 @@ const props = defineProps({
   accountNumber: { type: [String, Number], default: '' },
   customerName: { type: String, default: '' },
   messageType: { type: String, default: 'manual' },
+  // Canal pré-seleccionado ao abrir: 'sms' | 'whatsapp' (opcional)
+  channel: { type: String, default: '' },
+  // Mensagem pré-preenchida ao abrir (opcional — substitui a selecção de template)
+  initialMessage: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue', 'sent'])
@@ -222,6 +226,19 @@ watch(() => props.customerName, (val) => {
     selectedTemplate.value = 'custom'
   }
 }, { immediate: true })
+
+// Aplicar canal, telefone e mensagem iniciais sempre que o modal é aberto
+watch(() => props.modelValue, (open) => {
+  if (!open) return
+  if (props.channel === 'whatsapp' || props.channel === 'sms') {
+    channel.value = props.channel
+  }
+  if (props.phone) form.value.phone = props.phone
+  if (props.initialMessage) {
+    selectedTemplate.value = 'custom'
+    form.value.message = props.initialMessage
+  }
+})
 
 function applyTemplate(key) {
   if (!key || key === 'custom') {

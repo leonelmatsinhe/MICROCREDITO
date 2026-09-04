@@ -2,6 +2,16 @@ import { Request, Response } from "express";
 import { UserModel } from "../database/models/UserModel";
 import bcryptjs from "bcryptjs";
 import * as jwt from "jsonwebtoken";
+import { hashPasswordIfNeeded } from "../utils/password";
+
+// Remove o hash da senha antes de devolver o utilizador ao frontend — a BD é a
+// única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
+const stripPassword = (user: any) => {
+  const plain = user?.toJSON ? user.toJSON() : user;
+  if (!plain) return plain;
+  delete plain.password;
+  return plain;
+};
 
 const findAll = async (req: Request, res: Response) => {
   try {
@@ -12,8 +22,9 @@ const findAll = async (req: Request, res: Response) => {
       },
       order: [["name", "DESC"]],
     });
-    return users.length > 0
-      ? res.status(200).json({ success: true, result: users })
+    const safeUsers = users.map(stripPassword);
+    return safeUsers.length > 0
+      ? res.status(200).json({ success: true, result: safeUsers })
       : res.status(204).json({ success: false, message: "Users not found." });
   } catch (err: any) {
     console.error("Erro ao buscar utilizadores:", err.message);
@@ -30,7 +41,7 @@ const findOne = async (req: Request, res: Response) => {
       },
     });
     return user
-      ? res.status(200).json({ success: true, result: user })
+      ? res.status(200).json({ success: true, result: stripPassword(user) })
       : res.status(204).json({ success: false, message: "User not found." });
   } catch (err: any) {
     console.error("Erro ao buscar utilizador:", err.message);
@@ -39,19 +50,22 @@ const findOne = async (req: Request, res: Response) => {
 };
 
 const create = async (req: Request, res: Response) => {
-  let { name, email, password, phone, status, companyId, userRole } = req.body;
+  try {
+    let { name, email, password, phone, status, companyId, userRole } = req.body;
 
-  bcryptjs.hash(password + "", 10, async (hashError, hash) => {
-    if (hashError) {
-      return res.status(500).json({
+    if (!name || !email || !password) {
+      return res.status(400).json({
         success: false,
-        message: hashError,
+        message: "Campos obrigatórios: name, email e password.",
       });
     }
+
+    // Hash bcrypt — mas nunca voltar a encriptar um valor que já seja hash
+    const storedPassword = hashPasswordIfNeeded(password);
     const user = await UserModel.create({
       name,
       email,
-      password: hash,
+      password: storedPassword,
       updatedPassword: 0,
       phone,
       status,
@@ -71,7 +85,10 @@ const create = async (req: Request, res: Response) => {
             message: "There was an error registring this user.",
           })
         );
-  });
+  } catch (err: any) {
+    console.error("Erro ao criar utilizador:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+  }
 };
 
 const update = async (req: Request, res: Response) => {
@@ -79,10 +96,12 @@ const update = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { password, ...rest } = req.body;
 
-    // Nunca guardar a senha em texto simples: hashear sempre que vier no body
+    // Nunca guardar a senha em texto simples: hashear sempre que vier no body —
+    // mas nunca voltar a encriptar um valor que já seja hash (double-hash
+    // tornaria o login impossível).
     const data = { ...rest };
     if (password) {
-      data.password = bcryptjs.hashSync(password + "", 10);
+      data.password = hashPasswordIfNeeded(password);
     }
 
     const userUpdation = await UserModel.update(data, {
@@ -230,36 +249,29 @@ const changeUserPassword = async (req: Request, res: Response) => {
       );
     }
 
-    bcryptjs.hash(newPassword + "", 10, async (hashError, hash) => {
-      if (hashError) {
-        return res.status(500).json({
-          success: false,
-          message: hashError,
-        });
-      } else {
-        const userUpdation = await UserModel.update(
-          { password: hash, updatedPassword: updatedPassword },
-          {
-            where: {
-              id: user.getDataValue("id"),
-            },
-          }
-        );
-        return userUpdation != null
-          ? res.status(201).send(
-              JSON.stringify({
-                success: true,
-                message: "Senha atualizada com sucesso.",
-              })
-            )
-          : res.send(
-              JSON.stringify({
-                success: false,
-                message: "Erro ao atualizar a senha.",
-              })
-            );
+    // Hash bcrypt — nunca voltar a encriptar um valor que já seja hash
+    const hash = hashPasswordIfNeeded(newPassword + "");
+    const userUpdation = await UserModel.update(
+      { password: hash, updatedPassword: updatedPassword },
+      {
+        where: {
+          id: user.getDataValue("id"),
+        },
       }
-    });
+    );
+    return userUpdation != null
+      ? res.status(201).send(
+          JSON.stringify({
+            success: true,
+            message: "Senha atualizada com sucesso.",
+          })
+        )
+      : res.send(
+          JSON.stringify({
+            success: false,
+            message: "Erro ao atualizar a senha.",
+          })
+        );
   } catch (err: any) {
     console.error("Erro ao alterar senha:", err.message);
     return res.status(500).json({ success: false, message: "Erro interno do servidor." });

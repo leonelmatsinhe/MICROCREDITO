@@ -12,8 +12,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processSmsQueueHandler = exports.syncSmsInbox = exports.getSmsQueueHistory = exports.enqueueLateInterestAlerts = exports.enqueueUpcomingAlerts = exports.enqueueSmsAnnouncement = exports.enqueueSmsManually = exports.updateGatewaySmsStatus = exports.getPendingSmsGateway = void 0;
+exports.deleteQueuedSms = exports.requeueCredentialSms = exports.getPendingCredentialsSms = exports.processSmsQueueHandler = exports.syncSmsInbox = exports.getSmsQueueHistory = exports.enqueueLateInterestAlerts = exports.enqueueUpcomingAlerts = exports.enqueueSmsAnnouncement = exports.enqueueSmsManually = exports.updateGatewaySmsStatus = exports.getSmsQueueSummary = exports.getPendingSmsGateway = void 0;
 const crypto_1 = __importDefault(require("crypto"));
+const sequelize_1 = require("sequelize");
 const SmsQueueModel_1 = require("../database/models/SmsQueueModel");
 const SmsGatewayInboxModel_1 = require("../database/models/SmsGatewayInboxModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
@@ -361,3 +362,141 @@ const syncSmsInbox = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     });
 });
 exports.syncSmsInbox = syncSmsInbox;
+// Resumo da fila de SMS para indicadores no painel (Admin/Gestor).
+const getSmsQueueSummary = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+        const companyWhere = {};
+        if (companyId)
+            companyWhere.companyId = companyId;
+        const countByStatus = (status) => __awaiter(void 0, void 0, void 0, function* () { return SmsQueueModel_1.SmsQueueModel.count({ where: Object.assign(Object.assign({}, companyWhere), { status }) }); });
+        const [queued, processing, failed, sent] = yield Promise.all([
+            countByStatus("queued"),
+            countByStatus("processing"),
+            countByStatus("failed"),
+            countByStatus("sent"),
+        ]);
+        // Pendentes por tipo de mensagem (os mais relevantes para o painel)
+        const pendingRows = yield SmsQueueModel_1.SmsQueueModel.findAll({
+            where: Object.assign(Object.assign({}, companyWhere), { status: { [sequelize_1.Op.in]: ["queued", "processing", "failed"] } }),
+            attributes: ["messageType", "status"],
+            raw: true,
+        });
+        const pendingByType = {};
+        for (const row of pendingRows) {
+            const key = row.messageType || "outro";
+            pendingByType[key] = (pendingByType[key] || 0) + 1;
+        }
+        const smsEnabled = companyId ? yield (0, SmsGatewayService_1.isCompanySmsEnabled)(companyId) : true;
+        return res.status(200).json({
+            success: true,
+            result: {
+                smsEnabled,
+                queued,
+                processing,
+                failed,
+                sent,
+                pending: queued + processing + failed,
+                pendingByType,
+            },
+        });
+    }
+    catch (err) {
+        console.error("getSmsQueueSummary:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).json({ success: false, message: "Erro ao obter resumo da fila SMS." });
+    }
+});
+exports.getSmsQueueSummary = getSmsQueueSummary;
+// Todas as mensagens (todos os tipos e estados: na fila, a enviar, falhadas e
+// enviadas) — com dados do mutuário. Toda a mensagem enfileirada é persistida
+// em sms_queue e mantida na BD após o envio (status "sent" + sentAt), para o
+// Centro de Mensagens mostrar o histórico completo e permitir reenviar,
+// eliminar ou consultar qualquer mensagem.
+const getPendingCredentialsSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+        const whereClause = {
+            status: { [sequelize_1.Op.in]: ["queued", "processing", "failed", "sent"] },
+        };
+        if (companyId)
+            whereClause.companyId = companyId;
+        const rows = yield SmsQueueModel_1.SmsQueueModel.findAll({
+            where: whereClause,
+            order: [["createdAt", "DESC"]],
+        });
+        const result = [];
+        for (const row of rows) {
+            const plain = (0, SmsGatewayService_1.hydrateSmsQueuePayload)(row);
+            let customer = null;
+            if (plain.accountNumber && plain.companyId) {
+                customer = yield CustomerModel_1.CustomerModel.findOne({
+                    where: { companyId: plain.companyId, accountNumber: plain.accountNumber },
+                    attributes: [
+                        "id",
+                        "customerName",
+                        "customerPhone",
+                        "accountNumber",
+                        "credentialsSent",
+                        "credentialsSentAt",
+                        "customerStatus",
+                    ],
+                });
+            }
+            result.push(Object.assign(Object.assign({}, plain), { customer: customer ? customer.toJSON() : null }));
+        }
+        return res.status(200).json({ success: true, result });
+    }
+    catch (err) {
+        console.error("getPendingCredentialsSms:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).json({ success: false, message: "Erro ao listar credenciais pendentes." });
+    }
+});
+exports.getPendingCredentialsSms = getPendingCredentialsSms;
+// Elimina uma mensagem da fila (qualquer tipo/estado).
+const deleteQueuedSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const id = Number(req.params.id);
+        if (!id) {
+            return res.status(400).json({ success: false, message: "ID inválido." });
+        }
+        const row = yield SmsQueueModel_1.SmsQueueModel.findByPk(id);
+        if (!row) {
+            return res.status(404).json({ success: false, message: "Mensagem não encontrada." });
+        }
+        yield row.destroy();
+        return res.status(200).json({ success: true, message: "Mensagem eliminada da fila." });
+    }
+    catch (err) {
+        console.error("deleteQueuedSms:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).json({ success: false, message: "Erro ao eliminar a mensagem." });
+    }
+});
+exports.deleteQueuedSms = deleteQueuedSms;
+// Repõe na fila (queued) uma mensagem de credenciais pendente/falhada.
+const requeueCredentialSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _d;
+    try {
+        const id = Number(req.params.id);
+        if (!id) {
+            return res.status(400).json({ success: false, message: "ID inválido." });
+        }
+        const row = yield SmsQueueModel_1.SmsQueueModel.findByPk(id);
+        if (!row) {
+            return res.status(404).json({ success: false, message: "Mensagem não encontrada." });
+        }
+        const companyId = Number((_d = row.getDataValue) === null || _d === void 0 ? void 0 : _d.call(row, "companyId"));
+        if (!(yield (0, SmsGatewayService_1.isCompanySmsEnabled)(companyId))) {
+            return res.status(403).json({
+                success: false,
+                message: "O envio de SMS está desactivado nas configurações da empresa.",
+            });
+        }
+        yield row.update({ status: "queued", retries: 0, errorMessage: null, lastAttemptAt: null });
+        return res.status(200).json({ success: true, message: "SMS de credenciais reposto na fila." });
+    }
+    catch (err) {
+        console.error("requeueCredentialSms:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).json({ success: false, message: "Erro ao repor SMS na fila." });
+    }
+});
+exports.requeueCredentialSms = requeueCredentialSms;

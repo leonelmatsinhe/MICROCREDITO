@@ -35,6 +35,21 @@
           </q-card-section>
         </q-card>
 
+        <!-- Data de desembolso (base do plano de amortização) -->
+        <q-input
+          v-model="disbursementDate"
+          label="Data de desembolso *"
+          type="date"
+          dense
+          outlined
+          class="q-mb-md"
+          :rules="[v => !!v || 'Indique a data de desembolso']"
+        >
+          <template v-slot:prepend>
+            <q-icon name="event" size="18px" />
+          </template>
+        </q-input>
+
         <!-- Taxa de juro -->
         <q-select
           v-model="rateId"
@@ -171,6 +186,8 @@ const rateId = ref(null)
 const adminFeeExempt = ref(false)
 const observation = ref('')
 const submitting = ref(false)
+// Data real de desembolso — base do plano; por defeito é hoje, mas pode ser corrigida
+const disbursementDate = ref(new Date().toISOString().split('T')[0])
 
 const rateOptions = computed(() =>
   rateList.value.map(r => ({
@@ -247,6 +264,7 @@ watch(show, async (val) => {
     rateId.value = null
     adminFeeExempt.value = false
     observation.value = ''
+    disbursementDate.value = new Date().toISOString().split('T')[0]
     if (rateList.value.length === 0) {
       await fetchRates()
     }
@@ -272,6 +290,11 @@ async function confirmApproval() {
     $q.notify({ type: 'warning', message: 'Seleccione uma taxa de juro válida', position: 'top' })
     return
   }
+  const dueDate = disbursementDate.value
+  if (!dueDate) {
+    $q.notify({ type: 'warning', message: 'Indique a data de desembolso', position: 'top' })
+    return
+  }
 
   submitting.value = true
   try {
@@ -292,13 +315,13 @@ async function confirmApproval() {
         interestRate: tax,
         numberOfInstallments: Number(loan.numberOfInstallments),
         amount: Number(loan.amount),
-        dueDate: new Date().toISOString().split('T')[0],
+        dueDate,
         status: 0
       })
     } catch (err2) {
-      // Já existe plano de amortização (409): apenas activar o crédito
+      // Já existe plano de amortização (409): apenas activar o crédito (e a data de desembolso)
       if (err2?.response?.status !== 409) throw err2
-      await loansStore.updateLoan(loan.id, { status: 1 })
+      await loansStore.updateLoan(loan.id, { status: 1, disbursementDate: dueDate })
     }
 
     if (observation.value && observation.value.trim()) {

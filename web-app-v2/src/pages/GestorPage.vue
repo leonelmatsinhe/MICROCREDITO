@@ -31,6 +31,9 @@
       </q-card-section>
     </q-card>
 
+    <!-- SMS pendentes na fila (saldo Tsemba) -->
+    <SmsQueueIndicator />
+
     <!-- KPIs -->
     <div class="row q-col-gutter-md q-mb-md">
       <div class="col-12 col-sm-3">
@@ -99,7 +102,7 @@
       </q-card-section>
       <q-card-section>
         <q-list separator>
-          <q-item v-for="req in pendingLoans" :key="req.id" clickable v-ripple @click="router.push(`/loans/${req.id}`)">
+          <q-item v-for="req in pendingLoans" :key="req.id" clickable v-ripple @click="router.push(`/mutuarios/${req.accountNumber}`)">
             <q-item-section avatar>
               <q-avatar color="orange" text-color="white" size="36px">
                 <q-icon name="hourglass_top" size="18px" />
@@ -119,7 +122,7 @@
         </q-list>
         <div class="text-caption text-grey-6 q-mt-sm">
           <q-icon name="info" size="14px" class="q-mr-xs" />
-          Clique num pedido para aprovar (escolhendo a taxa de juro) ou rejeitar.
+          Clique num pedido para abrir o painel do mutuário (aprovar/rejeitar no mutuário).
         </div>
       </q-card-section>
     </q-card>
@@ -319,6 +322,7 @@ import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
+import SmsQueueIndicator from '@/components/ui/SmsQueueIndicator.vue'
 import { api } from '@/boot/axios'
 import { getInitials } from '@/utils/formatters'
 

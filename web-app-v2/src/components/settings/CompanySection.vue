@@ -186,6 +186,36 @@
           </q-card-section>
         </q-card>
 
+        <!-- Contrato de Concessão -->
+        <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
+          <q-card-section>
+            <div class="text-subtitle2 text-weight-bold q-mb-md">
+              <q-icon name="description" size="16px" class="q-mr-xs" />
+              Contrato de Concessão
+            </div>
+            <div class="row items-center no-wrap">
+              <q-icon name="shield" size="22px" color="primary" class="q-mr-md" />
+              <div class="col" style="min-width: 0">
+                <div class="text-body2">Ocultar cláusula de seguro (VIGÉSIMA PRIMEIRA)</div>
+                <div class="text-caption text-grey-6" style="line-height: 1.4">
+                  Quando activado, a cláusula sobre protecção do empréstimo, seguro, garantias e recuperação do crédito deixa de constar do contrato de concessão gerado.
+                </div>
+                <div v-if="!authStore.isAdmin" class="text-caption text-orange q-mt-xs">
+                  <q-icon name="lock" size="13px" class="q-mr-xs" />Apenas o Administrador pode alterar esta definição.
+                </div>
+              </div>
+              <q-toggle
+                v-model="form.contractHideInsuranceClause"
+                color="negative"
+                checked-icon="visibility_off"
+                unchecked-icon="visibility"
+                :disable="!authStore.isAdmin"
+                class="q-ml-sm"
+              />
+            </div>
+          </q-card-section>
+        </q-card>
+
         <!-- Serviço de SMS -->
         <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
           <q-card-section>
@@ -266,7 +296,8 @@ const form = ref({
   companyLogo: '',
   forfeit: 0,
   companyStatus: 1,
-  smsEnabled: true
+  smsEnabled: true,
+  contractHideInsuranceClause: false
 })
 
 function getLogoUrl(logo) {
@@ -326,10 +357,11 @@ function removeLogo() {
 async function saveCompany() {
   saving.value = true
   try {
-    // smsEnabled é booleano no formulário; a BD guarda 1/0
+    // smsEnabled/contractHideInsuranceClause são booleanos no formulário; a BD guarda 1/0
     const payload = {
       ...form.value,
-      smsEnabled: form.value.smsEnabled ? 1 : 0
+      smsEnabled: form.value.smsEnabled ? 1 : 0,
+      contractHideInsuranceClause: form.value.contractHideInsuranceClause ? 1 : 0
     }
     await companyStore.updateCompany(authStore.companyId, payload)
     logUpdateCompany(['Dados gerais', 'Logotipo', 'Meios de pagamento', 'Serviço de SMS'])
@@ -359,7 +391,8 @@ onMounted(async () => {
         companyLogo: c.companyLogo || '',
         forfeit: c.forfeit || 0,
         companyStatus: c.companyStatus ?? 1,
-        smsEnabled: c.smsEnabled === 1 || c.smsEnabled == null
+        smsEnabled: c.smsEnabled === 1 || c.smsEnabled == null,
+        contractHideInsuranceClause: Number(c.contractHideInsuranceClause || 0) === 1
       }
     }
   } catch { /* silent */ }

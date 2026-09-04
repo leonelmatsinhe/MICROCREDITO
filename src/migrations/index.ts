@@ -92,8 +92,14 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // Taxa administrativa do crédito (fluxo dinâmico até ao contrato)
   await addColumnIfMissing("customer_loans", "administrativeFee", "FLOAT NOT NULL DEFAULT 0", results);
 
+  // Data real de desembolso do crédito (base do plano de amortização)
+  await addColumnIfMissing("customer_loans", "disbursementDate", "VARCHAR(255)", results);
+
   // Autorização de envio de SMS (só o Admin altera)
   await addColumnIfMissing("companies", "smsEnabled", "INTEGER NOT NULL DEFAULT 1", results);
+
+  // Ocultar cláusula de seguro (VIGÉSIMA PRIMEIRA) no contrato de concessão
+  await addColumnIfMissing("companies", "contractHideInsuranceClause", "INTEGER NOT NULL DEFAULT 0", results);
 
   // ==================== TABELAS ====================
   // Mensagens de WhatsApp (password reset / notificações)

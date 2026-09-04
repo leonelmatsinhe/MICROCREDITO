@@ -50,6 +50,16 @@ exports.refreshToken = exports.changeUserPassword = exports.loginUser = exports.
 const UserModel_1 = require("../database/models/UserModel");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
+const password_1 = require("../utils/password");
+// Remove o hash da senha antes de devolver o utilizador ao frontend — a BD é a
+// única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
+const stripPassword = (user) => {
+    const plain = (user === null || user === void 0 ? void 0 : user.toJSON) ? user.toJSON() : user;
+    if (!plain)
+        return plain;
+    delete plain.password;
+    return plain;
+};
 const findAll = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
@@ -59,8 +69,9 @@ const findAll = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             },
             order: [["name", "DESC"]],
         });
-        return users.length > 0
-            ? res.status(200).json({ success: true, result: users })
+        const safeUsers = users.map(stripPassword);
+        return safeUsers.length > 0
+            ? res.status(200).json({ success: true, result: safeUsers })
             : res.status(204).json({ success: false, message: "Users not found." });
     }
     catch (err) {
@@ -78,7 +89,7 @@ const findOne = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             },
         });
         return user
-            ? res.status(200).json({ success: true, result: user })
+            ? res.status(200).json({ success: true, result: stripPassword(user) })
             : res.status(204).json({ success: false, message: "User not found." });
     }
     catch (err) {
@@ -88,18 +99,20 @@ const findOne = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 });
 exports.findOne = findOne;
 const create = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { name, email, password, phone, status, companyId, userRole } = req.body;
-    bcryptjs_1.default.hash(password + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
-        if (hashError) {
-            return res.status(500).json({
+    try {
+        let { name, email, password, phone, status, companyId, userRole } = req.body;
+        if (!name || !email || !password) {
+            return res.status(400).json({
                 success: false,
-                message: hashError,
+                message: "Campos obrigatórios: name, email e password.",
             });
         }
+        // Hash bcrypt — mas nunca voltar a encriptar um valor que já seja hash
+        const storedPassword = (0, password_1.hashPasswordIfNeeded)(password);
         const user = yield UserModel_1.UserModel.create({
             name,
             email,
-            password: hash,
+            password: storedPassword,
             updatedPassword: 0,
             phone,
             status,
@@ -115,17 +128,23 @@ const create = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 success: false,
                 message: "There was an error registring this user.",
             }));
-    }));
+    }
+    catch (err) {
+        console.error("Erro ao criar utilizador:", (err === null || err === void 0 ? void 0 : err.message) || err);
+        return res.status(500).json({ success: false, message: "Erro interno do servidor." });
+    }
 });
 exports.create = create;
 const update = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
         const _a = req.body, { password } = _a, rest = __rest(_a, ["password"]);
-        // Nunca guardar a senha em texto simples: hashear sempre que vier no body
+        // Nunca guardar a senha em texto simples: hashear sempre que vier no body —
+        // mas nunca voltar a encriptar um valor que já seja hash (double-hash
+        // tornaria o login impossível).
         const data = Object.assign({}, rest);
         if (password) {
-            data.password = bcryptjs_1.default.hashSync(password + "", 10);
+            data.password = (0, password_1.hashPasswordIfNeeded)(password);
         }
         const userUpdation = yield UserModel_1.UserModel.update(data, {
             where: {
@@ -245,30 +264,22 @@ const changeUserPassword = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 message: "Senha incorreta. Tente novamente.",
             }));
         }
-        bcryptjs_1.default.hash(newPassword + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
-            if (hashError) {
-                return res.status(500).json({
-                    success: false,
-                    message: hashError,
-                });
-            }
-            else {
-                const userUpdation = yield UserModel_1.UserModel.update({ password: hash, updatedPassword: updatedPassword }, {
-                    where: {
-                        id: user.getDataValue("id"),
-                    },
-                });
-                return userUpdation != null
-                    ? res.status(201).send(JSON.stringify({
-                        success: true,
-                        message: "Senha atualizada com sucesso.",
-                    }))
-                    : res.send(JSON.stringify({
-                        success: false,
-                        message: "Erro ao atualizar a senha.",
-                    }));
-            }
-        }));
+        // Hash bcrypt — nunca voltar a encriptar um valor que já seja hash
+        const hash = (0, password_1.hashPasswordIfNeeded)(newPassword + "");
+        const userUpdation = yield UserModel_1.UserModel.update({ password: hash, updatedPassword: updatedPassword }, {
+            where: {
+                id: user.getDataValue("id"),
+            },
+        });
+        return userUpdation != null
+            ? res.status(201).send(JSON.stringify({
+                success: true,
+                message: "Senha atualizada com sucesso.",
+            }))
+            : res.send(JSON.stringify({
+                success: false,
+                message: "Erro ao atualizar a senha.",
+            }));
     }
     catch (err) {
         console.error("Erro ao alterar senha:", err.message);

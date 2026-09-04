@@ -3,6 +3,16 @@ import bcryptjs from "bcryptjs";
 import * as jwt from "jsonwebtoken";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { Op } from "sequelize";
+import { hashPasswordIfNeeded } from "../utils/password";
+
+// Remove o hash da senha antes de devolver mutuários ao frontend — a BD é a
+// única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
+const stripPassword = (entity: any) => {
+  const plain = entity?.toJSON ? entity.toJSON() : entity;
+  if (!plain) return plain;
+  delete plain.password;
+  return plain;
+};
 
 const findAllCustomers = async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -41,7 +51,7 @@ const findAllCustomers = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       success: true,
-      result: rows,
+      result: rows.map(stripPassword),
       pagination: {
         currentPage: page,
         totalPages,
@@ -75,7 +85,7 @@ const searchCustomers = async (req: Request, res: Response) => {
     },
   });
 
-  return res.status(200).json({ success: true, result: customers || [] });
+  return res.status(200).json({ success: true, result: (customers || []).map(stripPassword) });
 };
 
 
@@ -87,7 +97,7 @@ const findOneCustomer = async (req: Request, res: Response) => {
     },
   });
   return customer
-    ? res.status(200).send({ success: true, result: customer })
+    ? res.status(200).send({ success: true, result: stripPassword(customer) })
     : res.status(204).send({
       success: false,
       result: "No customer found with the ID provided",
@@ -334,23 +344,12 @@ const changeCustomerPassword = async (req: Request, res: Response) => {
       });
     }
 
-    bcryptjs.hash(newPassword + "", 10, async (hashError, hash) => {
-      if (hashError) {
-        return res.status(500).json({
-          success: false,
-          message: "Erro ao processar a nova senha.",
-        });
-      }
-
-      await CustomerModel.update(
-        { password: hash },
-        { where: { id: customerId } }
-      );
-
-      return res.status(200).json({
-        success: true,
-        message: "Senha alterada com sucesso.",
-      });
+    // Hash bcrypt — nunca voltar a encriptar um valor que já seja hash
+    const hash = hashPasswordIfNeeded(newPassword + "");
+    await CustomerModel.update({ password: hash }, { where: { id: customerId } });
+    return res.status(200).json({
+      success: true,
+      message: "Senha alterada com sucesso.",
     });
   } catch (error) {
     console.error("Erro ao alterar senha do cliente:", error);
@@ -462,7 +461,8 @@ const setCustomerPassword = async (req: Request, res: Response) => {
     if (!customer) {
       return res.status(404).json({ success: false, message: "Cliente nao encontrado." });
     }
-    const hash = await bcryptjs.hash(newPassword, 10);
+    // Hash bcrypt — nunca voltar a encriptar um valor que já seja hash
+    const hash = hashPasswordIfNeeded(newPassword);
     await customer.update({ password: hash });
     return res.status(200).json({ success: true, message: "Senha do cliente actualizada com sucesso.", customerId });
   } catch (err: any) {

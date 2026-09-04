@@ -47,15 +47,19 @@ function getRouteLabel(name) {
     Company: 'Painel da Empresa',
     CustomerList: 'Mutuários',
     CustomerDetail: 'Detalhe do Mutuário',
+    LoanList: 'Créditos',
     Loans: 'Créditos',
-    LoanDetail: 'Detalhe do Crédito',
     Payments: 'Pagamentos',
     Installments: 'Prestações',
     Reports: 'Relatórios',
     Settings: 'Configurações',
     Profile: 'Meu Perfil',
     Notifications: 'Notificações',
-    CustomerPortal: 'Meu Painel'
+    CustomerPortal: 'Meu Painel',
+    SmsPendingCredentials: 'Centro de Mensagens',
+    Logs: 'Histórico do Sistema',
+    InstallmentsControl: 'Controle de Prestações',
+    ReportsBM: 'Relatório Banco de Moçambique'
   }
   return labels[name] || name
 }

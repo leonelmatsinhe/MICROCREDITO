@@ -413,6 +413,8 @@ async function generateContract() {
     const adminFeePct = (adminFeeRate * 100).toFixed(1)
     const companyName = c.companyName || 'MBR Microcrédito'
     const companyAbbr = companyName.replace(/\s+/g, '').substring(0, 10).toUpperCase()
+    // Cláusula VIGÉSIMA PRIMEIRA (seguro) — ocultável por empresa em Configurações → Dados da Empresa
+    const showInsuranceClause = Number(c.contractHideInsuranceClause || 0) !== 1
 
     // Build accounts table
     const accountsRows = accounts.value.length > 0
@@ -633,7 +635,8 @@ async function generateContract() {
         { text: '\nCLÁUSULA VIGÉSIMA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
         { text: '(Disposições Finais)', fontSize: 9, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },
         { text: 'O presente contrato é regido pela legislação moçambicana em vigor.', fontSize: 8, alignment: 'justify' },
-        // CLÁUSULA VIGÉSIMA PRIMEIRA
+        // CLÁUSULA VIGÉSIMA PRIMEIRA (seguro) — ocultável em Configurações → Empresa
+        ...(showInsuranceClause ? [
         { text: '\nCLÁUSULA VIGÉSIMA PRIMEIRA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
         { text: '(Protecção do Empréstimo, Seguro, Garantias e Recuperação do Crédito)', fontSize: 9, bold: true, alignment: 'center', margin: [0, 0, 0, 6] },
         // 1. Finalidade do Empréstimo
@@ -734,8 +737,10 @@ async function generateContract() {
         { text: [{ text: '15.1. ', bold: true }, { text: 'O MUTUÁRIO reconhece que o cumprimento pontual das suas obrigações contribui directamente para a preservação e continuidade do Fundo KMAD.' }], fontSize: 8, alignment: 'justify' },
         { text: [{ text: '15.2. ', bold: true }, { text: `O MUTUÁRIO compromete-se, por isso, a cumprir rigorosamente as condições do financiamento, permitindo que os valores recuperados possam, nos termos do contrato com a ${companyName} e das regras aplicáveis ao uso do capital, continuar a beneficiar outros membros elegíveis da comunidade.` }], fontSize: 8, alignment: 'justify' },
         { text: [{ text: '15.3. ', bold: true }, { text: `A presente cláusula não prejudica os direitos da ${companyName} decorrentes dos Contratos celebrados com os clientes, nem limita as obrigações da ${companyName} perante os seus clientes relativamente à administração, controlo, pagamento das prestações e preservação dos recursos disponibilizados.` }], fontSize: 8, alignment: 'justify' },
-        // Tabela de prestação de informação do Mutuário
-        ...(() => {
+        ] : []),
+        // Tabela de prestação de informação do Mutuário (também ocultada com a cláusula de seguro)
+        ...(showInsuranceClause ? [
+          ...(() => {
           // Buscar borrowerInfo do loan se disponível
           let borrowerInfo = null
           try {
@@ -777,7 +782,8 @@ async function generateContract() {
               margin: [0, 0, 0, 15],
             },
           ]
-        })(),
+          })(),
+        ] : []),
         { text: '\n\n\n' },
         { text: `Maputo, aos ${formatDateShort(l.updatedAt || l.dateCreated)}`, bold: false, fontSize: 8, alignment: 'center' },
         { text: '\n\n\n' },

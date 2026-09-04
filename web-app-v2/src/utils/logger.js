@@ -203,6 +203,21 @@ export async function logDeleteLoan(customerName) {
   })
 }
 
+export async function logReopenLoan(customerName, amount, accountNumber) {
+  const user = getCurrentUser()
+  if (!user) return
+  const conta = accountNumber !== undefined && accountNumber !== null && accountNumber !== '' ? ` (conta ${accountNumber})` : ''
+  return logAction({
+    userId: user.id,
+    companyId: user.companyId,
+    userName: user.name,
+    userRole: user.userRole,
+    action: 'REABRIR',
+    module: 'Créditos',
+    description: `Pedido rejeitado de ${formatMoney(amount)} reaberto para "${customerName}"${conta} — voltou a Pendentes para nova análise`
+  })
+}
+
 /**
  * Helper para logs de Pagamentos
  */

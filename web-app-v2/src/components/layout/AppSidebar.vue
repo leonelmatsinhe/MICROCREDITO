@@ -94,6 +94,27 @@
         </q-tooltip>
       </q-item>
 
+      <!-- Centro de Mensagens (abaixo de Configurações) -->
+      <q-item
+        v-if="canSeeSms"
+        clickable
+        v-ripple
+        class="sidebar-item"
+        :class="{ 'sidebar-item-mini': miniMode }"
+        dense
+        to="/sms/pendentes"
+      >
+        <q-item-section avatar class="item-avatar-section">
+          <q-icon name="sms" :size="miniMode ? '20px' : '18px'" />
+        </q-item-section>
+        <q-item-section v-if="!miniMode" style="font-size: 13px; white-space: nowrap">
+          Centro de Mensagens
+        </q-item-section>
+        <q-tooltip v-if="miniMode" anchor="center right" self="center left">
+          Centro de Mensagens
+        </q-tooltip>
+      </q-item>
+
       <q-item
         clickable
         v-ripple
@@ -158,29 +179,37 @@ const userRoleLabel = computed(() => {
   return roles[authStore.userRole] || 'Utilizador'
 })
 
+const canSeeSms = computed(() => authStore.userRole === 1 || authStore.userRole === 3)
+
 const menuItems = computed(() => {
   const role = authStore.userRole
   const items = []
+
+  const loansItem = { to: '/loans', icon: 'account_balance_wallet', label: 'Créditos' }
 
   if (role === 1) {
     // Admin: acesso total
     items.push(
       { to: '/dashboard', icon: 'dashboard', label: 'Painel' },
       { to: '/mutuarios', icon: 'people', label: 'Mutuários' },
+      loansItem,
       { to: '/admin/installments', icon: 'event', label: 'Controle Prestações' },
+      { to: '/pagamentos', icon: 'payments', label: 'Pagamentos' },
       { to: '/reports/banco-mocambique', icon: 'description', label: 'Relatório BM' }
     )
   } else if (role === 3) {
     // Gestor: dashboard + mutuários (sem aprovar crédito)
     items.push(
       { to: '/dashboard', icon: 'dashboard', label: 'Painel' },
-      { to: '/mutuarios', icon: 'people', label: 'Mutuários' }
+      { to: '/mutuarios', icon: 'people', label: 'Mutuários' },
+      loansItem
     )
   } else {
     // Outros: acesso básico
     items.push(
       { to: '/dashboard', icon: 'dashboard', label: 'Painel' },
-      { to: '/mutuarios', icon: 'people', label: 'Mutuários' }
+      { to: '/mutuarios', icon: 'people', label: 'Mutuários' },
+      loansItem
     )
   }
 

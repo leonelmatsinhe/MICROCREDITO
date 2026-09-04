@@ -9,17 +9,32 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateLoanInstallmentDates = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoans = void 0;
+exports.updateLoanInstallmentDates = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const NotificationModel_1 = require("../database/models/NotificationModel");
 const UserModel_1 = require("../database/models/UserModel");
+const TranzactionModel_1 = require("../database/models/TranzactionModel");
+const sequelize_1 = require("sequelize");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const loanAmortization_1 = require("../utils/loanAmortization");
 const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+};
+// Subtrai meses de uma data "YYYY-MM-DD" (sem conversões de fuso horário).
+// Útil para derivar a data de desembolso: o plano é mensal e a 1ª prestação
+// vence 1 mês após o desembolso (ver simulator em utils/loanAmortization).
+const subtractMonths = (dateStr, months) => {
+    const match = String(dateStr || "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match)
+        return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    date.setMonth(date.getMonth() - months);
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${mm}-${dd}`;
 };
 const calculateInstallmentValue = (amount, interestRate, numberOfInstallments) => {
     const principal = toNumber(amount);
@@ -200,7 +215,13 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     const { id } = req.params;
     // Buscar o empréstimo antes de atualizar para verificar mudança de status
     const previousLoan = yield LoanModel_1.LoanModel.findByPk(id);
-    if (previousLoan && Number(req.body.status) === 1) {
+    // Valida a capacidade de pagamento (1/3 do rendimento) também ao REABRIR um
+    // pedido rejeitado (2/-1 → 0): o pedido só volta a Pendentes dentro da regra
+    // ou com parecer/observação registada (mín. 10 caracteres).
+    const reopeningRejected = !!previousLoan &&
+        Number(req.body.status) === 0 &&
+        [2, -1].includes(Number(previousLoan.status));
+    if (previousLoan && (Number(req.body.status) === 1 || reopeningRejected)) {
         const capacityValidation = yield validateCapacityRule({
             accountNumber: previousLoan.accountNumber,
             companyId: previousLoan.companyId,
@@ -268,6 +289,46 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                         });
                     }
                 }
+                // Pedido rejeitado reaberto (status 2/-1 → 0) → notificar admins e gestor.
+                // Admins = Administradores (role 1) + super admin/proprietário (role 0).
+                if (newStatus === 0 && [2, -1].includes(oldStatus)) {
+                    // Usar os valores re-submetidos (podem ter sido editados antes de reabrir)
+                    const resubAmount = req.body.amount !== undefined && req.body.amount !== null && Number(req.body.amount) > 0
+                        ? Number(req.body.amount)
+                        : Number(previousLoan.amount);
+                    const amountLabel = resubAmount.toLocaleString("pt-MZ");
+                    const admins = yield UserModel_1.UserModel.findAll({
+                        where: { companyId: previousLoan.companyId, userRole: { [sequelize_1.Op.in]: [0, 1] } },
+                    });
+                    const bulkNotifs = [];
+                    for (const admin of admins) {
+                        bulkNotifs.push({
+                            companyId: previousLoan.companyId,
+                            recipientType: "admin",
+                            recipientId: admin.id,
+                            title: "Pedido de crédito reaberto",
+                            message: `A conta ${previousLoan.accountNumber} reabriu o pedido de crédito de ${amountLabel} MZN. Está novamente em Pendentes para nova análise.`,
+                            type: "loan_request",
+                            referenceId: Number(id),
+                            isRead: false,
+                        });
+                    }
+                    if (bulkNotifs.length > 0) {
+                        yield NotificationModel_1.NotificationModel.bulkCreate(bulkNotifs);
+                    }
+                    if (previousLoan.creditManager) {
+                        yield NotificationModel_1.NotificationModel.create({
+                            companyId: previousLoan.companyId,
+                            recipientType: "gestor",
+                            recipientId: previousLoan.creditManager,
+                            title: "Pedido de crédito reaberto",
+                            message: `A conta ${previousLoan.accountNumber} reabriu o pedido de crédito de ${amountLabel} MZN. Está novamente em Pendentes para nova análise.`,
+                            type: "loan_request",
+                            referenceId: Number(id),
+                            isRead: false,
+                        });
+                    }
+                }
             }
             catch (err) {
                 console.error("Erro ao criar notificação de atualização de crédito:", err);
@@ -298,6 +359,159 @@ const destroyLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         }));
 });
 exports.destroyLoan = destroyLoan;
+/**
+ * Lista de créditos da empresa com métricas agregadas por crédito, para a
+ * página de Créditos (Pendentes / Desembolsados / Terminados):
+ * - nome/telefone do mutuário;
+ * - total pago (soma dos pagamentos efectivos);
+ * - juros de mora pagos;
+ * - descontos aplicados;
+ * - total em dívida (prestações ainda por liquidar);
+ * - nº de prestações pagas/total, próximo vencimento e atrasos.
+ */
+const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { companyId } = req.params;
+        const companyIdNum = parseInt(String(companyId), 10);
+        if (Number.isNaN(companyIdNum) || companyIdNum <= 0) {
+            return res.status(400).json({ success: false, message: "companyId inválido." });
+        }
+        const loans = (yield LoanModel_1.LoanModel.findAll({
+            where: { companyId: companyIdNum },
+            order: [["id", "DESC"]],
+        }));
+        if (loans.length === 0) {
+            return res.status(200).json({ success: true, result: [] });
+        }
+        const loanIds = loans.map((l) => l.id);
+        // Mutuários — nome e telefone para exibição e alertas SMS/WhatsApp
+        const accountNumbers = [...new Set(loans.map((l) => l.accountNumber))];
+        const customerMap = {};
+        if (accountNumbers.length > 0) {
+            const customers = (yield CustomerModel_1.CustomerModel.findAll({
+                where: {
+                    companyId: companyIdNum,
+                    accountNumber: { [sequelize_1.Op.in]: accountNumbers },
+                },
+                attributes: ["accountNumber", "customerName", "customerPhone", "customerMonthlySalary"],
+            }));
+            customers.forEach((c) => {
+                customerMap[String(c.accountNumber)] = c.toJSON ? c.toJSON() : c;
+            });
+        }
+        // Pagamentos (transacções) por crédito
+        const transactions = (yield TranzactionModel_1.TranzactionModel.findAll({
+            where: { loanId: { [sequelize_1.Op.in]: loanIds } },
+            attributes: [
+                "loanId",
+                "amount",
+                "interestRateAmount",
+                "latePaymentInterest",
+                "discountAmount",
+                "discountApplied",
+            ],
+            raw: true,
+        }));
+        const txByLoan = {};
+        transactions.forEach((t) => {
+            (txByLoan[Number(t.loanId)] = txByLoan[Number(t.loanId)] || []).push(t);
+        });
+        // Prestações por crédito (para dívida restante, progresso e vencimentos).
+        // Nota: remainingBalance na tabela é o saldo devedor ACUMULADO (principal),
+        // não o valor em falta da prestação — por isso a dívida é calculada a partir
+        // do valor de cada prestação em aberto (status 0/-1), deduzindo o pago.
+        const amortizations = (yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
+            where: { loanId: { [sequelize_1.Op.in]: loanIds } },
+            attributes: ["loanId", "installment", "paidAmount", "status", "dueDate"],
+            raw: true,
+        }));
+        const amortByLoan = {};
+        amortizations.forEach((a) => {
+            (amortByLoan[Number(a.loanId)] = amortByLoan[Number(a.loanId)] || []).push(a);
+        });
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const result = loans.map((loan) => {
+            var _a;
+            const plain = loan.toJSON ? loan.toJSON() : loan;
+            const customer = customerMap[String(loan.accountNumber)] || null;
+            const txs = txByLoan[Number(loan.id)] || [];
+            const amorts = amortByLoan[Number(loan.id)] || [];
+            const sum = (rows, field) => rows.reduce((acc, r) => acc + (Number(r[field]) || 0), 0);
+            const totalPaid = Math.round(sum(txs, "amount") * 100) / 100;
+            const totalInterestPaid = Math.round(sum(txs, "interestRateAmount") * 100) / 100;
+            const totalLateInterestPaid = Math.round(sum(txs, "latePaymentInterest") * 100) / 100;
+            const totalDiscount = Math.round(sum(txs, "discountAmount") * 100) / 100;
+            // Datas do plano: 1ª e última prestação (vencimento final do crédito)
+            let firstDueDate = null;
+            let finalDueDate = null;
+            for (const a of amorts) {
+                const d = String(a.dueDate || "").slice(0, 10);
+                if (!d)
+                    continue;
+                if (!firstDueDate || d < firstDueDate)
+                    firstDueDate = d;
+                if (!finalDueDate || d > finalDueDate)
+                    finalDueDate = d;
+            }
+            // Desembolso: usa a data guardada na coluna própria. Para registos antigos
+            // (sem data), deriva da 1ª prestação − 1 mês (cadência mensal do plano Price).
+            const disbursementDate = plain.disbursementDate
+                ? String(plain.disbursementDate).slice(0, 10)
+                : firstDueDate
+                    ? subtractMonths(firstDueDate, 1)
+                    : null;
+            // Dívida = soma do valor ainda por pagar de cada prestação não liquidada
+            let amountInDebt = 0;
+            let paidInstallments = 0;
+            let overdueCount = 0;
+            let overdueAmount = 0;
+            let nextDueDate = null;
+            const contractTotal = Math.round(sum(amorts, "installment") * 100) / 100;
+            amorts.forEach((a) => {
+                const status = Number(a.status);
+                const installmentValue = Number(a.installment) || 0;
+                const paidValue = Number(a.paidAmount) || 0;
+                // dueDate pode vir "YYYY-MM-DD" ou "YYYY-MM-DD HH:mm:ss"
+                const due = String(a.dueDate || "").slice(0, 10);
+                if (status === 1) {
+                    paidInstallments += 1;
+                    return;
+                }
+                // Em aberto (0) ou parcial (-1): o que falta pagar desta prestação
+                const remaining = Math.max(0, installmentValue - paidValue);
+                amountInDebt += remaining;
+                if (due) {
+                    if (due < todayStr) {
+                        overdueCount += 1;
+                        overdueAmount += remaining;
+                    }
+                    else if (!nextDueDate || due < nextDueDate) {
+                        nextDueDate = due;
+                    }
+                }
+            });
+            amountInDebt = Math.round(amountInDebt * 100) / 100;
+            overdueAmount = Math.round(overdueAmount * 100) / 100;
+            return Object.assign(Object.assign({}, plain), { customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || `Conta ${plain.accountNumber}`, customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "", customerMonthlySalary: (_a = customer === null || customer === void 0 ? void 0 : customer.customerMonthlySalary) !== null && _a !== void 0 ? _a : null, contractTotal,
+                totalPaid,
+                totalInterestPaid,
+                totalLateInterestPaid,
+                totalDiscount,
+                amountInDebt, installmentsCount: amorts.length, paidInstallments,
+                overdueCount,
+                overdueAmount, hasOverdue: overdueCount > 0, nextDueDate,
+                firstDueDate,
+                finalDueDate,
+                disbursementDate });
+        });
+        return res.status(200).json({ success: true, result });
+    }
+    catch (error) {
+        console.error("findAllLoansOverview:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao listar créditos com métricas." });
+    }
+});
+exports.findAllLoansOverview = findAllLoansOverview;
 // Actualizar datas das prestações com base na nova data de desembolso
 const updateLoanInstallmentDates = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -340,6 +554,8 @@ const updateLoanInstallmentDates = (req, res) => __awaiter(void 0, void 0, void 
             updates.push(AmortizationLoanModel_1.AmorizationLoanModel.update({ dueDate: dueDateStr }, { where: { id: installment.id } }));
         }
         yield Promise.all(updates);
+        // Persistir a data de desembolso que serviu de base ao novo plano
+        yield loan.update({ disbursementDate: String(disbursementDate).slice(0, 10) });
         return res.status(200).json({
             success: true,
             message: `Datas de ${installments.length} prestações actualizadas com sucesso.`,

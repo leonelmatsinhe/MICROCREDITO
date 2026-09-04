@@ -61,6 +61,7 @@ import {
   findAlltranzactions,
   findTransactionsByCompany,
   findPaginatedTransactions,
+  findAllPaymentsOverview,
   getCustomerTranzactions,
   addTranzaction,
   updateTranzaction,
@@ -91,6 +92,7 @@ import {
 
 import {
   findAllLoans,
+  findAllLoansOverview,
   createLoan,
   destroyLoan,
   findLoanByCustomer,
@@ -121,11 +123,15 @@ import { sendSms, findAllSms, findSmsByCustomer } from "./controllers/SmsControl
 import {
   enqueueLateInterestAlerts,
   enqueueSmsAnnouncement,
+  deleteQueuedSms,
   enqueueSmsManually,
   enqueueUpcomingAlerts,
   getPendingSmsGateway,
+  getPendingCredentialsSms,
+  getSmsQueueSummary,
   getSmsQueueHistory,
   processSmsQueueHandler,
+  requeueCredentialSms,
   syncSmsInbox,
   updateGatewaySmsStatus,
 } from "./controllers/SmsGatewayController";
@@ -276,6 +282,9 @@ routes.post("/api/sms-gateway/alerts/upcoming", enqueueUpcomingAlerts);
 routes.post("/api/sms-gateway/alerts/late-interest", enqueueLateInterestAlerts);
 routes.post("/api/sms-gateway/inbox/sync", syncSmsInbox);
 routes.get("/api/sms-gateway/history", getSmsQueueHistory);
+routes.get("/api/sms-gateway/summary", getSmsQueueSummary);
+routes.get("/api/sms-gateway/pending-credentials", getPendingCredentialsSms);  routes.post("/api/sms-gateway/pending-credentials/:id/requeue", requeueCredentialSms);
+  routes.delete("/api/sms-gateway/:id", deleteQueuedSms);
 routes.post("/api/users", create);
 routes.post("/api/updatePassword", changeUserPassword);
 routes.get("/api/usersAll/:id", findAll);
@@ -288,6 +297,7 @@ routes.get("/api/loan/:id", findLoanByCustomer);
 routes.get("/api/loan/amortization/:id", getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", findAllLoans);
+routes.get("/api/loans/overview/:companyId", findAllLoansOverview);
 routes.put("/api/loan/:id", updateLoan);
 routes.put("/api/loan/:id/update-dates", updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", destroyLoan);
@@ -356,6 +366,7 @@ routes.get("/api/tranzaction", findAlltranzactions);
 routes.get("/api/tranzaction/:id", getCustomerTranzactions);
 routes.get("/api/monthllyTransactions/:id", findTransactionsByCompany);
 routes.get("/api/payments/:id/paginated", findPaginatedTransactions);
+routes.get("/api/payments/:companyId/all", findAllPaymentsOverview);
 routes.put("/api/tranzaction/:id", updateTranzaction);
 routes.post("/api/tranzaction", addTranzaction);
 

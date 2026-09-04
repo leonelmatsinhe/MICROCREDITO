@@ -171,9 +171,10 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       customerAmortizationPlan
     );
 
-    // Atualiza o status do empréstimo
+    // Atualiza o status do empréstimo e guarda a data real de desembolso:
+    // o dueDate enviado é a base do plano (a 1ª prestação vence 1 mês depois).
     await LoanModel.update(
-      { status: 1 },
+      { status: 1, disbursementDate: String(dueDate || "").slice(0, 10) || null },
       {
         where: {
           id: loanId

@@ -52,6 +52,11 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
     },
+    disbursementDate: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+        comment: "Data real de desembolso do crédito (base do plano de amortização)",
+    },
     status: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,

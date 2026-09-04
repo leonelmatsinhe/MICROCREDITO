@@ -3,6 +3,9 @@
     <!-- Filters -->
     <FiltersBar @filter="onFilter" @clear="onClear" @sync="onSync" />
 
+    <!-- SMS pendentes na fila (saldo Tsemba) -->
+    <SmsQueueIndicator />
+
     <!-- Loading -->
     <div v-if="loading" class="text-center q-pa-xl">
       <q-spinner-dots size="40px" color="primary" />
@@ -96,6 +99,7 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
 import KpiCard from '@/components/ui/KpiCard.vue'
+import SmsQueueIndicator from '@/components/ui/SmsQueueIndicator.vue'
 import FiltersBar from '@/components/ui/FiltersBar.vue'
 import BarChart from '@/components/charts/BarChart.vue'
 import UpcomingTable from '@/components/ui/UpcomingTable.vue'

@@ -26,6 +26,35 @@ export function formatMoney(value) {
 }
 
 /**
+ * Converte o logo da empresa em data-URL base64 para o pdfmake.
+ * O pdfmake não carrega URLs — precisa do logo em base64 para renderizar.
+ * @param {Object} company - Dados da empresa (usa o campo companyLogo)
+ * @returns {Promise<string|null>} data-URL do logo ou null (logo em falta)
+ */
+export async function companyLogoBase64(company) {
+  const logo = company?.companyLogo
+  if (!logo || logo === '/logo.png') return null
+  try {
+    const url = logo.startsWith('http') || logo.startsWith('/') ? logo : `/documents/${logo}`
+    const token = typeof window !== 'undefined' ? localStorage.getItem('applicationMicroToken') : null
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    const response = await fetch(url, { headers })
+    if (!response.ok) return null
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('image/')) return null
+    const blob = await response.blob()
+    return await new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result)
+      reader.readAsDataURL(blob)
+    })
+  } catch (e) {
+    console.warn('Erro ao carregar logo para o PDF:', e)
+    return null
+  }
+}
+
+/**
  * Gerar cabeçalho da empresa para PDF
  * @param {Object} company - Dados da empresa
  * @param {string} logoBase64 - Logo em base64 (opcional)

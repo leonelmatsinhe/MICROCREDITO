@@ -143,6 +143,19 @@
                       <template v-else>{{ (loan.interestRate * 100).toFixed(1) }}% |</template>
                       {{ loan.dateCreated }}
                     </q-item-label>
+                    <!-- Activos e Terminados: total + juros, pago até agora e última prestação -->
+                    <q-item-label
+                      v-if="loanMetrics[Number(loan.id)] && (Number(loan.status) === 1 || Number(loan.status) === 3)"
+                      caption
+                      class="q-mt-xs"
+                      style="font-size: 11px; line-height: 1.55"
+                    >
+                      Total + Juros: <strong class="text-weight-bold">{{ formatMoney(loanMetrics[Number(loan.id)].contractTotal) }}</strong>
+                      <span class="text-grey-6"> · Pago até agora: </span>
+                      <strong class="text-weight-bold text-positive">{{ formatMoney(loanMetrics[Number(loan.id)].totalPaid) }}</strong>
+                      <span class="text-grey-6"> · Última prestação: </span>
+                      <strong class="text-weight-bold">{{ formatDate(loanMetrics[Number(loan.id)].finalDueDate) }}</strong>
+                    </q-item-label>
                   </q-item-section>
                   <q-item-section side>
                     <div class="row q-gutter-xs items-center">
@@ -853,6 +866,7 @@ import { usePaymentsStore } from '@/stores/payments'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useCompanyStore } from '@/stores/company'
+import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort } from '@/utils/formatters'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
 import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
@@ -881,6 +895,8 @@ const submitting = ref(false)
 const savingLoan = ref(false)
 const uploading = ref(false)
 const uploadProgress = ref(0)
+// Métricas agregadas por crédito (total + juros, pago até agora, última prestação)
+const loanMetrics = ref({})
 
 // Modals
 const showEditModal = ref(false)
@@ -1941,8 +1957,22 @@ async function fetchLoans() {
     if (companyId) {
       await loansStore.fetchLoans(companyId)
       loansStore.loans = loansStore.loans.filter(l => String(l.accountNumber) === String(route.params.accountNumber))
+      fetchLoanMetrics(companyId)
     }
   } catch { /* silent */ }
+}
+
+// Métricas por crédito a partir do endpoint agregado de créditos: usa o mapa
+// id → { contractTotal, totalPaid, finalDueDate, ... } para as linhas do histórico.
+async function fetchLoanMetrics(companyId) {
+  try {
+    const { data } = await api.get(`/api/loans/overview/${companyId}`)
+    if (data?.success && Array.isArray(data.result)) {
+      const map = {}
+      data.result.forEach(m => { map[Number(m.id)] = m })
+      loanMetrics.value = map
+    }
+  } catch { /* silent — as linhas seguem sem métricas */ }
 }
 
 // ===================== ON MOUNTED =====================

@@ -50,6 +50,11 @@ export const LoanModel = db.define("customer_loans", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  disbursementDate: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Data real de desembolso do crédito (base do plano de amortização)",
+  },
   status: {
     type: DataTypes.INTEGER,
     allowNull: false,

@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkAndLiquidateLoan = exports.updateTranzaction = exports.addTranzaction = exports.getCustomerTranzactions = exports.findPaginatedTransactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
+exports.checkAndLiquidateLoan = exports.updateTranzaction = exports.addTranzaction = exports.getCustomerTranzactions = exports.findAllPaymentsOverview = exports.findPaginatedTransactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
@@ -230,6 +230,63 @@ const findPaginatedTransactions = (req, res) => __awaiter(void 0, void 0, void 0
     }
 });
 exports.findPaginatedTransactions = findPaginatedTransactions;
+/**
+ * Todos os pagamentos de prestações da empresa, enriquecidos com o nome/telefone
+ * do mutuário e com a prestação (nº e vencimento) a que cada pagamento se refere.
+ * Usado pela página dedicada "Pagamentos" (apresentação + exportação PDF/Excel).
+ */
+const findAllPaymentsOverview = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const companyId = parseInt(String(req.params.companyId), 10);
+        if (!Number.isFinite(companyId) || companyId <= 0) {
+            return res.status(400).json({ success: false, message: "companyId inválido." });
+        }
+        const tranzactions = (yield TranzactionModel_1.TranzactionModel.findAll({
+            where: { companyId },
+            order: [["paymentDate", "DESC"], ["id", "DESC"]],
+            raw: true,
+        }));
+        if (tranzactions.length === 0) {
+            return res.status(200).json({ success: true, result: [] });
+        }
+        // Mutuários — nome e telefone por conta
+        const accountNumbers = [...new Set(tranzactions.map((t) => t.accountNumber))];
+        const customers = (yield CustomerModel_1.CustomerModel.findAll({
+            where: { companyId, accountNumber: { [sequelize_1.Op.in]: accountNumbers } },
+            attributes: ["accountNumber", "customerName", "customerPhone"],
+            raw: true,
+        }));
+        const customerByAccount = {};
+        customers.forEach((c) => {
+            customerByAccount[String(c.accountNumber)] = c;
+        });
+        // Prestações — nº de ordem e vencimento a que o pagamento se refere
+        const amortIds = [...new Set(tranzactions.map((t) => t.amortizationLoanId).filter((v) => v != null))];
+        const amortById = {};
+        if (amortIds.length > 0) {
+            const amortizations = (yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
+                where: { id: { [sequelize_1.Op.in]: amortIds } },
+                attributes: ["id", "installmentOrder", "dueDate", "installment", "paidAmount", "status"],
+                raw: true,
+            }));
+            amortizations.forEach((a) => {
+                amortById[Number(a.id)] = a;
+            });
+        }
+        const result = tranzactions.map((t) => {
+            var _a, _b, _c, _d;
+            const customer = customerByAccount[String(t.accountNumber)] || null;
+            const amort = amortById[Number(t.amortizationLoanId)] || null;
+            return Object.assign(Object.assign({}, t), { customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || `Conta ${t.accountNumber}`, customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "", installmentOrder: (_a = amort === null || amort === void 0 ? void 0 : amort.installmentOrder) !== null && _a !== void 0 ? _a : null, installmentDueDate: (amort === null || amort === void 0 ? void 0 : amort.dueDate) ? String(amort.dueDate).slice(0, 10) : null, installmentValue: (_b = amort === null || amort === void 0 ? void 0 : amort.installment) !== null && _b !== void 0 ? _b : null, installmentPaidAmount: (_c = amort === null || amort === void 0 ? void 0 : amort.paidAmount) !== null && _c !== void 0 ? _c : null, installmentStatus: (_d = amort === null || amort === void 0 ? void 0 : amort.status) !== null && _d !== void 0 ? _d : null });
+        });
+        return res.status(200).json({ success: true, result });
+    }
+    catch (error) {
+        console.error("findAllPaymentsOverview:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao listar pagamentos." });
+    }
+});
+exports.findAllPaymentsOverview = findAllPaymentsOverview;
 const getCustomerTranzactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const tranzaction = yield TranzactionModel_1.TranzactionModel.findAll({

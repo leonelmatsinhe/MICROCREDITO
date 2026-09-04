@@ -147,6 +147,10 @@ routes.post("/api/sms-gateway/alerts/upcoming", SmsGatewayController_1.enqueueUp
 routes.post("/api/sms-gateway/alerts/late-interest", SmsGatewayController_1.enqueueLateInterestAlerts);
 routes.post("/api/sms-gateway/inbox/sync", SmsGatewayController_1.syncSmsInbox);
 routes.get("/api/sms-gateway/history", SmsGatewayController_1.getSmsQueueHistory);
+routes.get("/api/sms-gateway/summary", SmsGatewayController_1.getSmsQueueSummary);
+routes.get("/api/sms-gateway/pending-credentials", SmsGatewayController_1.getPendingCredentialsSms);
+routes.post("/api/sms-gateway/pending-credentials/:id/requeue", SmsGatewayController_1.requeueCredentialSms);
+routes.delete("/api/sms-gateway/:id", SmsGatewayController_1.deleteQueuedSms);
 routes.post("/api/users", UserController_1.create);
 routes.post("/api/updatePassword", UserController_1.changeUserPassword);
 routes.get("/api/usersAll/:id", UserController_1.findAll);
@@ -158,6 +162,7 @@ routes.get("/api/loan/:id", LoanController_1.findLoanByCustomer);
 routes.get("/api/loan/amortization/:id", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", LoanController_1.findAllLoans);
+routes.get("/api/loans/overview/:companyId", LoanController_1.findAllLoansOverview);
 routes.put("/api/loan/:id", LoanController_1.updateLoan);
 routes.put("/api/loan/:id/update-dates", LoanController_1.updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", LoanController_1.destroyLoan);
@@ -220,6 +225,7 @@ routes.get("/api/tranzaction", TranzactionController_1.findAlltranzactions);
 routes.get("/api/tranzaction/:id", TranzactionController_1.getCustomerTranzactions);
 routes.get("/api/monthllyTransactions/:id", TranzactionController_1.findTransactionsByCompany);
 routes.get("/api/payments/:id/paginated", TranzactionController_1.findPaginatedTransactions);
+routes.get("/api/payments/:companyId/all", TranzactionController_1.findAllPaymentsOverview);
 routes.put("/api/tranzaction/:id", TranzactionController_1.updateTranzaction);
 routes.post("/api/tranzaction", TranzactionController_1.addTranzaction);
 // Installments Routes

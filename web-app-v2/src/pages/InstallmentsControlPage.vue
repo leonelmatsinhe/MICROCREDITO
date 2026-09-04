@@ -95,7 +95,7 @@
 
     <!-- Tabela de Prestações -->
     <q-card v-else flat bordered>
-      <q-card-section class="bg-grey-1">
+      <q-card-section class="installments-header">
         <div class="row items-center">
           <q-icon name="table_chart" size="20px" color="primary" class="q-mr-sm" />
           <div class="text-subtitle1 text-weight-bold">Prestações</div>
@@ -260,12 +260,14 @@
       </q-card>
     </q-dialog>
 
-    <!-- Modal de envio SMS/WhatsApp -->
+    <!-- Modal de envio SMS/WhatsApp com mensagem de aviso/alerta de vencimento pré-preenchida -->
     <SendMessageModal
       v-model="showMessageModal"
       :phone="messagePhone"
       :account-number="messageAccountNumber"
       :customer-name="messageCustomerName"
+      :channel="messageChannel"
+      :initial-message="messageInitial"
     />
   </div>
 </template>
@@ -292,6 +294,7 @@ const messageChannel = ref('sms')
 const messagePhone = ref('')
 const messageAccountNumber = ref('')
 const messageCustomerName = ref('')
+const messageInitial = ref('')
 
 const filter = ref({ status: null, search: '', from: '', to: '' })
 const statusOptions = [
@@ -345,21 +348,42 @@ function getStatusColor(s) { return { 1: 'positive', 0: 'orange', '-1': 'warning
 function getStatusLabel(s) { return { 1: 'Pago', 0: 'Pendente', '-1': 'Parcial' }[s] || '?' }
 function sendSMS(row) {
   messageChannel.value = 'sms'
-  messagePhone.value = ''
+  messagePhone.value = row.customerPhone || ''
   messageAccountNumber.value = row.accountNumber || ''
   messageCustomerName.value = row.customerName || ''
+  messageInitial.value = buildDueAlertMessage(row)
   showMessageModal.value = true
 }
 
 function sendWhatsApp(row) {
   messageChannel.value = 'whatsapp'
-  messagePhone.value = ''
+  messagePhone.value = row.customerPhone || ''
   messageAccountNumber.value = row.accountNumber || ''
   messageCustomerName.value = row.customerName || ''
+  messageInitial.value = buildDueAlertMessage(row)
   showMessageModal.value = true
 }
 function viewDetails(row) { selectedInstallment.value = row; showDetails.value = true }
 function formatMoneyRaw(val) { return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) }
+
+// Mensagem genérica de aviso/alerta de vencimento da prestação:
+// nome do mutuário + itens da prestação (nº, valor, vencimento) + empresa,
+// sem caracteres especiais e sempre <= 160 caracteres.
+function buildDueAlertMessage(row) {
+  const nome = row.customerName || 'Cliente'
+  const n = row.installmentOrder ? String(row.installmentOrder).replace(/[ºª]/g, '') : '?'
+  // Intl usa espaço de não-quebra (U+00A0/U+202F) como separador de milhares — trocar por espaço normal
+  const valor = formatMoneyRaw(Number(row.installment) || 0).replace(/[\u00A0\u202F]/g, ' ')
+  const data = formatDate(row.dueDate)
+  const company = (companyStore.company?.companyName || 'MBR Microcredito').replace(/[^a-zA-Z0-9 .,&-]/g, '')
+  const base = row.daysOverdue > 0
+    ? `Caro/a ${nome}, prestacao N. ${n} de ${valor} MT esta em atraso desde ${data}. Regularize para evitar juros.`
+    : `Caro/a ${nome}, prestacao N. ${n} de ${valor} MT vence em ${data}. Pague para evitar juros de mora.`
+  const suffix = ` ${company}`
+  if (base.length + suffix.length <= 160) return base + suffix
+  if (base.length >= 160) return `${base.slice(0, 159)}.`
+  return `${base} ${company.slice(0, 160 - base.length - 1)}`
+}
 
 // ==================== PDF ====================
 async function downloadPDF() {
@@ -474,7 +498,11 @@ async function loadData() {
     const { data: customersData } = await api.get(`/api/customers/${companyId}`)
     const customers = customersData?.result || []
     const customerMap = {}
-    customers.forEach(c => { customerMap[String(c.accountNumber)] = c.customerName })
+    const customerPhoneMap = {}
+    customers.forEach(c => {
+      customerMap[String(c.accountNumber)] = c.customerName
+      customerPhoneMap[String(c.accountNumber)] = c.customerPhone || ''
+    })
     const { data: loansData } = await api.get(`/api/loan/findAllLoans/all/${companyId}`)
     const loans = loansData?.result || []
     const allInstallments = []
@@ -493,7 +521,7 @@ async function loadData() {
             const daysOverdue = diffDays < 0 && a.status !== 1 ? Math.abs(diffDays) : 0
             const daysUntilDue = diffDays > 0 && a.status !== 1 ? diffDays : 0
             const lateFee = daysOverdue > 0 ? Math.round(a.installment * 0.005 * daysOverdue * 100) / 100 : 0
-            allInstallments.push({ id: `${loan.id}-${a.id || a.installmentOrder}`, loanId: loan.id, customerName, accountNumber: loan.accountNumber, installment: Number(a.installment) || 0, paidAmount: Number(a.paidAmount) || 0, status: Number(a.status), dueDate: a.dueDate, daysOverdue, daysUntilDue, lateFee, totalToPay: Number(a.installment || 0) + lateFee, amortization: Number(a.amortization) || 0, rateAmount: Number(a.rateAmount) || 0 })
+            allInstallments.push({ id: `${loan.id}-${a.id || a.installmentOrder}`, loanId: loan.id, customerName, accountNumber: loan.accountNumber, customerPhone: customerPhoneMap[String(loan.accountNumber)] || '', installmentOrder: a.installmentOrder ?? '', installment: Number(a.installment) || 0, paidAmount: Number(a.paidAmount) || 0, status: Number(a.status), dueDate: a.dueDate, daysOverdue, daysUntilDue, lateFee, totalToPay: Number(a.installment || 0) + lateFee, amortization: Number(a.amortization) || 0, rateAmount: Number(a.rateAmount) || 0 })
           })
         }
       } catch (e) { console.warn(`Erro loan ${loan.id}:`, e.message) }
@@ -512,6 +540,8 @@ onMounted(() => {
 <style lang="scss" scoped>
 .kpi-card { border-radius: 12px; transition: transform 0.2s; &:hover { transform: translateY(-2px); } }
 .filter-card { border-radius: 12px; }
+.installments-header { background-color: $grey-1; }
 .installments-table { th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #6B7280; } td { font-size: 12px; padding: 8px 12px; } }
 body.body--dark .kpi-card { background-color: $dark-page; }
+body.body--dark .installments-header { background-color: #252d42; }
 </style>

@@ -40,6 +40,16 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const sequelize_1 = require("sequelize");
+const password_1 = require("../utils/password");
+// Remove o hash da senha antes de devolver mutuários ao frontend — a BD é a
+// única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
+const stripPassword = (entity) => {
+    const plain = (entity === null || entity === void 0 ? void 0 : entity.toJSON) ? entity.toJSON() : entity;
+    if (!plain)
+        return plain;
+    delete plain.password;
+    return plain;
+};
 const findAllCustomers = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const page = parseInt(req.query.page) || 1;
@@ -71,7 +81,7 @@ const findAllCustomers = (req, res) => __awaiter(void 0, void 0, void 0, functio
         const totalPages = Math.ceil(count / limit);
         return res.status(200).json({
             success: true,
-            result: rows,
+            result: rows.map(stripPassword),
             pagination: {
                 currentPage: page,
                 totalPages,
@@ -104,7 +114,7 @@ const searchCustomers = (req, res) => __awaiter(void 0, void 0, void 0, function
             ],
         },
     });
-    return res.status(200).json({ success: true, result: customers || [] });
+    return res.status(200).json({ success: true, result: (customers || []).map(stripPassword) });
 });
 exports.searchCustomers = searchCustomers;
 const findOneCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -115,7 +125,7 @@ const findOneCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function
         },
     });
     return customer
-        ? res.status(200).send({ success: true, result: customer })
+        ? res.status(200).send({ success: true, result: stripPassword(customer) })
         : res.status(204).send({
             success: false,
             result: "No customer found with the ID provided",
@@ -308,19 +318,13 @@ const changeCustomerPassword = (req, res) => __awaiter(void 0, void 0, void 0, f
                 message: "A senha actual está incorrecta.",
             });
         }
-        bcryptjs_1.default.hash(newPassword + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
-            if (hashError) {
-                return res.status(500).json({
-                    success: false,
-                    message: "Erro ao processar a nova senha.",
-                });
-            }
-            yield CustomerModel_1.CustomerModel.update({ password: hash }, { where: { id: customerId } });
-            return res.status(200).json({
-                success: true,
-                message: "Senha alterada com sucesso.",
-            });
-        }));
+        // Hash bcrypt — nunca voltar a encriptar um valor que já seja hash
+        const hash = (0, password_1.hashPasswordIfNeeded)(newPassword + "");
+        yield CustomerModel_1.CustomerModel.update({ password: hash }, { where: { id: customerId } });
+        return res.status(200).json({
+            success: true,
+            message: "Senha alterada com sucesso.",
+        });
     }
     catch (error) {
         console.error("Erro ao alterar senha do cliente:", error);
@@ -430,7 +434,8 @@ const setCustomerPassword = (req, res) => __awaiter(void 0, void 0, void 0, func
         if (!customer) {
             return res.status(404).json({ success: false, message: "Cliente nao encontrado." });
         }
-        const hash = yield bcryptjs_1.default.hash(newPassword, 10);
+        // Hash bcrypt — nunca voltar a encriptar um valor que já seja hash
+        const hash = (0, password_1.hashPasswordIfNeeded)(newPassword);
         yield customer.update({ password: hash });
         return res.status(200).json({ success: true, message: "Senha do cliente actualizada com sucesso.", customerId });
     }

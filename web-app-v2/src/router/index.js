@@ -9,11 +9,8 @@ const CompanyPage = () => import('@/pages/CompanyPage.vue')
 const CustomerListPage = () => import('@/pages/customers/CustomerListPage.vue')
 const CustomerDetailPage = () => import('@/pages/customers/CustomerDetailPage.vue')
 const LoanListPage = () => import('@/pages/loans/LoanListPage.vue')
-
-const LoanDetailPage = () => import('@/pages/loans/LoanDetailPage.vue')
-const AmortizationPage = () => import('@/pages/loans/AmortizationPage.vue')
-// Páginas removidas: PaymentsPage, InstallmentsPage, ReportsPage
-// Funcionalidades integradas nos Mutuários
+// Páginas removidas: LoanDetailPage, AmortizationPage, PaymentsPage, InstallmentsPage, ReportsPage
+// Funcionalidades integradas nos Mutuários (painel do mutuário) e na página de Créditos
 const SettingsPage = () => import('@/pages/SettingsPage.vue')
 const ProfilePage = () => import('@/pages/ProfilePage.vue')
 const NotificationsPage = () => import('@/pages/NotificationsPage.vue')
@@ -21,7 +18,9 @@ const CustomerPortalPage = () => import('@/pages/CustomerPortalPage.vue')
 const ContractDocumentsPage = () => import('@/pages/loans/ContractDocumentsPage.vue')
 const ReportsBMPage = () => import('@/pages/ReportsBMPage.vue')
 const InstallmentsControlPage = () => import('@/pages/InstallmentsControlPage.vue')
+const PaymentsPage = () => import('@/pages/PaymentsPage.vue')
 const LogsPage = () => import('@/pages/LogsPage.vue')
+const SmsPendingCredentialsPage = () => import('@/pages/SmsPendingCredentialsPage.vue')
 
 const routes = [
   {
@@ -69,18 +68,6 @@ const routes = [
   },
 
   {
-    path: '/loans/:id',
-    name: 'LoanDetail',
-    component: LoanDetailPage,
-    meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
-  },
-  {
-    path: '/loans/:id/amortization',
-    name: 'LoanAmortization',
-    component: AmortizationPage,
-    meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
-  },
-  {
     path: '/loans/:id/documents',
     name: 'LoanDocuments',
     component: ContractDocumentsPage,
@@ -91,6 +78,12 @@ const routes = [
     path: '/admin/installments',
     name: 'InstallmentsControl',
     component: InstallmentsControlPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  {
+    path: '/pagamentos',
+    name: 'Payments',
+    component: PaymentsPage,
     meta: { requiresAuth: true, allowedRoles: [1] }
   },
   {
@@ -110,6 +103,12 @@ const routes = [
     name: 'Logs',
     component: LogsPage,
     meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  {
+    path: '/sms/pendentes',
+    name: 'SmsPendingCredentials',
+    component: SmsPendingCredentialsPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 3] }
   },
   {
     path: '/profile',

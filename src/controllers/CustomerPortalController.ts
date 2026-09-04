@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import bcryptjs from "bcryptjs";
 import { Op } from "sequelize";
 import { db } from "../database/db";
+import { hashPasswordIfNeeded } from "../utils/password";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { LoanModel } from "../database/models/LoanModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
@@ -741,8 +741,13 @@ export const sendCustomerCredentials = async (req: Request, res: Response) => {
       }
     } catch (e) { /* coluna pode não existir ainda */ }
 
-    // Se já foi enviado, notificar
-    if (alreadySent) {
+    // Gerar nova senha se não foi fornecida
+    const password = newPassword || generateSixDigitCode();
+
+    // Se já foi enviado e NÃO vem uma senha nova explícita, não há nada para
+    // gravar nem reenviar — apenas notificar. (Se o modal gerou um código novo,
+    // `newPassword` está presente e o reenvio prossegue normalmente abaixo.)
+    if (alreadySent && !newPassword) {
       return res.status(200).json({
         success: true,
         alreadySent: true,
@@ -751,11 +756,9 @@ export const sendCustomerCredentials = async (req: Request, res: Response) => {
       });
     }
 
-    // Gerar nova senha se não foi fornecida
-    const password = newPassword || generateSixDigitCode();
-
-    // Actualizar senha (sempre com hash bcrypt — nunca em texto simples)
-    await customer.update({ password: bcryptjs.hashSync(password + "", 10) });
+    // Actualizar senha com hash bcrypt — mas NUNCA voltar a encriptar um valor
+    // que já seja hash (double-hash tornaria o login impossível).
+    await customer.update({ password: hashPasswordIfNeeded(password) });
 
     // Tentar enviar via canal escolhido (SMS/WhatsApp)
     let channelMessage = '';
@@ -803,9 +806,12 @@ export const sendCustomerCredentials = async (req: Request, res: Response) => {
     return res.status(200).json({
       success: true,
       alreadySent: false,
+      resent: alreadySent,
       enqueued,
       password: password,
-      message: `Credenciais actualizadas ${channelMessage}.`,
+      message: alreadySent
+        ? `Credenciais reenviadas ${channelMessage}.`
+        : `Credenciais actualizadas ${channelMessage}.`,
     });
   } catch (error: any) {
     console.error("Envio de credenciais:", error);

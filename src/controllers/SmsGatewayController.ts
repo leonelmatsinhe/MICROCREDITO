@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import crypto from "crypto";
+import { Op } from "sequelize";
 import { SmsQueueModel } from "../database/models/SmsQueueModel";
 import { SmsGatewayInboxModel } from "../database/models/SmsGatewayInboxModel";
 import { CustomerModel } from "../database/models/CustomerModel";
@@ -404,8 +405,152 @@ const syncSmsInbox = async (req: Request, res: Response) => {
   });
 };
 
+// Resumo da fila de SMS para indicadores no painel (Admin/Gestor).
+const getSmsQueueSummary = async (req: Request, res: Response) => {
+  try {
+    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+    const companyWhere: any = {};
+    if (companyId) companyWhere.companyId = companyId;
+
+    const countByStatus = async (status: string) =>
+      SmsQueueModel.count({ where: { ...companyWhere, status } });
+
+    const [queued, processing, failed, sent] = await Promise.all([
+      countByStatus("queued"),
+      countByStatus("processing"),
+      countByStatus("failed"),
+      countByStatus("sent"),
+    ]);
+
+    // Pendentes por tipo de mensagem (os mais relevantes para o painel)
+    const pendingRows = await SmsQueueModel.findAll({
+      where: { ...companyWhere, status: { [Op.in]: ["queued", "processing", "failed"] } },
+      attributes: ["messageType", "status"],
+      raw: true,
+    });
+    const pendingByType: Record<string, number> = {};
+    for (const row of pendingRows as any[]) {
+      const key = row.messageType || "outro";
+      pendingByType[key] = (pendingByType[key] || 0) + 1;
+    }
+
+    const smsEnabled = companyId ? await isCompanySmsEnabled(companyId) : true;
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        smsEnabled,
+        queued,
+        processing,
+        failed,
+        sent,
+        pending: queued + processing + failed,
+        pendingByType,
+      },
+    });
+  } catch (err: any) {
+    console.error("getSmsQueueSummary:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro ao obter resumo da fila SMS." });
+  }
+};
+
+// Todas as mensagens (todos os tipos e estados: na fila, a enviar, falhadas e
+// enviadas) — com dados do mutuário. Toda a mensagem enfileirada é persistida
+// em sms_queue e mantida na BD após o envio (status "sent" + sentAt), para o
+// Centro de Mensagens mostrar o histórico completo e permitir reenviar,
+// eliminar ou consultar qualquer mensagem.
+const getPendingCredentialsSms = async (req: Request, res: Response) => {
+  try {
+    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+    const whereClause: any = {
+      status: { [Op.in]: ["queued", "processing", "failed", "sent"] },
+    };
+    if (companyId) whereClause.companyId = companyId;
+
+    const rows = await SmsQueueModel.findAll({
+      where: whereClause,
+      order: [["createdAt", "DESC"]],
+    });
+
+    const result: any[] = [];
+    for (const row of rows) {
+      const plain = hydrateSmsQueuePayload(row);
+      let customer: any = null;
+      if (plain.accountNumber && plain.companyId) {
+        customer = await CustomerModel.findOne({
+          where: { companyId: plain.companyId, accountNumber: plain.accountNumber },
+          attributes: [
+            "id",
+            "customerName",
+            "customerPhone",
+            "accountNumber",
+            "credentialsSent",
+            "credentialsSentAt",
+            "customerStatus",
+          ],
+        });
+      }
+      result.push({
+        ...plain,
+        customer: customer ? customer.toJSON() : null,
+      });
+    }
+
+    return res.status(200).json({ success: true, result });
+  } catch (err: any) {
+    console.error("getPendingCredentialsSms:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro ao listar credenciais pendentes." });
+  }
+};
+
+// Elimina uma mensagem da fila (qualquer tipo/estado).
+const deleteQueuedSms = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ success: false, message: "ID inválido." });
+    }
+    const row: any = await SmsQueueModel.findByPk(id);
+    if (!row) {
+      return res.status(404).json({ success: false, message: "Mensagem não encontrada." });
+    }
+    await row.destroy();
+    return res.status(200).json({ success: true, message: "Mensagem eliminada da fila." });
+  } catch (err: any) {
+    console.error("deleteQueuedSms:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro ao eliminar a mensagem." });
+  }
+};
+
+// Repõe na fila (queued) uma mensagem de credenciais pendente/falhada.
+const requeueCredentialSms = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ success: false, message: "ID inválido." });
+    }
+    const row: any = await SmsQueueModel.findByPk(id);
+    if (!row) {
+      return res.status(404).json({ success: false, message: "Mensagem não encontrada." });
+    }
+    const companyId = Number(row.getDataValue?.("companyId"));
+    if (!(await isCompanySmsEnabled(companyId))) {
+      return res.status(403).json({
+        success: false,
+        message: "O envio de SMS está desactivado nas configurações da empresa.",
+      });
+    }
+    await row.update({ status: "queued", retries: 0, errorMessage: null, lastAttemptAt: null });
+    return res.status(200).json({ success: true, message: "SMS de credenciais reposto na fila." });
+  } catch (err: any) {
+    console.error("requeueCredentialSms:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro ao repor SMS na fila." });
+  }
+};
+
 export {
   getPendingSmsGateway,
+  getSmsQueueSummary,
   updateGatewaySmsStatus,
   enqueueSmsManually,
   enqueueSmsAnnouncement,
@@ -414,4 +559,7 @@ export {
   getSmsQueueHistory,
   syncSmsInbox,
   processSmsQueueHandler,
+  getPendingCredentialsSms,
+  requeueCredentialSms,
+  deleteQueuedSms,
 };
