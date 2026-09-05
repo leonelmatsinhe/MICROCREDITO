@@ -130,7 +130,7 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       });
     }
 
-    const MIN_DOCUMENTS_FOR_APPROVAL = 3;
+    const MIN_DOCUMENTS_FOR_APPROVAL = 0;
     const customerDocuments = await CustomerDocumentsModel.findAll({
       where: { accountNumber }
     });
