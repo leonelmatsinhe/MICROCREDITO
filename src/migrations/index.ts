@@ -101,6 +101,12 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // Ocultar cláusula de seguro (VIGÉSIMA PRIMEIRA) no contrato de concessão
   await addColumnIfMissing("companies", "contractHideInsuranceClause", "INTEGER NOT NULL DEFAULT 0", results);
 
+  // Fotografia tipo passe do mutuário (auto-cadastro público no portal)
+  await addColumnIfMissing("customers", "passportPhotoUrl", "VARCHAR(255)", results);
+
+  // Conta criada pelo próprio mutuário no portal (selo "Auto-cadastro" nas grelhas)
+  await addColumnIfMissing("customers", "isSelfRegistered", "INTEGER NOT NULL DEFAULT 0", results);
+
   // ==================== TABELAS ====================
   // Mensagens de WhatsApp (password reset / notificações)
   await createTableIfMissing(

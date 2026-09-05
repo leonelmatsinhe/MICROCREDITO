@@ -168,6 +168,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
         phone: customerData.customerPhone,
         email: customerData.customerEmail || null,
         accountNumber: customerData.accountNumber,
+        isSelfRegistered: customerData.isSelfRegistered || 0,
         registrationDate: customerData.createdAt || customerData.dateCreated || null,
         monthlySalary: customerData.customerMonthlySalary
           ? Number(customerData.customerMonthlySalary)

@@ -13,6 +13,7 @@ exports.updateLoanInstallmentDates = exports.destroyLoan = exports.updateLoan = 
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
+const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const NotificationModel_1 = require("../database/models/NotificationModel");
 const UserModel_1 = require("../database/models/UserModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
@@ -393,10 +394,35 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     companyId: companyIdNum,
                     accountNumber: { [sequelize_1.Op.in]: accountNumbers },
                 },
-                attributes: ["accountNumber", "customerName", "customerPhone", "customerMonthlySalary"],
+                attributes: [
+                    "accountNumber",
+                    "customerName",
+                    "customerPhone",
+                    "customerMonthlySalary",
+                    "passportPhotoUrl",
+                    "isSelfRegistered",
+                ],
             }));
             customers.forEach((c) => {
                 customerMap[String(c.accountNumber)] = c.toJSON ? c.toJSON() : c;
+            });
+        }
+        // Documentos do mutuário (BI/passaporte, NUIT, declaração de bairro, ...)
+        // — usados no painel de revisão da tab Pendentes, sem abrir o mutuário.
+        const docByAccount = {};
+        if (accountNumbers.length > 0) {
+            const documents = (yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll({
+                where: {
+                    companyId: companyIdNum,
+                    accountNumber: { [sequelize_1.Op.in]: accountNumbers },
+                },
+                attributes: ["accountNumber", "documentName", "documentFileUrl"],
+                order: [["id", "ASC"]],
+                raw: true,
+            }));
+            documents.forEach((d) => {
+                (docByAccount[String(d.accountNumber)] =
+                    docByAccount[String(d.accountNumber)] || []).push(d);
             });
         }
         // Pagamentos (transacções) por crédito
@@ -431,7 +457,7 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         });
         const todayStr = new Date().toISOString().slice(0, 10);
         const result = loans.map((loan) => {
-            var _a;
+            var _a, _b;
             const plain = loan.toJSON ? loan.toJSON() : loan;
             const customer = customerMap[String(loan.accountNumber)] || null;
             const txs = txByLoan[Number(loan.id)] || [];
@@ -492,7 +518,7 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             });
             amountInDebt = Math.round(amountInDebt * 100) / 100;
             overdueAmount = Math.round(overdueAmount * 100) / 100;
-            return Object.assign(Object.assign({}, plain), { customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || `Conta ${plain.accountNumber}`, customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "", customerMonthlySalary: (_a = customer === null || customer === void 0 ? void 0 : customer.customerMonthlySalary) !== null && _a !== void 0 ? _a : null, contractTotal,
+            return Object.assign(Object.assign({}, plain), { customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || `Conta ${plain.accountNumber}`, customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "", customerMonthlySalary: (_a = customer === null || customer === void 0 ? void 0 : customer.customerMonthlySalary) !== null && _a !== void 0 ? _a : null, customerPassportPhoto: (customer === null || customer === void 0 ? void 0 : customer.passportPhotoUrl) || null, customerDocuments: docByAccount[String(plain.accountNumber)] || [], isSelfRegistered: (_b = customer === null || customer === void 0 ? void 0 : customer.isSelfRegistered) !== null && _b !== void 0 ? _b : 0, contractTotal,
                 totalPaid,
                 totalInterestPaid,
                 totalLateInterestPaid,

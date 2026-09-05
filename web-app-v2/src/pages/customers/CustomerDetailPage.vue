@@ -21,11 +21,37 @@
       <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
         <q-card-section>
           <div class="row items-center">
-            <q-avatar :color="getStatusColor(customer.customerStatus)" text-color="white" size="56px" class="q-mr-md">
-              <q-icon name="person" size="28px" />
+            <!-- Fotografia tipo passe destacada (auto-cadastro) → clicar abre em tamanho real -->
+            <q-avatar
+              :color="getStatusColor(customer.customerStatus)"
+              text-color="white"
+              size="64px"
+              class="q-mr-md"
+              style="cursor: pointer; flex-shrink: 0"
+              @click="openPassportPhoto"
+            >
+              <img
+                v-if="customer.passportPhotoUrl"
+                :src="customer.passportPhotoUrl"
+                alt="Foto tipo passe"
+                style="width: 100%; height: 100%; object-fit: cover"
+              />
+              <q-icon v-else name="person" size="28px" />
             </q-avatar>
             <div class="col">
-              <div class="text-h6 text-weight-bold">{{ customer.customerName }}</div>
+              <div class="row items-center no-wrap">
+                <div class="text-h6 text-weight-bold">{{ customer.customerName }}</div>
+                <q-badge
+                  v-if="Number(customer.isSelfRegistered) === 1"
+                  color="teal"
+                  outline
+                  rounded
+                  class="q-ml-sm"
+                  style="font-size: 10px"
+                >
+                  Auto-cadastro
+                </q-badge>
+              </div>
               <div class="text-caption text-grey-5">
                 <q-icon name="credit_card" size="12px" class="q-mr-xs" />
                 Conta: <strong>{{ customer.accountNumber }}</strong>
@@ -1399,6 +1425,13 @@ async function onLoanApproved() {
   logApproveLoan(customer.value?.customerName, approvalLoan.value?.amount)
   approvalLoan.value = null
   await fetchLoans()
+}
+
+// Abre a fotografia tipo passe em tamanho real (não há modal próprio)
+function openPassportPhoto() {
+  if (customer.value?.passportPhotoUrl) {
+    window.open(customer.value.passportPhotoUrl, '_blank')
+  }
 }
 
 function rejectLoan(loan) {

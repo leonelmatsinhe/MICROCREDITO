@@ -175,7 +175,19 @@
                 {{ getInitials(props.row.customerName) || '?' }}
               </q-avatar>
               <div class="no-wrap">
-                <div class="text-weight-medium" style="font-size: 13px">{{ props.row.customerName }}</div>
+                <div class="row items-center no-wrap">
+                  <div class="text-weight-medium" style="font-size: 13px">{{ props.row.customerName }}</div>
+                  <q-badge
+                    v-if="Number(props.row.isSelfRegistered) === 1"
+                    color="teal"
+                    outline
+                    rounded
+                    class="q-ml-xs"
+                    style="font-size: 9px"
+                  >
+                    Auto-cadastro
+                  </q-badge>
+                </div>
                 <div class="text-caption text-grey-6" style="font-size: 11px">
                   Conta {{ props.row.accountNumber }}<template v-if="props.row.customerPhone"> · {{ props.row.customerPhone }}</template>
                 </div>
@@ -280,8 +292,14 @@
                 </q-btn>
               </template>
 
-              <!-- Pendentes: painel do mutuário + eliminar -->
+              <!-- Pendentes: revisão de documentos + painel do mutuário + eliminar -->
               <template v-else-if="segment.key === 'pending'">
+                <q-btn
+                  flat round dense icon="fact_check" color="teal" size="xs"
+                  @click.stop="openReview(props.row)"
+                >
+                  <q-tooltip>Revisar documentos e aprovar</q-tooltip>
+                </q-btn>
                 <q-btn
                   flat round dense icon="visibility" color="primary" size="xs"
                   @click.stop="goToCustomer(props.row.accountNumber)"
@@ -333,6 +351,173 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Revisão de documentos do auto-cadastro (tab Pendentes) -->
+    <q-dialog v-model="showReview" persistent>
+      <q-card style="border-radius: 12px; width: 100%; max-width: 480px; min-width: 0">
+        <q-card-section class="row items-center bg-primary text-white" style="border-radius: 12px 12px 0 0">
+          <q-icon name="fact_check" size="22px" class="q-mr-sm" />
+          <div class="col" style="min-width: 0">
+            <div class="text-h6">Revisão de Documentos</div>
+            <div class="text-caption" style="opacity: 0.85; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+              {{ reviewLoan?.customerName || '—' }} · Conta {{ reviewLoan?.accountNumber || '—' }}
+            </div>
+          </div>
+          <q-btn flat round dense icon="close" @click="showReview = false" />
+        </q-card-section>
+
+        <q-card-section class="q-pa-md" style="max-height: 62vh; overflow-y: auto">
+          <!-- Fotografia tipo passe -->
+          <div class="text-subtitle2 text-grey-7 q-mb-xs">
+            <q-icon name="camera_alt" size="16px" class="q-mr-xs" />
+            Fotografia tipo passe
+          </div>
+          <div class="photo-placeholder text-center q-pa-sm" style="border-radius: 8px">
+            <img
+              v-if="reviewLoan?.customerPassportPhoto"
+              :src="reviewLoan.customerPassportPhoto"
+              alt="Foto tipo passe"
+              style="max-height: 170px; border-radius: 8px; max-width: 100%"
+            />
+            <div v-else class="text-caption text-grey-6 q-py-md">
+              <q-icon name="no_photography" size="30px" class="block q-mx-auto q-mb-xs" />
+              Sem fotografia submetida
+            </div>
+          </div>
+
+          <!-- Documentos -->
+          <div class="text-subtitle2 text-grey-7 q-mb-xs q-mt-md">
+            <q-icon name="folder_open" size="16px" class="q-mr-xs" />
+            Documentos submetidos
+          </div>
+          <q-banner v-if="!reviewLoan?.customerDocuments?.length" class="bg-orange-1 text-orange-9 q-mb-sm" rounded dense>
+            <template v-slot:avatar>
+              <q-icon name="warning" color="orange" size="18px" />
+            </template>
+            O mutuário ainda não submeteu documentos. O crédito pode ser aprovado, mas recomendamos solicitar os documentos antes do desembolso.
+          </q-banner>
+          <q-list v-if="reviewLoan?.customerDocuments?.length" separator bordered rounded>
+            <q-item v-for="(doc, i) in reviewLoan.customerDocuments" :key="i">
+              <q-item-section avatar>
+                <q-avatar color="primary" text-color="white" icon="description" size="34px" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label style="font-size: 13px">{{ doc.documentName }}</q-item-label>
+                <q-item-label caption style="font-size: 11px">{{ doc.documentFileUrl }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-btn flat round dense icon="open_in_new" color="primary" size="sm" @click="openDoc(doc)">
+                  <q-tooltip>Ver documento</q-tooltip>
+                </q-btn>
+              </q-item-section>
+            </q-item>
+          </q-list>
+
+          <!-- Resumo do pedido -->
+          <div class="text-subtitle2 text-grey-7 q-mb-xs q-mt-md">
+            <q-icon name="request_quote" size="16px" class="q-mr-xs" />
+            Pedido de crédito
+          </div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-6">
+              <div class="text-caption text-grey-5">Montante solicitado</div>
+              <div class="text-weight-bold text-primary" style="font-size: 15px">{{ formatMoney(reviewLoan?.amount) }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-caption text-grey-5">Prazo</div>
+              <div class="text-weight-bold" style="font-size: 15px">
+                {{ reviewLoan?.numberOfInstallments }} {{ reviewLoan?.numberOfInstallments === 1 ? 'mês' : 'meses' }}
+              </div>
+            </div>
+            <div class="col-12" v-if="reviewLoan?.loanDescription">
+              <div class="text-caption text-grey-5">Finalidade</div>
+              <div class="text-body2">{{ reviewLoan.loanDescription }}</div>
+            </div>
+          </div>
+
+          <!-- Capacidade de pagamento (1/3 do rendimento) -->
+          <div class="text-subtitle2 text-grey-7 q-mb-xs q-mt-md">
+            <q-icon name="speed" size="16px" class="q-mr-xs" />
+            Capacidade de pagamento
+          </div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-4">
+              <div class="text-caption text-grey-5" style="font-size: 10px">Rendimento mensal</div>
+              <div class="text-weight-bold" style="font-size: 13px">{{ formatMoney(reviewCapacity.salary) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-caption text-grey-5" style="font-size: 10px">Capacidade (1/3)</div>
+              <div class="text-weight-bold text-positive" style="font-size: 13px">{{ formatMoney(reviewCapacity.maxCapacity) }}</div>
+            </div>
+            <div class="col-4">
+              <div class="text-caption text-grey-5" style="font-size: 10px">Prestação estimada</div>
+              <div class="text-weight-bold" :class="reviewCapacity.isExceeded ? 'text-negative' : 'text-grey-8'" style="font-size: 13px">
+                {{ reviewCapacity.hasRate ? formatMoney(reviewCapacity.estimatedInstallment) : 'A definir' }}
+              </div>
+            </div>
+          </div>
+          <div v-if="reviewCapacity.isExceeded" class="text-caption text-negative q-mt-xs">
+            <q-icon name="warning" size="13px" class="q-mr-xs" />
+            A prestação estimada excede 1/3 do rendimento — registe um parecer na aprovação ou rejeite.
+          </div>
+          <div v-else-if="reviewCapacity.computable && reviewCapacity.hasRate" class="text-caption text-positive q-mt-xs">
+            <q-icon name="check_circle" size="13px" class="q-mr-xs" />
+            Dentro da capacidade de pagamento.
+          </div>
+          <div v-else-if="!reviewCapacity.computable" class="text-caption text-grey-5 q-mt-xs">
+            Sem rendimento registado — verifique os dados do mutuário.
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn outline label="Rejeitar" color="negative" icon="cancel" no-caps rounded @click="openReject" />
+          <q-btn
+            unelevated
+            label="Aprovar Crédito"
+            color="positive"
+            icon="check_circle"
+            no-caps
+            rounded
+            @click="openApprovalFromReview"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Rejeição com parecer (tab Pendentes) -->
+    <q-dialog v-model="showRejectDialog" persistent>
+      <q-card style="border-radius: 12px; min-width: 380px; max-width: 95vw">
+        <q-card-section class="row items-center q-pb-none">
+          <q-avatar icon="cancel" color="negative" text-color="white" size="40px" />
+          <div class="q-ml-md">
+            <div class="text-h6">Rejeitar Crédito</div>
+            <div class="text-caption text-grey-6">
+              {{ reviewLoan?.customerName || '—' }} · {{ formatMoney(reviewLoan?.amount) }}
+            </div>
+          </div>
+        </q-card-section>
+        <q-card-section>
+          <q-input
+            v-model="rejectOpinion"
+            label="Parecer / Motivo da rejeição"
+            dense
+            outlined
+            type="textarea"
+            rows="3"
+            class="q-mb-sm"
+            :maxlength="500"
+          />
+          <div class="text-caption text-grey-6">O parecer fica registado no pedido e no histórico do sistema.</div>
+        </q-card-section>
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat label="Cancelar" color="grey" no-caps v-close-popup />
+          <q-btn unelevated label="Rejeitar Crédito" color="negative" icon="cancel" no-caps rounded :loading="rejecting" @click="confirmReject" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Aprovação (reutiliza o modal de aprovação do painel do mutuário) -->
+    <LoanApprovalModal v-model="showApproval" :loan="approvalLoan" @approved="onLoanApproved" />
 
     <!-- Reabrir pedido rejeitado (editar valor/taxa/prazo antes de re-submeter) -->
     <q-dialog v-model="showReopenConfirm" persistent>
@@ -498,7 +683,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort, formatInterestRate, getInitials } from '@/utils/formatters'
-import { logReopenLoan } from '@/utils/logger'
+import { logReopenLoan, logApproveLoan, logRejectLoan } from '@/utils/logger'
+import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 
 const $q = useQuasar()
 const router = useRouter()
@@ -533,6 +719,96 @@ const pagination = ref({ sortBy: 'dateCreated', descending: true, page: 1, rowsP
 const showDeleteConfirm = ref(false)
 const deletingLoan = ref(null)
 const deleting = ref(false)
+
+// ─── Revisão de documentos / aprovação (tab Pendentes) ───
+const showReview = ref(false)
+const reviewLoan = ref(null)
+const showApproval = ref(false)
+const approvalLoan = ref(null)
+const showRejectDialog = ref(false)
+const rejectOpinion = ref('')
+const rejecting = ref(false)
+
+function openReview(row) {
+  reviewLoan.value = row
+  showReview.value = true
+}
+
+function openDoc(doc) {
+  if (doc?.documentFileUrl) window.open(doc.documentFileUrl, '_blank')
+}
+
+// Capacidade de pagamento (1/3 do rendimento) no painel de revisão — usa a
+// mesma fórmula do backend (sistema francês / Price) e a taxa já definida no
+// pedido (créditos reabertos). Na aprovação, o modal recalcula com a taxa real.
+const reviewCapacity = computed(() => {
+  const loan = reviewLoan.value
+  if (!loan) return { computable: false, salary: 0, maxCapacity: 0, hasRate: false, estimatedInstallment: 0, isExceeded: false }
+  const salary = Number(loan.customerMonthlySalary) || 0
+  const maxCapacity = salary / 3
+  const rate = Number(loan.interestRate) || 0
+  const principal = Number(loan.amount) || 0
+  const periods = Number(loan.numberOfInstallments) || 0
+  let estimatedInstallment = 0
+  if (principal > 0 && periods > 0) {
+    estimatedInstallment = capacityInstallment(principal, rate, periods)
+  }
+  return {
+    computable: salary > 0,
+    salary,
+    maxCapacity,
+    hasRate: rate > 0,
+    estimatedInstallment,
+    isExceeded: estimatedInstallment > 0 && estimatedInstallment > maxCapacity
+  }
+})
+
+// Aprovar directamente da revisão, sem abrir o painel do mutuário
+function openApprovalFromReview() {
+  approvalLoan.value = reviewLoan.value
+  showReview.value = false
+  showApproval.value = true
+}
+
+function onLoanApproved() {
+  // Regista no histórico quem aprovou e quando (mesmo log do painel do mutuário)
+  logApproveLoan(reviewLoan.value?.customerName || `Conta ${reviewLoan.value?.accountNumber}`, reviewLoan.value?.amount)
+  showApproval.value = false
+  approvalLoan.value = null
+  reviewLoan.value = null
+  showReview.value = false
+  fetchLoans()
+}
+
+// Rejeitar directamente da revisão, com parecer registado no pedido
+function openReject() {
+  rejectOpinion.value = ''
+  showRejectDialog.value = true
+}
+
+async function confirmReject() {
+  const loan = reviewLoan.value
+  if (!loan) return
+  rejecting.value = true
+  try {
+    const payload = { status: -1 }
+    if (rejectOpinion.value && rejectOpinion.value.trim()) {
+      payload.capacityExcessObservation = rejectOpinion.value.trim()
+    }
+    await api.put(`/api/loan/${loan.id}`, payload)
+    // Regista no histórico quem rejeitou e quando
+    await logRejectLoan(loan.customerName || `Conta ${loan.accountNumber}`, loan.amount)
+    $q.notify({ type: 'warning', message: 'Crédito rejeitado', position: 'top' })
+    showRejectDialog.value = false
+    showReview.value = false
+    reviewLoan.value = null
+    fetchLoans()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao rejeitar crédito', position: 'top' })
+  } finally {
+    rejecting.value = false
+  }
+}
 
 // ─── Reabrir pedido rejeitado ───
 const showReopenConfirm = ref(false)
@@ -1197,5 +1473,15 @@ body.body--dark {
       background-color: rgba(255, 255, 255, 0.03);
     }
   }
+}
+
+/* Placeholder da fotografia tipo passe no diálogo de revisão (Pendentes) */
+.photo-placeholder {
+  background-color: #f3f4f6;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+}
+body.body--dark .photo-placeholder {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 </style>

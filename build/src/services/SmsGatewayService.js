@@ -484,7 +484,7 @@ const enqueuePasswordResetSms = (params) => __awaiter(void 0, void 0, void 0, fu
         return { created: false, reason: "customer_not_found" };
     // Buscar nome da empresa
     const company = yield CompanyModel_1.CompanyModel.findByPk(params.companyId);
-    const companyName = ((_k = company === null || company === void 0 ? void 0 : company.toJSON()) === null || _k === void 0 ? void 0 : _k.companyName) || 'MBR Microcrédito';
+    const companyName = ((_k = company === null || company === void 0 ? void 0 : company.toJSON()) === null || _k === void 0 ? void 0 : _k.companyName) || 'Mais Mola';
     // Template: max 160 chars, sem caracteres especiais
     const msg = `Ola ${customer.customerName}. Sua senha de acesso ao portal da ${companyName} e: ${params.newPassword}. Telefone: ${customer.customerPhone}. Altere apos o primeiro acesso.`;
     return (0, exports.enqueueSms)({

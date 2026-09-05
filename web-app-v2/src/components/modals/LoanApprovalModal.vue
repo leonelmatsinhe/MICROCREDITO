@@ -35,6 +35,14 @@
           </q-card-section>
         </q-card>
 
+        <!-- Aviso documentos em falta -->
+        <q-banner v-if="hasDocs !== null && !hasDocs" class="bg-orange-1 text-orange-9 q-mb-md" rounded dense>
+          <template v-slot:avatar>
+            <q-icon name="warning" color="orange" />
+          </template>
+          O mutuário ainda não submeteu documentos. Recomende-se que envie BI/Passaporte, NUIT e Declaração de Bairro antes do desembolso.
+        </q-banner>
+
         <!-- Data de desembolso (base do plano de amortização) -->
         <q-input
           v-model="disbursementDate"

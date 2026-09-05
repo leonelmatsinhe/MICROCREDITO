@@ -68,6 +68,8 @@ routes.post("/api/userCredentials", UserCredentials_1.sendUserCredentials);
 routes.post("/api/login", UserController_1.loginUser);
 routes.post("/api/auth/refresh", UserController_1.refreshToken);
 routes.post("/api/customer/login", CustomerController_1.loginCustomer);
+// Auto-cadastro público do mutuário (Login → criar conta)
+routes.post("/api/customer/register", CustomerController_1.registerCustomer);
 routes.post("/api/customer/changePassword", CustomerController_1.changeCustomerPassword);
 // Customer Portal routes
 routes.get("/api/portal/:companyId/:customerId/dashboard", CustomerPortalController_1.getCustomerDashboard);

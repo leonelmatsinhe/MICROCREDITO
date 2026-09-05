@@ -98,6 +98,12 @@ exports.CustomerModel = db_1.db.define("customers", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: true,
     },
+    isSelfRegistered: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Conta criada pelo próprio mutuário no portal (auto-cadastro)",
+    },
     customerPPE: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: true,

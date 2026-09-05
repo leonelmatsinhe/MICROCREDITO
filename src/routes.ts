@@ -40,6 +40,7 @@ import {
   changeCustomerPassword,
   getAllCustomerNames,
   setCustomerPassword,
+  registerCustomer,
 } from "./controllers/CustomerController";
 
 import {
@@ -190,6 +191,8 @@ routes.post("/api/userCredentials", sendUserCredentials);
 routes.post("/api/login", loginUser);
 routes.post("/api/auth/refresh", refreshToken);
 routes.post("/api/customer/login", loginCustomer);
+// Auto-cadastro público do mutuário (Login → criar conta)
+routes.post("/api/customer/register", registerCustomer);
 routes.post("/api/customer/changePassword", changeCustomerPassword);
 
 // Customer Portal routes

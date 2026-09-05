@@ -96,6 +96,12 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  isSelfRegistered: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Conta criada pelo próprio mutuário no portal (auto-cadastro)",
+  },
   customerPPE: {
     type: DataTypes.INTEGER,
     allowNull: true,

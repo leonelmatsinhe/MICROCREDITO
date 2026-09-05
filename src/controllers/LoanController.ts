@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { LoanModel } from "../database/models/LoanModel";
 import { CustomerModel } from "../database/models/CustomerModel";
+import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { NotificationModel } from "../database/models/NotificationModel";
 import { UserModel } from "../database/models/UserModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
@@ -452,10 +453,36 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
           companyId: companyIdNum,
           accountNumber: { [Op.in]: accountNumbers },
         },
-        attributes: ["accountNumber", "customerName", "customerPhone", "customerMonthlySalary"],
+        attributes: [
+          "accountNumber",
+          "customerName",
+          "customerPhone",
+          "customerMonthlySalary",
+          "passportPhotoUrl",
+          "isSelfRegistered",
+        ],
       })) as any[];
       customers.forEach((c: any) => {
         customerMap[String(c.accountNumber)] = c.toJSON ? c.toJSON() : c;
+      });
+    }
+
+    // Documentos do mutuário (BI/passaporte, NUIT, declaração de bairro, ...)
+    // — usados no painel de revisão da tab Pendentes, sem abrir o mutuário.
+    const docByAccount: Record<string, any[]> = {};
+    if (accountNumbers.length > 0) {
+      const documents: any[] = (await CustomerDocumentsModel.findAll({
+        where: {
+          companyId: companyIdNum,
+          accountNumber: { [Op.in]: accountNumbers },
+        },
+        attributes: ["accountNumber", "documentName", "documentFileUrl"],
+        order: [["id", "ASC"]],
+        raw: true,
+      })) as any[];
+      documents.forEach((d: any) => {
+        (docByAccount[String(d.accountNumber)] =
+          docByAccount[String(d.accountNumber)] || []).push(d);
       });
     }
 
@@ -566,6 +593,9 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
         customerName: customer?.customerName || `Conta ${plain.accountNumber}`,
         customerPhone: customer?.customerPhone || "",
         customerMonthlySalary: customer?.customerMonthlySalary ?? null,
+        customerPassportPhoto: customer?.passportPhotoUrl || null,
+        customerDocuments: docByAccount[String(plain.accountNumber)] || [],
+        isSelfRegistered: customer?.isSelfRegistered ?? 0,
         contractTotal,
         totalPaid,
         totalInterestPaid,

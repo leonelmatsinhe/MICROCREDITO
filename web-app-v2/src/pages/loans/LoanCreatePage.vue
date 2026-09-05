@@ -268,7 +268,7 @@
               <div>• Sistema de amortização francês (Price)</div>
               <div>• Prestação não pode exceder 1/3 do salário</div>
               <div>• Se exceder, é necessário parecer técnico</div>
-              <div>• Mínimo de 3 documentos do mutuário</div>
+
             </div>
           </q-card-section>
         </q-card>

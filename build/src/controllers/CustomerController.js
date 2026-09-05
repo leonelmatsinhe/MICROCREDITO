@@ -35,10 +35,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setCustomerPassword = exports.getAllCustomerNames = exports.changeCustomerPassword = exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.bulkCreateCustomers = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
+exports.registerCustomer = exports.setCustomerPassword = exports.getAllCustomerNames = exports.changeCustomerPassword = exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.bulkCreateCustomers = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 const CustomerModel_1 = require("../database/models/CustomerModel");
+const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
+const CompanyModel_1 = require("../database/models/CompanyModel");
+const UserModel_1 = require("../database/models/UserModel");
+const NotificationModel_1 = require("../database/models/NotificationModel");
 const sequelize_1 = require("sequelize");
 const password_1 = require("../utils/password");
 // Remove o hash da senha antes de devolver mutuários ao frontend — a BD é a
@@ -186,6 +190,176 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
     }));
 });
 exports.createCustomer = createCustomer;
+// ============================================================
+// AUTO-CADASTRO público (Login → "Criar conta de mutuário")
+// Permite a um novo cliente criar a própria conta (com documentos:
+// BI/passaporte, NUIT, declaração de bairro e foto tipo passe) sem
+// depender da submissão presencial de documentos à instituição.
+// Depois de registado, o mutuário entra no portal e solicita o
+// primeiro empréstimo (fluxo normal de aprovação).
+// ============================================================
+const registerCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { customerName, sex, maritalStatus, customerNuit, customerNationalId, issuedAt, localOfIssue, customerDateOfBirth, customerPhone, customerEmail, customerProfession, customerMonthlySalary, customerLocalOfWork, customerAddress, customerBairro, customerPassword, passportPhotoUrl, 
+        // Documentos enviados: [{ documentName, documentFileUrl }]
+        documents, companyId, } = req.body;
+        // --- Validações mínimas ---
+        if (!customerName || !String(customerName).trim()) {
+            return res.status(400).json({ success: false, message: "O nome completo é obrigatório." });
+        }
+        if (!sex || (String(sex) !== "M" && String(sex) !== "F")) {
+            return res.status(400).json({ success: false, message: "Indique o género (M ou F)." });
+        }
+        const phone = String(customerPhone || "").trim();
+        if (!phone) {
+            return res.status(400).json({ success: false, message: "O telefone é obrigatório para o login no portal." });
+        }
+        const password = String(customerPassword || "");
+        if (password.length < 4) {
+            return res.status(400).json({ success: false, message: "A senha deve ter pelo menos 4 caracteres." });
+        }
+        // --- Empresa destino ---
+        // O auto-cadastro é público e não conhece a empresa: usa a fornecida no
+        // corpo ou a empresa padrão dos auto-cadastros (COMPANY_DEFAULT_ID, por
+        // defeito 36). Se essa empresa não existir, cai para a primeira registada.
+        let companyIdNum = parseInt(String(companyId !== null && companyId !== void 0 ? companyId : ""), 10);
+        if (Number.isNaN(companyIdNum) || companyIdNum < 1) {
+            companyIdNum = parseInt(process.env.COMPANY_DEFAULT_ID || "36", 10);
+        }
+        const companyExists = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum);
+        if (!companyExists) {
+            const firstCompany = yield CompanyModel_1.CompanyModel.findOne({ order: [["id", "ASC"]] });
+            if (!firstCompany) {
+                return res.status(503).json({
+                    success: false,
+                    message: "Ainda não existe uma instituição configurada na plataforma.",
+                });
+            }
+            companyIdNum = parseInt(String(firstCompany.getDataValue("id")), 10);
+        }
+        // --- Duplicados (telefone, email, NUIT ou BI) ---
+        const duplicateWhere = [{ customerPhone: phone }];
+        const email = String(customerEmail || "").trim();
+        if (email)
+            duplicateWhere.push({ customerEmail: email });
+        const nuit = String(customerNuit || "").trim();
+        if (nuit)
+            duplicateWhere.push({ customerNuit: nuit });
+        const nationalId = String(customerNationalId || "").trim();
+        if (nationalId)
+            duplicateWhere.push({ customerNationalId: nationalId });
+        const existing = yield CustomerModel_1.CustomerModel.findOne({ where: { [sequelize_1.Op.or]: duplicateWhere } });
+        if (existing) {
+            return res.status(409).json({
+                success: false,
+                message: "Já existe uma conta com este telefone, email, NUIT ou BI. Utilize o login do mutuário.",
+            });
+        }
+        // --- Nº de conta sequencial por empresa (100, 101, ...) ---
+        const lastCustomer = yield CustomerModel_1.CustomerModel.findOne({
+            where: { companyId: companyIdNum },
+            order: [["id", "DESC"]],
+        });
+        const accountNumber = lastCustomer === null
+            ? 100
+            : parseInt(String(lastCustomer.getDataValue("accountNumber"))) + 1;
+        // --- Criar o mutuário (activo logo no registo para poder entrar no portal) ---
+        const customer = yield CustomerModel_1.CustomerModel.create({
+            customerName: String(customerName).trim(),
+            sex: String(sex),
+            companyId: companyIdNum,
+            accountNumber,
+            password: (0, password_1.hashPasswordIfNeeded)(password),
+            customerEmail: email || null,
+            customerNuit: nuit || null,
+            customerPhone: phone,
+            customerNationalId: nationalId || null,
+            issuedAt: issuedAt ? String(issuedAt) : null,
+            localOfIssue: localOfIssue ? String(localOfIssue) : null,
+            customerDateOfBirth: customerDateOfBirth ? String(customerDateOfBirth) : null,
+            customerProfession: customerProfession ? String(customerProfession) : null,
+            customerMonthlySalary: customerMonthlySalary ? String(customerMonthlySalary) : null,
+            customerLocalOfWork: customerLocalOfWork ? String(customerLocalOfWork) : null,
+            customerAddress: customerAddress ? String(customerAddress) : null,
+            customerBairro: customerBairro ? String(customerBairro) : null,
+            maritalStatus: maritalStatus || "solteiro",
+            passportPhotoUrl: passportPhotoUrl ? String(passportPhotoUrl) : null,
+            customerStatus: 1,
+            isSelfRegistered: 1,
+        });
+        // --- Documentos enviados (BI/passaporte, NUIT, declaração de bairro) ---
+        // Gravados na tabela customer_documents — aparecem no painel do mutuário
+        // (DocumentsModal) tal como os documentos submetidos pela instituição.
+        if (Array.isArray(documents) && documents.length > 0) {
+            const docs = documents
+                .filter((d) => d && d.documentName && d.documentFileUrl)
+                .map((d) => ({
+                companyId: companyIdNum,
+                accountNumber,
+                documentName: String(d.documentName),
+                documentFileUrl: String(d.documentFileUrl),
+                uploadedBy: "Auto-cadastro (Portal)",
+            }));
+            if (docs.length > 0) {
+                try {
+                    yield CustomerDocumentsModel_1.CustomerDocumentsModel.bulkCreate(docs);
+                }
+                catch (docErr) {
+                    console.error("Erro ao gravar documentos do auto-cadastro:", docErr);
+                }
+            }
+        }
+        // --- Notificar administradores e gestores de crédito da empresa ---
+        // Mesmo padrão da solicitação de crédito no portal: uma notificação por
+        // utilizador (roles 0/1 = admins, 3 = gestor de crédito).
+        try {
+            const staff = yield UserModel_1.UserModel.findAll({
+                where: {
+                    companyId: companyIdNum,
+                    userRole: { [sequelize_1.Op.in]: [0, 1, 3] },
+                },
+            });
+            const recipients = [];
+            const seen = new Set();
+            for (const user of staff) {
+                const userId = parseInt(String(user.getDataValue("id")), 10);
+                if (!userId || seen.has(userId))
+                    continue;
+                seen.add(userId);
+                recipients.push({
+                    companyId: companyIdNum,
+                    recipientType: "admin",
+                    recipientId: userId,
+                    title: "Novo mutuário auto-registado",
+                    message: `O mutuário ${String(customerName).trim()} (conta ${accountNumber}) criou a conta no portal e aguarda revisão dos documentos.`,
+                    type: "customer_registered",
+                    referenceId: parseInt(String(customer.getDataValue("id")), 10),
+                    isRead: false,
+                });
+            }
+            if (recipients.length > 0) {
+                yield NotificationModel_1.NotificationModel.bulkCreate(recipients);
+            }
+        }
+        catch (notifErr) {
+            console.error("Erro ao notificar novo auto-cadastro:", notifErr);
+        }
+        return res.status(201).json({
+            success: true,
+            message: "Conta criada com sucesso. Bem-vindo ao Portal do Mutuário!",
+            result: stripPassword(customer),
+            accountNumber,
+        });
+    }
+    catch (error) {
+        console.error("Erro no auto-cadastro do mutuário:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Erro interno ao criar a conta.",
+        });
+    }
+});
+exports.registerCustomer = registerCustomer;
 const updateCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     yield CustomerModel_1.CustomerModel.update(req.body, {

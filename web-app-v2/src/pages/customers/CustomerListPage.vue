@@ -137,8 +137,20 @@
                 {{ getInitials(props.row.customerName) }}
               </q-avatar>
               <div>
-                <div class="text-weight-medium" style="font-size: 13px">
-                  {{ props.row.customerName }}
+                <div class="row items-center no-wrap">
+                  <div class="text-weight-medium" style="font-size: 13px">
+                    {{ props.row.customerName }}
+                  </div>
+                  <q-badge
+                    v-if="Number(props.row.isSelfRegistered) === 1"
+                    color="teal"
+                    outline
+                    rounded
+                    class="q-ml-xs"
+                    style="font-size: 9px"
+                  >
+                    Auto-cadastro
+                  </q-badge>
                 </div>
                 <div class="text-caption text-grey-5" style="font-size: 11px">
                   {{ props.row.customerPhone }}

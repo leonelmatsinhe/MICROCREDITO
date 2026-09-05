@@ -176,6 +176,19 @@
             <q-icon name="person" class="q-mr-xs" size="18px" />
             <span style="font-size: 13px">Entrar como Mutuário</span>
           </q-btn>
+
+          <q-btn
+            flat
+            color="primary"
+            class="full-width"
+            size="md"
+            no-caps
+            :disable="loading"
+            @click="openRegister"
+          >
+            <q-icon name="person_add" class="q-mr-xs" size="18px" />
+            <span style="font-size: 13px">Criar conta de mutuário</span>
+          </q-btn>
         </q-form>
 
         <div class="text-center q-mt-sm text-grey-5" style="font-size: 10px">
@@ -263,6 +276,313 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Auto-cadastro de Mutuário (Login → Criar conta) -->
+    <q-dialog v-model="showRegister" persistent position="right" full-height>
+      <q-card class="register-card" style="width: 520px; max-width: 92vw">
+        <q-card-section class="row items-center bg-primary text-white" style="border-radius: 12px 12px 0 0">
+          <q-icon name="person_add" size="24px" class="q-mr-sm" />
+          <div class="text-h6">Criar conta de mutuário</div>
+          <q-space />
+          <q-btn flat round dense icon="close" @click="closeRegister" />
+        </q-card-section>
+
+        <q-separator />
+
+        <q-card-section style="max-height: calc(100vh - 170px); overflow-y: auto">
+          <q-form @submit="submitRegistration" class="q-gutter-md">
+            <!-- Dados Pessoais -->
+            <div class="text-subtitle2 text-primary q-mb-xs">
+              <q-icon name="person" size="16px" class="q-mr-xs" />
+              Dados Pessoais
+            </div>
+
+            <q-input
+              v-model="registerForm.customerName"
+              dense
+              outlined
+              label="Nome Completo *"
+              :rules="[val => !!val || 'Nome é obrigatório']"
+            />
+
+            <div class="row q-col-gutter-sm">
+              <div class="col-6">
+                <q-select
+                  v-model="registerForm.sex"
+                  dense
+                  outlined
+                  label="Género *"
+                  :options="sexOptions"
+                  emit-value
+                  map-options
+                />
+              </div>
+              <div class="col-6">
+                <q-select
+                  v-model="registerForm.maritalStatus"
+                  dense
+                  outlined
+                  label="Estado Civil"
+                  :options="maritalOptions"
+                  emit-value
+                  map-options
+                />
+              </div>
+            </div>
+
+            <q-input
+              v-model="registerForm.customerDateOfBirth"
+              dense
+              outlined
+              label="Data de Nascimento"
+              placeholder="dd/mm/aaaa"
+            />
+
+            <!-- Identificação -->
+            <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+              <q-icon name="badge" size="16px" class="q-mr-xs" />
+              Identificação
+            </div>
+
+            <div class="row q-col-gutter-sm">
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.customerNuit"
+                  dense
+                  outlined
+                  label="NUIT"
+                  mask="#############"
+                />
+              </div>
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.customerNationalId"
+                  dense
+                  outlined
+                  label="Nº BI / Passaporte"
+                />
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-sm">
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.issuedAt"
+                  dense
+                  outlined
+                  label="Data de Emissão"
+                />
+              </div>
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.localOfIssue"
+                  dense
+                  outlined
+                  label="Local de Emissão"
+                />
+              </div>
+            </div>
+
+            <!-- Contacto -->
+            <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+              <q-icon name="phone" size="16px" class="q-mr-xs" />
+              Contacto
+            </div>
+
+            <div class="row q-col-gutter-sm">
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.customerPhone"
+                  dense
+                  outlined
+                  label="Telefone *"
+                  mask="#############"
+                  :rules="[val => !!val || 'Telefone é obrigatório']"
+                />
+              </div>
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.customerEmail"
+                  dense
+                  outlined
+                  label="Email"
+                  type="email"
+                />
+              </div>
+            </div>
+
+            <!-- Profissão e Rendimento -->
+            <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+              <q-icon name="work" size="16px" class="q-mr-xs" />
+              Profissão e Rendimento
+            </div>
+
+            <q-input
+              v-model="registerForm.customerProfession"
+              dense
+              outlined
+              label="Profissão"
+            />
+
+            <div class="row q-col-gutter-sm">
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.customerMonthlySalary"
+                  dense
+                  outlined
+                  label="Rendimento Mensal"
+                  type="number"
+                />
+              </div>
+              <div class="col-6">
+                <q-input
+                  v-model="registerForm.customerLocalOfWork"
+                  dense
+                  outlined
+                  label="Local de Trabalho"
+                />
+              </div>
+            </div>
+
+            <!-- Morada -->
+            <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+              <q-icon name="location_on" size="16px" class="q-mr-xs" />
+              Morada
+            </div>
+
+            <q-input
+              v-model="registerForm.customerAddress"
+              dense
+              outlined
+              label="Endereço"
+            />
+
+            <q-input
+              v-model="registerForm.customerBairro"
+              dense
+              outlined
+              label="Bairro"
+            />
+
+            <!-- Documentos -->
+            <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+              <q-icon name="folder_open" size="16px" class="q-mr-xs" />
+              Documentos
+            </div>
+
+            <q-banner class="bg-primary text-white" rounded dense style="font-size: 12px">
+              <template v-slot:avatar>
+                <q-icon name="info" size="16px" />
+              </template>
+              Submeta os documentos em imagem (jpg/png) ou PDF. Serão analisados pela instituição antes da aprovação do primeiro empréstimo.
+            </q-banner>
+
+            <q-file
+              v-model="registerForm.documentBiFile"
+              dense
+              outlined
+              label="BI ou Passaporte"
+              accept=".jpg,.jpeg,.png,.pdf"
+              max-file-size="5242880"
+            >
+              <template v-slot:prepend>
+                <q-icon name="badge" />
+              </template>
+            </q-file>
+
+            <q-file
+              v-model="registerForm.documentNuitFile"
+              dense
+              outlined
+              label="NUIT"
+              accept=".jpg,.jpeg,.png,.pdf"
+              max-file-size="5242880"
+            >
+              <template v-slot:prepend>
+                <q-icon name="pin" />
+              </template>
+            </q-file>
+
+            <q-file
+              v-model="registerForm.documentBairroFile"
+              dense
+              outlined
+              label="Declaração de Bairro"
+              accept=".jpg,.jpeg,.png,.pdf"
+              max-file-size="5242880"
+            >
+              <template v-slot:prepend>
+                <q-icon name="home_work" />
+              </template>
+            </q-file>
+
+            <q-file
+              v-model="registerForm.passportPhotoFile"
+              dense
+              outlined
+              label="Fotografia tipo passe (jpg/png)"
+              accept=".jpg,.jpeg,.png"
+              max-file-size="5242880"
+            >
+              <template v-slot:prepend>
+                <q-icon name="camera_alt" />
+              </template>
+            </q-file>
+            <div v-if="passportPreview" class="row items-center q-gap-sm q-mt-xs">
+              <img
+                :src="passportPreview"
+                alt="Foto tipo passe"
+                style="width: 44px; height: 52px; object-fit: cover; border-radius: 6px; border: 1px solid #ccc"
+              />
+              <span class="text-caption text-grey-6">{{ registerForm.passportPhotoFile?.name }}</span>
+            </div>
+
+            <!-- Acesso -->
+            <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+              <q-icon name="lock" size="16px" class="q-mr-xs" />
+              Acesso ao Portal
+            </div>
+
+            <q-input
+              v-model="registerForm.password"
+              dense
+              outlined
+              label="Senha *"
+              type="password"
+              :rules="[val => val && val.length >= 4 || 'Mínimo de 4 caracteres']"
+            />
+
+            <q-input
+              v-model="registerForm.confirmPassword"
+              dense
+              outlined
+              label="Confirmar Senha *"
+              type="password"
+              :rules="[val => val === registerForm.password || 'As senhas não coincidem']"
+            />
+
+            <q-banner v-if="registerError" class="bg-negative text-white" rounded dense>
+              <template v-slot:avatar>
+                <q-icon name="error" size="16px" />
+              </template>
+              <span style="font-size: 12px">{{ registerError }}</span>
+            </q-banner>
+
+            <div class="row justify-end q-gutter-sm q-mt-lg q-pb-sm">
+              <q-btn flat label="Cancelar" color="grey" @click="closeRegister" />
+              <q-btn
+                type="submit"
+                unelevated
+                label="Criar Conta"
+                icon="person_add"
+                color="primary"
+                :loading="registerSaving"
+              />
+            </div>
+          </q-form>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -272,6 +592,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
+import { api } from '@/boot/axios'
 
 const router = useRouter()
 const route = useRoute()
@@ -291,6 +612,188 @@ const customerForm = ref({ phone: '', password: '' })
 const showCustomerPassword = ref(false)
 const customerLoading = ref(false)
 const customerError = ref(null)
+
+// ===== Auto-cadastro de mutuário =====
+const showRegister = ref(false)
+const registerSaving = ref(false)
+const registerError = ref(null)
+
+const sexOptions = [
+  { label: 'Masculino', value: 'M' },
+  { label: 'Feminino', value: 'F' }
+]
+
+const maritalOptions = [
+  { label: 'Solteiro(a)', value: 'solteiro' },
+  { label: 'Casado(a)', value: 'casado' },
+  { label: 'Divorciado(a)', value: 'divorciado' },
+  { label: 'Viúvo(a)', value: 'viuvo' },
+  { label: 'União de Facto', value: 'uniao' }
+]
+
+const registerForm = ref({
+  customerName: '',
+  sex: 'M',
+  maritalStatus: 'solteiro',
+  customerDateOfBirth: '',
+  customerNuit: '',
+  customerNationalId: '',
+  issuedAt: '',
+  localOfIssue: '',
+  customerPhone: '',
+  customerEmail: '',
+  customerProfession: '',
+  customerMonthlySalary: '',
+  customerLocalOfWork: '',
+  customerAddress: '',
+  customerBairro: '',
+  documentBiFile: null,
+  documentNuitFile: null,
+  documentBairroFile: null,
+  passportPhotoFile: null,
+  password: '',
+  confirmPassword: ''
+})
+
+const passportPreview = computed(() => {
+  const file = registerForm.value.passportPhotoFile
+  return file ? URL.createObjectURL(file) : null
+})
+
+function openRegister() {
+  registerForm.value = {
+    customerName: '',
+    sex: 'M',
+    maritalStatus: 'solteiro',
+    customerDateOfBirth: '',
+    customerNuit: '',
+    customerNationalId: '',
+    issuedAt: '',
+    localOfIssue: '',
+    customerPhone: '',
+    customerEmail: '',
+    customerProfession: '',
+    customerMonthlySalary: '',
+    customerLocalOfWork: '',
+    customerAddress: '',
+    customerBairro: '',
+    documentBiFile: null,
+    documentNuitFile: null,
+    documentBairroFile: null,
+    passportPhotoFile: null,
+    password: '',
+    confirmPassword: ''
+  }
+  registerError.value = null
+  showRegister.value = true
+}
+
+function closeRegister() {
+  if (registerSaving.value) return
+  showRegister.value = false
+  registerError.value = null
+}
+
+// Envia um ficheiro para o endpoint público de upload e devolve a URL local
+async function uploadPublicFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const resp = await fetch('/api/upload', { method: 'POST', body: formData })
+  const data = await resp.json()
+  if (!data.success || (!data.documentFileUrl && !data.imageUrl)) {
+    throw new Error(data.message || 'Falha no envio do ficheiro')
+  }
+  return data.documentFileUrl || `/documents/${data.imageUrl}`
+}
+
+async function submitRegistration() {
+  const f = registerForm.value
+  if (!f.customerName || !f.customerPhone || !f.password) {
+    registerError.value = 'Preencha os campos obrigatórios (nome, telefone e senha)'
+    return
+  }
+  if (f.password.length < 4) {
+    registerError.value = 'A senha deve ter pelo menos 4 caracteres'
+    return
+  }
+  if (f.password !== f.confirmPassword) {
+    registerError.value = 'As senhas não coincidem'
+    return
+  }
+
+  registerSaving.value = true
+  registerError.value = null
+  try {
+    // 1) Subir os documentos (BI/passaporte, NUIT, declaração de bairro) e a foto
+    const documents = []
+    if (f.documentBiFile) {
+      documents.push({ documentName: 'BI/Passaporte', documentFileUrl: await uploadPublicFile(f.documentBiFile) })
+    }
+    if (f.documentNuitFile) {
+      documents.push({ documentName: 'NUIT', documentFileUrl: await uploadPublicFile(f.documentNuitFile) })
+    }
+    if (f.documentBairroFile) {
+      documents.push({ documentName: 'Declaração de Bairro', documentFileUrl: await uploadPublicFile(f.documentBairroFile) })
+    }
+    let passportPhotoUrl = null
+    if (f.passportPhotoFile) {
+      passportPhotoUrl = await uploadPublicFile(f.passportPhotoFile)
+    }
+
+    // 2) Criar a conta (endpoint público de auto-cadastro)
+    const { data } = await api.post('/api/customer/register', {
+      customerName: f.customerName,
+      sex: f.sex,
+      maritalStatus: f.maritalStatus,
+      customerDateOfBirth: f.customerDateOfBirth,
+      customerNuit: f.customerNuit,
+      customerNationalId: f.customerNationalId,
+      issuedAt: f.issuedAt,
+      localOfIssue: f.localOfIssue,
+      customerPhone: f.customerPhone,
+      customerEmail: f.customerEmail,
+      customerProfession: f.customerProfession,
+      customerMonthlySalary: f.customerMonthlySalary,
+      customerLocalOfWork: f.customerLocalOfWork,
+      customerAddress: f.customerAddress,
+      customerBairro: f.customerBairro,
+      documents,
+      passportPhotoUrl,
+      customerPassword: f.password
+    })
+
+    if (!data.success) {
+      registerError.value = data.message || 'Erro ao criar a conta'
+      return
+    }
+
+    // 3) Entrar automaticamente no portal do mutuário
+    const login = await authStore.loginAsCustomer(f.customerPhone, f.password)
+    if (login.success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Conta criada com sucesso! Bem-vindo ao Portal do Mutuário.',
+        position: 'top'
+      })
+      showRegister.value = false
+      router.push('/portal')
+    } else {
+      // Conta criada mas o login automático falhou — orientar para o login manual
+      $q.notify({
+        type: 'positive',
+        message: 'Conta criada com sucesso! Entre com o seu telefone e senha.',
+        position: 'top'
+      })
+      showRegister.value = false
+      showCustomerLogin.value = true
+      customerForm.value = { phone: f.customerPhone, password: f.password }
+    }
+  } catch (e) {
+    registerError.value = e.response?.data?.message || e.message || 'Erro ao criar a conta'
+  } finally {
+    registerSaving.value = false
+  }
+}
 
 const currentYear = computed(() => new Date().getFullYear())
 
@@ -449,6 +952,14 @@ body.body--dark .hero-portal {
 }
 
 body.body--dark .auth-card {
+  background: #1f2937;
+}
+
+.register-card {
+  border-radius: 12px;
+}
+
+body.body--dark .register-card {
   background: #1f2937;
 }
 
