@@ -5,7 +5,6 @@ import { Op } from "sequelize";
 import { simulator } from "../utils/loanAmortization";
 import { LoanModel } from "../database/models/LoanModel";
 import { DebtModel } from "../database/models/DebtModel";
-import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { enqueueDisbursementSms } from "../services/SmsGatewayService";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
@@ -127,18 +126,6 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: "O número de prestações deve ser maior que zero.",
-      });
-    }
-
-    const MIN_DOCUMENTS_FOR_APPROVAL = 0;
-    const customerDocuments = await CustomerDocumentsModel.findAll({
-      where: { accountNumber }
-    });
-
-    if (!customerDocuments || customerDocuments.length < MIN_DOCUMENTS_FOR_APPROVAL) {
-      return res.status(400).json({
-        success: false,
-        message: `O mutuário deve ter pelo menos ${MIN_DOCUMENTS_FOR_APPROVAL} documentos submetidos para aprovação do crédito. Actualmente possui ${customerDocuments ? customerDocuments.length : 0} documento(s).`,
       });
     }
 

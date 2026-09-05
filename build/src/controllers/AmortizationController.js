@@ -19,7 +19,6 @@ const sequelize_1 = require("sequelize");
 const loanAmortization_1 = require("../utils/loanAmortization");
 const LoanModel_1 = require("../database/models/LoanModel");
 const DebtModel_1 = require("../database/models/DebtModel");
-const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
 const getUpcomingAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -122,16 +121,6 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
             return res.status(400).json({
                 success: false,
                 message: "O número de prestações deve ser maior que zero.",
-            });
-        }
-        const MIN_DOCUMENTS_FOR_APPROVAL = 3;
-        const customerDocuments = yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll({
-            where: { accountNumber }
-        });
-        if (!customerDocuments || customerDocuments.length < MIN_DOCUMENTS_FOR_APPROVAL) {
-            return res.status(400).json({
-                success: false,
-                message: `O mutuário deve ter pelo menos ${MIN_DOCUMENTS_FOR_APPROVAL} documentos submetidos para aprovação do crédito. Actualmente possui ${customerDocuments ? customerDocuments.length : 0} documento(s).`,
             });
         }
         // Verifica se já existe um plano de amortização para este empréstimo

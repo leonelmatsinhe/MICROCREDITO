@@ -470,6 +470,18 @@
         </q-card-section>
 
         <q-card-actions align="right" class="q-pa-md">
+          <q-btn
+            outline
+            label="Solicitar documentos"
+            color="blue"
+            icon="sms"
+            no-caps
+            rounded
+            :disable="!reviewLoan?.customerPhone"
+            @click="openDocumentRequestSms"
+          >
+            <q-tooltip v-if="!reviewLoan?.customerPhone">Mutuário sem telefone registado</q-tooltip>
+          </q-btn>
           <q-btn outline label="Rejeitar" color="negative" icon="cancel" no-caps rounded @click="openReject" />
           <q-btn
             unelevated
@@ -518,6 +530,18 @@
 
     <!-- Aprovação (reutiliza o modal de aprovação do painel do mutuário) -->
     <LoanApprovalModal v-model="showApproval" :loan="approvalLoan" @approved="onLoanApproved" />
+
+    <!-- SMS pré-preenchido para solicitar documentos em falta -->
+    <SendMessageModal
+      v-model="showDocumentRequestSms"
+      :phone="reviewLoan?.customerPhone || ''"
+      :account-number="reviewLoan?.accountNumber || ''"
+      :customer-name="reviewLoan?.customerName || ''"
+      channel="sms"
+      message-type="document_request"
+      :initial-message="documentRequestMessage"
+      @sent="onDocumentRequestSent"
+    />
 
     <!-- Reabrir pedido rejeitado (editar valor/taxa/prazo antes de re-submeter) -->
     <q-dialog v-model="showReopenConfirm" persistent>
@@ -683,8 +707,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort, formatInterestRate, getInitials } from '@/utils/formatters'
-import { logReopenLoan, logApproveLoan, logRejectLoan } from '@/utils/logger'
+import { logReopenLoan, logApproveLoan, logRejectLoan, logSendSms } from '@/utils/logger'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
+import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
 const router = useRouter()
@@ -725,6 +750,7 @@ const showReview = ref(false)
 const reviewLoan = ref(null)
 const showApproval = ref(false)
 const approvalLoan = ref(null)
+const showDocumentRequestSms = ref(false)
 const showRejectDialog = ref(false)
 const rejectOpinion = ref('')
 const rejecting = ref(false)
@@ -736,6 +762,24 @@ function openReview(row) {
 
 function openDoc(doc) {
   if (doc?.documentFileUrl) window.open(doc.documentFileUrl, '_blank')
+}
+
+const documentRequestMessage = computed(() => {
+  const name = reviewLoan.value?.customerName || 'Cliente'
+  return `Ola ${name}. Para concluir o seu pedido de credito, envie BI/Passaporte, NUIT e Declaracao de Bairro. Pode submete-los depois. Obrigado.`
+})
+
+function openDocumentRequestSms() {
+  if (!reviewLoan.value?.customerPhone) {
+    $q.notify({ type: 'warning', message: 'O mutuário não tem telefone registado.', position: 'top' })
+    return
+  }
+  showDocumentRequestSms.value = true
+}
+
+async function onDocumentRequestSent() {
+  const loan = reviewLoan.value
+  await logSendSms(loan?.customerName || `Conta ${loan?.accountNumber}`, documentRequestMessage.value)
 }
 
 // Capacidade de pagamento (1/3 do rendimento) no painel de revisão — usa a

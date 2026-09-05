@@ -36,11 +36,11 @@
         </q-card>
 
         <!-- Aviso documentos em falta -->
-        <q-banner v-if="hasDocs !== null && !hasDocs" class="bg-orange-1 text-orange-9 q-mb-md" rounded dense>
+        <q-banner v-if="documentsCount !== null && documentsCount < 3" class="bg-orange-1 text-orange-9 q-mb-md" rounded dense>
           <template v-slot:avatar>
             <q-icon name="warning" color="orange" />
           </template>
-          O mutuário ainda não submeteu documentos. Recomende-se que envie BI/Passaporte, NUIT e Declaração de Bairro antes do desembolso.
+          O crédito pode ser aprovado, mas o mutuário deve submeter mais documentos posteriormente. Actualmente possui {{ documentsCount }} documento(s); recomenda-se completar BI/Passaporte, NUIT e Declaração de Bairro antes do desembolso.
         </q-banner>
 
         <!-- Data de desembolso (base do plano de amortização) -->
@@ -194,6 +194,7 @@ const rateId = ref(null)
 const adminFeeExempt = ref(false)
 const observation = ref('')
 const submitting = ref(false)
+const documentsCount = ref(null)
 // Data real de desembolso — base do plano; por defeito é hoje, mas pode ser corrigida
 const disbursementDate = ref(new Date().toISOString().split('T')[0])
 
@@ -259,6 +260,21 @@ async function fetchRates() {
   }
 }
 
+async function fetchDocumentsCount() {
+  const accountNumber = props.loan?.accountNumber
+  if (!accountNumber) {
+    documentsCount.value = null
+    return
+  }
+  try {
+    const { data } = await api.get(`/api/document/${accountNumber}`)
+    documentsCount.value = Array.isArray(data.result) ? data.result.length : 0
+  } catch (e) {
+    console.error('Erro ao carregar documentos do mutuário:', e)
+    documentsCount.value = null
+  }
+}
+
 function presetRateFromLoan() {
   const existing = Number(props.loan?.interestRate) || 0
   if (existing > 0) {
@@ -272,10 +288,12 @@ watch(show, async (val) => {
     rateId.value = null
     adminFeeExempt.value = false
     observation.value = ''
+    documentsCount.value = null
     disbursementDate.value = new Date().toISOString().split('T')[0]
     if (rateList.value.length === 0) {
       await fetchRates()
     }
+    await fetchDocumentsCount()
     // Para créditos criados pela equipa com taxa já definida, pré-seleccionar o plano correspondente
     presetRateFromLoan()
     // Se o crédito já tiver sido marcado como isento, manter a isenção
