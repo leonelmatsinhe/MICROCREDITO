@@ -43,6 +43,8 @@ const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsMo
 const CompanyModel_1 = require("../database/models/CompanyModel");
 const UserModel_1 = require("../database/models/UserModel");
 const NotificationModel_1 = require("../database/models/NotificationModel");
+const LoanModel_1 = require("../database/models/LoanModel");
+const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const sequelize_1 = require("sequelize");
 const password_1 = require("../utils/password");
 // Remove o hash da senha antes de devolver mutuários ao frontend — a BD é a
@@ -373,17 +375,54 @@ const updateCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
 });
 exports.updateCustomer = updateCustomer;
 const deleteCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const deleteCustomer = yield CustomerModel_1.CustomerModel.destroy({ where: { id: id } });
-    return deleteCustomer != null
-        ? res.status(201).send(JSON.stringify({
+    try {
+        const { id } = req.params;
+        const customer = yield CustomerModel_1.CustomerModel.findByPk(id);
+        if (!customer) {
+            return res.status(404).json({
+                success: false,
+                message: "Mutuário não encontrado.",
+            });
+        }
+        const companyId = customer.getDataValue("companyId");
+        const accountNumber = customer.getDataValue("accountNumber");
+        // Mantém o cadastro como histórico financeiro e evita referências órfãs.
+        const [loan, pendingInstallment] = yield Promise.all([
+            LoanModel_1.LoanModel.findOne({ where: { companyId, accountNumber }, attributes: ["id"] }),
+            AmortizationLoanModel_1.AmorizationLoanModel.findOne({
+                where: {
+                    companyId,
+                    accountNumber,
+                    status: { [sequelize_1.Op.in]: [0, -1] },
+                },
+                attributes: ["id"],
+            }),
+        ]);
+        if (loan || pendingInstallment) {
+            return res.status(409).json({
+                success: false,
+                message: "Este mutuário não pode ser eliminado porque possui histórico de crédito ou pagamentos pendentes.",
+            });
+        }
+        const deletedRows = yield CustomerModel_1.CustomerModel.destroy({ where: { id } });
+        if (deletedRows !== 1) {
+            return res.status(404).json({
+                success: false,
+                message: "Mutuário não encontrado.",
+            });
+        }
+        return res.status(200).json({
             success: true,
-            message: "Customer deleted successfully.",
-        }))
-        : res.status(204).send(JSON.stringify({
+            message: "Mutuário eliminado com sucesso.",
+        });
+    }
+    catch (error) {
+        console.error("Erro ao eliminar mutuário:", error);
+        return res.status(500).json({
             success: false,
-            message: "There was an error deleting this customer.",
-        }));
+            message: "Erro interno ao eliminar mutuário.",
+        });
+    }
 });
 exports.deleteCustomer = deleteCustomer;
 const loginCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {

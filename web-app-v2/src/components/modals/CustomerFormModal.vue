@@ -13,7 +13,7 @@
 
       <!-- Form -->
       <q-card-section style="max-height: calc(100vh - 180px); overflow-y: auto">
-        <q-form @submit="saveCustomer" class="q-gutter-md">
+        <q-form ref="formRef" @submit="saveCustomer" class="q-gutter-md">
           <!-- Dados Pessoais -->
           <div class="text-subtitle2 text-primary q-mb-xs">
             <q-icon name="person" size="16px" class="q-mr-xs" />
@@ -329,6 +329,7 @@ const defaultForm = {
 }
 
 const form = ref({ ...defaultForm })
+const formRef = ref(null)
 
 // Mostrar campos de cônjuge apenas para Casado ou União de Facto
 const showSpouseFields = computed(() => {
@@ -360,6 +361,11 @@ function close() {
   dialogModel.value = false
 }
 
+function resetForm() {
+  form.value = { ...defaultForm }
+  formRef.value?.resetValidation()
+}
+
 async function saveCustomer() {
   try {
     const payload = { ...form.value, companyId: authStore.companyId }
@@ -370,6 +376,7 @@ async function saveCustomer() {
     } else {
       await customerStore.createCustomer(payload)
       $q.notify({ type: 'positive', message: 'Mutuário criado com sucesso', position: 'top' })
+      resetForm()
     }
 
     emit('saved')

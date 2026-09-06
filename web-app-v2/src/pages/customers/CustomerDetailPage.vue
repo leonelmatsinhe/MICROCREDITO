@@ -59,7 +59,8 @@
               <div class="row items-center q-gutter-sm q-mt-xs">
                 <q-badge :color="getStatusColor(customer.customerStatus)" :label="getStatusText(customer.customerStatus)" rounded style="font-size: 10px" />
                 <span class="text-caption text-grey-5">
-                  <q-icon name="phone" size="10px" class="q-mr-xs" />{{ customer.customerPhone || 'Sem telefone' }}
+                  <q-icon name="phone" size="10px" class="q-mr-xs app-phone-color" />
+                  <span class="app-phone-color">{{ customer.customerPhone || 'Sem telefone' }}</span>
                 </span>
                 <span class="text-caption text-grey-5">
                   <q-icon name="email" size="10px" class="q-mr-xs" />{{ customer.customerEmail || 'Sem e-mail' }}

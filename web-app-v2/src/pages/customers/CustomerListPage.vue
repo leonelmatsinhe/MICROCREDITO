@@ -4,7 +4,7 @@
     <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
-          <div class="col-12 col-md-5">
+          <div class="col-12 col-md-7">
             <q-input
               v-model="searchQuery"
               dense
@@ -19,20 +19,7 @@
               </template>
             </q-input>
           </div>
-          <div class="col-12 col-md-3">
-            <q-select
-              v-model="selectedBairro"
-              dense
-              outlined
-              :options="bairroOptions"
-              label="Filtrar por Bairro"
-              clearable
-              emit-value
-              map-options
-              @update:model-value="applyFilters"
-            />
-          </div>
-          <div class="col-12 col-md-2">
+          <div class="col-12 col-md-1">
             <q-btn
               flat
               round
@@ -48,35 +35,41 @@
               flat
               round
               dense
-              icon="filter_list_off"
+              icon="clear"
               color="grey"
               size="sm"
               @click="clearFilters"
             >
-              <q-tooltip>Limpar filtros</q-tooltip>
+              <q-tooltip>Limpar pesquisa</q-tooltip>
             </q-btn>
           </div>
-          <div class="col-12 col-md-2 text-right">
+          <div class="col-12 col-md-4">
+            <div class="action-toolbar">
             <q-btn
-              flat
-              dense
-              icon="download"
-              label="Exportar"
+              unelevated
+              icon="picture_as_pdf"
+              label="Exportar PDF"
               size="sm"
-              color="positive"
-              @click="exportData"
-              class="q-mr-xs"
+              class="action-gradient action-gradient-pdf"
+              @click="exportPdf"
             />
             <q-btn
-              color="primary"
-              icon="person_add"
-              round
-              dense
+              unelevated
+              icon="table_view"
+              label="Exportar Excel"
               size="sm"
+              class="action-gradient action-gradient-excel"
+              @click="exportExcel"
+            />
+            <q-btn
+              unelevated
+              icon="person_add"
+              label="Novo mutuário"
+              size="sm"
+              class="action-gradient action-gradient-customer"
               @click="showCreateModal = true"
-            >
-              <q-tooltip>Novo Mutuário</q-tooltip>
-            </q-btn>
+            />
+            </div>
           </div>
         </div>
       </q-card-section>
@@ -152,7 +145,7 @@
                     Auto-cadastro
                   </q-badge>
                 </div>
-                <div class="text-caption text-grey-5" style="font-size: 11px">
+                <div class="text-caption app-phone-color" style="font-size: 11px">
                   {{ props.row.customerPhone }}
                 </div>
               </div>
@@ -219,6 +212,12 @@
       @saved="onCustomerSaved"
     />
 
+    <CommonErrorModal
+      v-model="showErrorModal"
+      title="Não é possível eliminar"
+      :message="errorMessage"
+    />
+
     <!-- Delete Confirmation -->
     <q-dialog v-model="showDeleteConfirm" persistent>
       <q-card style="border-radius: 12px; min-width: 320px">
@@ -261,6 +260,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCustomerStore } from '@/stores/customers'
 import { api } from '@/boot/axios'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
+import CommonErrorModal from '@/components/modals/CommonErrorModal.vue'
 import { canDeleteCustomer, canEditCustomer } from '@/utils/permissions'
 import { logDeleteCustomer, logDeactivateCustomer } from '@/utils/logger'
 
@@ -270,9 +270,10 @@ const authStore = useAuthStore()
 const customerStore = useCustomerStore()
 
 const searchQuery = ref('')
-const selectedBairro = ref('')
 const showCreateModal = ref(false)
 const showDeleteConfirm = ref(false)
+const showErrorModal = ref(false)
+const errorMessage = ref('')
 const editingCustomer = ref(null)
 const deletingCustomer = ref(null)
 
@@ -280,8 +281,6 @@ const loading = computed(() => customerStore.loading)
 const saving = computed(() => customerStore.saving)
 const customers = computed(() => customerStore.customers)
 const hasCustomers = computed(() => customerStore.hasCustomers)
-
-const bairroOptions = ref([])
 
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
@@ -328,8 +327,7 @@ async function loadCustomers(page = 1) {
   await customerStore.fetchCustomers(companyId, {
     page,
     limit: 15,
-    search: searchQuery.value,
-    bairro: selectedBairro.value
+    search: searchQuery.value
   })
 }
 
@@ -344,11 +342,6 @@ function clearSearch() {
 
 function clearFilters() {
   searchQuery.value = ''
-  selectedBairro.value = ''
-  loadCustomers(1)
-}
-
-function applyFilters() {
   loadCustomers(1)
 }
 
@@ -378,7 +371,8 @@ async function deleteCustomerConfirmed() {
     $q.notify({ type: 'positive', message: 'Mutuário eliminado com sucesso', position: 'top' })
     loadCustomers(customerStore.pagination.currentPage)
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'Erro ao eliminar mutuário', position: 'top' })
+    errorMessage.value = error.response?.data?.message || 'Erro ao eliminar mutuário.'
+    showErrorModal.value = true
   }
 }
 
@@ -388,7 +382,7 @@ function onCustomerSaved() {
   loadCustomers(customerStore.pagination.currentPage)
 }
 
-async function exportData() {
+async function exportPdf() {
   if (!customers.value || customers.value.length === 0) {
     $q.notify({ type: 'warning', message: 'Nenhum dado para exportar', position: 'top' })
     return
@@ -476,12 +470,82 @@ async function exportData() {
   }
 }
 
+async function exportExcel() {
+  if (!customers.value || customers.value.length === 0) {
+    $q.notify({ type: 'warning', message: 'Nenhum dado para exportar', position: 'top' })
+    return
+  }
+
+  try {
+    const XLSX = await import('xlsx')
+    const rows = customers.value.map(row => ({
+      'Mutuário': row.customerName || '-',
+      'Telefone': row.customerPhone || '-',
+      'Pessoa de Contacto': row.customerEmergencyPerson || '-',
+      'Emergência': row.customerEmergencyContact || '-',
+      'Bairro': row.customerBairro || '-',
+      'Estado': row.customerStatus === 1 ? 'Activo' : 'Inactivo'
+    }))
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    worksheet['!cols'] = [
+      { wch: 30 }, { wch: 16 }, { wch: 28 }, { wch: 18 }, { wch: 22 }, { wch: 12 }
+    ]
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Mutuários')
+    XLSX.writeFile(workbook, `mutuarios-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    $q.notify({ type: 'positive', message: 'Excel exportado com sucesso!', position: 'top' })
+  } catch (error) {
+    console.error('Erro ao gerar Excel:', error)
+    $q.notify({ type: 'negative', message: 'Erro ao gerar Excel', position: 'top' })
+  }
+}
+
 onMounted(() => {
   loadCustomers()
 })
 </script>
 
 <style lang="scss" scoped>
+.action-gradient {
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+  min-height: 34px;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.16);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 12px rgba(15, 23, 42, 0.22);
+  }
+}
+
+.action-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+
+  :deep(.q-btn) {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+.action-gradient-pdf {
+  background: linear-gradient(135deg, #c62828, #ef5350) !important;
+}
+
+.action-gradient-excel {
+  background: linear-gradient(135deg, #087f5b, #20a36a) !important;
+}
+
+.action-gradient-customer {
+  background: linear-gradient(135deg, #0d7c3d, #36a269) !important;
+}
+
 .customer-table {
   :deep(.q-table__top) {
     display: none;
@@ -498,7 +562,7 @@ onMounted(() => {
     padding: 8px 12px;
   }
   :deep(.q-table tbody tr:hover) {
-    background-color: $grey-2;
+    background-color: #f0fdf4;
   }
 }
 

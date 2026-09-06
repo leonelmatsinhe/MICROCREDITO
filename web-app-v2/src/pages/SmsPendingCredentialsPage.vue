@@ -104,8 +104,8 @@
       <template v-slot:body-cell-phone="props">
         <q-td :props="props">
           <div class="row items-center no-wrap">
-            <q-icon name="phone" size="13px" class="q-mr-xs text-grey-6" />
-            <span>{{ phoneLabel(props.row) }}</span>
+            <q-icon name="phone" size="13px" class="q-mr-xs app-phone-color" />
+            <span class="app-phone-color">{{ phoneLabel(props.row) }}</span>
           </div>
         </q-td>
       </template>

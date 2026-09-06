@@ -6,6 +6,8 @@ import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsMode
 import { CompanyModel } from "../database/models/CompanyModel";
 import { UserModel } from "../database/models/UserModel";
 import { NotificationModel } from "../database/models/NotificationModel";
+import { LoanModel } from "../database/models/LoanModel";
+import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { Op } from "sequelize";
 import { hashPasswordIfNeeded } from "../utils/password";
 
@@ -395,21 +397,59 @@ const updateCustomer = async (req: Request, res: Response) => {
 };
 
 const deleteCustomer = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const deleteCustomer = await CustomerModel.destroy({ where: { id: id } });
-  return deleteCustomer != null
-    ? res.status(201).send(
-      JSON.stringify({
-        success: true,
-        message: "Customer deleted successfully.",
-      })
-    )
-    : res.status(204).send(
-      JSON.stringify({
+  try {
+    const { id } = req.params;
+    const customer: any = await CustomerModel.findByPk(id);
+
+    if (!customer) {
+      return res.status(404).json({
         success: false,
-        message: "There was an error deleting this customer.",
-      })
-    );
+        message: "Mutuário não encontrado.",
+      });
+    }
+
+    const companyId = customer.getDataValue("companyId");
+    const accountNumber = customer.getDataValue("accountNumber");
+
+    // Mantém o cadastro como histórico financeiro e evita referências órfãs.
+    const [loan, pendingInstallment] = await Promise.all([
+      LoanModel.findOne({ where: { companyId, accountNumber }, attributes: ["id"] }),
+      AmorizationLoanModel.findOne({
+        where: {
+          companyId,
+          accountNumber,
+          status: { [Op.in]: [0, -1] },
+        },
+        attributes: ["id"],
+      }),
+    ]);
+
+    if (loan || pendingInstallment) {
+      return res.status(409).json({
+        success: false,
+        message: "Este mutuário não pode ser eliminado porque possui histórico de crédito ou pagamentos pendentes.",
+      });
+    }
+
+    const deletedRows = await CustomerModel.destroy({ where: { id } });
+    if (deletedRows !== 1) {
+      return res.status(404).json({
+        success: false,
+        message: "Mutuário não encontrado.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Mutuário eliminado com sucesso.",
+    });
+  } catch (error: any) {
+    console.error("Erro ao eliminar mutuário:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro interno ao eliminar mutuário.",
+    });
+  }
 };
 
 const loginCustomer = async (req: Request, res: Response) => {
