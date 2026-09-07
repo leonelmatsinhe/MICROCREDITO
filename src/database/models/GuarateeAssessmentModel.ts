@@ -21,11 +21,14 @@ export const GuarateeAssessmentModel = db.define("loan_guarantees", {
         allowNull: false,
     },
     purchaseAmount: {
-        type: DataTypes.FLOAT,
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
     },
     status: {
         type: DataTypes.INTEGER,
         allowNull: true,
     },
+}, {
+    tableName: "loan_guarantees",
+    freezeTableName: true,
 });

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
+import { CustomerModel } from "../database/models/CustomerModel";
 
 const isCompiled =
   __dirname.includes(path.sep + "build" + path.sep) ||
@@ -42,9 +43,11 @@ const findAllDocuments = async (req: Request, res: Response) => {
 
 const getCustomerDocuments = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
   const document = await CustomerDocumentsModel.findAll({
     where: {
       accountNumber: id,
+      ...(companyId ? { companyId } : {}),
     },
   });
   return document
@@ -82,9 +85,20 @@ const createDocument = async (req: Request, res: Response) => {
       });
     }
 
+    const customer = await CustomerModel.findOne({
+      where: { companyId: Number(companyId), accountNumber: String(accountNumber) },
+    });
+    if (!customer) {
+      return res.status(409).json({
+        success: false,
+        message: "A conta não existe nesta empresa.",
+      });
+    }
+
     const document = await CustomerDocumentsModel.create({
       companyId: Number(companyId),
       accountNumber: Number(accountNumber),
+      customerId: customer.getDataValue("id"),
       documentName: String(documentName),
       documentFileUrl: String(documentFileUrl),
       uploadedBy: String(uploadedBy),

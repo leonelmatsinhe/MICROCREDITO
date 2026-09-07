@@ -16,7 +16,7 @@
     <div v-else class="row q-col-gutter-md q-mb-md">
       <div class="col-12 col-sm-6 col-md-4">
         <KpiCard
-          label="Mutuários"
+          label="Créditos processados"
           :value="kpis.totalCustomers"
           icon="people"
           avatarColor="blue"
@@ -71,6 +71,7 @@
           avatarColor="green"
           valueColor="text-positive"
           format="money"
+          :secondary-text="`Mora paga: ${formatMoney(kpis.totalLateInterest)} · Descontos: ${formatMoney(dashboardStore.rawKpis?.financial?.totalDiscount || 0)}`"
         />
       </div>
     </div>
@@ -103,6 +104,7 @@ import SmsQueueIndicator from '@/components/ui/SmsQueueIndicator.vue'
 import FiltersBar from '@/components/ui/FiltersBar.vue'
 import BarChart from '@/components/charts/BarChart.vue'
 import UpcomingTable from '@/components/ui/UpcomingTable.vue'
+import { formatMoney } from '@/utils/formatters'
 
 const $q = useQuasar()
 const authStore = useAuthStore()

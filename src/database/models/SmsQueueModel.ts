@@ -18,6 +18,10 @@ export const SmsQueueModel = db.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    customerId: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+    },
     loanId: {
       type: DataTypes.INTEGER,
       allowNull: true,

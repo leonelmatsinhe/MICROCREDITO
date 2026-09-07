@@ -1,9 +1,11 @@
-// Formatar valor monetário
+const CURRENCY_CODE = 'MZN'
+
+// Formatar valor monetário com a unidade oficial da aplicação.
 export function formatMoney(value) {
   return new Intl.NumberFormat('pt-MZ', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(value || 0) + ' MT'
+  }).format(value || 0) + ` ${CURRENCY_CODE}`
 }
 
 // Formatar valor sem símbolo
@@ -13,6 +15,14 @@ export function formatMoneyValue(value) {
     maximumFractionDigits: 2
   }).format(value || 0)
 }
+
+// Formatar prazo com singular/plural correcto.
+export function formatPeriod(value) {
+  const months = Number(value) || 0
+  return `${months} ${months === 1 ? 'mês' : 'meses'}`
+}
+
+export { CURRENCY_CODE }
 
 // Converter número por extenso (português)
 export function numberToWords(num) {

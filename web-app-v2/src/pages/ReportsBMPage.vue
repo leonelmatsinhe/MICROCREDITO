@@ -19,6 +19,9 @@
           <div class="col-auto">
             <q-btn outline color="primary" icon="table_chart" label="Gerar Excel" no-caps rounded @click="generateExcel" :disable="reportData.length === 0" />
           </div>
+          <div class="col-auto">
+            <q-btn outline color="grey-8" icon="info" label="Notas" no-caps rounded @click="showNotes = true" />
+          </div>
         </div>
       </div>
 
@@ -30,10 +33,10 @@
 
       <template v-else>
         <!-- TABELA PRINCIPAL -->
-        <q-card flat bordered class="q-mb-md">
-          <q-card-section class="bg-grey-1">
+        <q-card flat bordered class="q-mb-md bm-surface-card">
+          <q-card-section class="bm-table-header">
             <div class="row items-center">
-              <div class="text-subtitle1 text-weight-bold text-grey-8">
+              <div class="bm-table-title">
                 <q-icon name="table_chart" class="q-mr-sm" />
                 2. OPERAÇÕES DE CRÉDITO (Valores em Metical)
               </div>
@@ -46,7 +49,7 @@
               <q-icon name="info" size="48px" color="grey-4" />
               <div class="text-caption q-mt-sm">Nenhuma operação de crédito encontrada para o período seleccionado</div>
             </div>
-            <q-table v-else :rows="reportData" :columns="tableColumns" row-key="operationNumber" flat dense :rows-per-page-options="[0]" hide-bottom style="font-size: 11px">
+            <q-table v-else class="bm-report-table" :rows="reportData" :columns="tableColumns" row-key="operationNumber" flat dense :rows-per-page-options="[0]" hide-bottom style="font-size: 11px">
               <template v-slot:body-cell-operationNumber="props">
                 <q-td :props="props" class="text-center text-weight-bold">{{ props.row.operationNumber }}</q-td>
               </template>
@@ -69,8 +72,8 @@
               </template>
               <template v-slot:body-cell-daysOverdue="props">
                 <q-td :props="props" class="text-center">
-                  <q-badge v-if="props.row.daysOverdue > 0" :color="props.row.daysOverdue > 30 ? 'negative' : props.row.daysOverdue > 15 ? 'orange' : 'yellow-7'" rounded>{{ props.row.daysOverdue }}</q-badge>
-                  <span v-else class="text-grey-5">0</span>
+                  <span v-if="props.row.daysOverdue > 0" class="text-negative">{{ props.row.daysOverdue }}</span>
+                  <span v-else class="text-dark">0</span>
                 </q-td>
               </template>
               <template v-slot:body-cell-ppe="props">
@@ -99,32 +102,34 @@
           </q-card-section>
         </q-card>
 
-        <!-- NOTAS EXPLICATIVAS -->
-        <q-card flat bordered>
-          <q-card-section class="bg-grey-1">
-            <div class="text-subtitle1 text-weight-bold text-grey-8">
-              <q-icon name="info" class="q-mr-sm" />
-              Notas Explicativas
-            </div>
-          </q-card-section>
-          <q-card-section style="font-size: 12px; line-height: 1.8">
-            <div>1- Número da operação de crédito</div>
-            <div>2- Nome do cliente</div>
-            <div>3- Data de desembolso inicial</div>
-            <div>4- Valor do crédito concedido</div>
-            <div>5- Finalidade de crédito desembolsado, designadamente para empresas, consumo ou habitação</div>
-            <div>6- Montante da prestação periódica para amortizar o crédito</div>
-            <div>7- Periodicidade dos pagamentos, indica se são diária, semanal, mensal ou anual</div>
-            <div>8- Data de vencimento do crédito desembolsado</div>
-            <div>9- Percentagem da taxa de juro aplicada ao crédito</div>
-            <div>10- Montante do crédito desembolsado que falta pagar, excluindo prestações em atraso</div>
-            <div>11- Montante das prestações em atraso incluindo capital e juros</div>
-            <div>12- Dias em atraso do pagamento das prestações</div>
-            <div>13- Crédito concedido pessoas politicamente expostas</div>
-          </q-card-section>
-        </q-card>
       </template>
     </div>
+
+    <q-dialog v-model="showNotes">
+      <q-card class="notes-dialog">
+          <q-card-section class="row items-center notes-header">
+          <q-icon name="info" color="primary" size="22px" class="q-mr-sm" />
+          <div class="text-subtitle1 text-weight-bold notes-title">Notas Explicativas</div>
+          <q-space />
+          <q-btn flat round dense icon="close" @click="showNotes = false" />
+        </q-card-section>
+        <q-card-section class="notes-content">
+          <div>1- Número da operação de crédito</div>
+          <div>2- Nome do cliente</div>
+          <div>3- Data de desembolso inicial</div>
+          <div>4- Valor do crédito concedido</div>
+          <div>5- Finalidade de crédito desembolsado, designadamente para empresas, consumo ou habitação</div>
+          <div>6- Montante da prestação periódica para amortizar o crédito</div>
+          <div>7- Periodicidade dos pagamentos, indica se são diária, semanal, mensal ou anual</div>
+          <div>8- Data de vencimento do crédito desembolsado</div>
+          <div>9- Percentagem da taxa de juro aplicada ao crédito</div>
+          <div>10- Montante do crédito desembolsado que falta pagar, excluindo prestações em atraso</div>
+          <div>11- Montante das prestações em atraso incluindo capital e juros</div>
+          <div>12- Dias em atraso do pagamento das prestações</div>
+          <div>13- Crédito concedido pessoas politicamente expostas</div>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -139,10 +144,21 @@ const authStore = useAuthStore()
 const companyStore = useCompanyStore()
 
 const loading = ref(false)
+const showNotes = ref(false)
+
+function localDateString(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+const currentMonthEnd = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)
 
 const filters = ref({
-  from: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
-  to: new Date().toISOString().split('T')[0]
+  from: localDateString(currentMonthStart),
+  to: localDateString(currentMonthEnd)
 })
 
 const manualData = ref({
@@ -194,7 +210,7 @@ const tableColumns = [
 ]
 
 function formatMoney(val) {
-  return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val || 0)
+  return `${new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0)} MZN`
 }
 
 async function fetchData() {
@@ -212,7 +228,9 @@ async function fetchData() {
 
     if (data && typeof data === 'object' && data.success) {
       company.value = data.company || {}
-      reportData.value = data.reportData || []
+      reportData.value = [...(data.reportData || [])].sort((first, second) => {
+        return new Date(second.disbursementDate || 0) - new Date(first.disbursementDate || 0)
+      })
       totals.value = data.totals || {}
     } else {
       console.warn('BM Report: resposta inválida', data)
@@ -423,7 +441,7 @@ async function generatePDF() {
 }
 
 function formatMoneyRaw(val) {
-  return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0)
+  return `${new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0)} MZN`
 }
 
 // ==================== GERAÇÃO EXCEL ====================
@@ -567,13 +585,32 @@ onMounted(async () => {
 body.body--dark .reports-body { background: #1a1a2e; }
 
 .form-card {
-  background: #fff;
+  background: #f1f3f5;
   padding: 16px;
   border-radius: 12px;
   border: 1px solid rgba(0,0,0,0.04);
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 body.body--dark .form-card { background: #252540; border-color: rgba(255,255,255,0.06); }
+.bm-surface-card { background: #f1f3f5; }
+body.body--dark .bm-surface-card { background: #252540; }
+.bm-table-header { background: #e5e7eb; }
+.bm-table-title { color: #374151; font-weight: 600; }
+body.body--dark .bm-table-header { background: #334155; }
+body.body--dark .bm-table-title { color: #e2e8f0; }
+
+.notes-dialog { width: 620px; max-width: 92vw; border-radius: 12px; }
+.notes-header { background: #e5e7eb; color: #1f2937; }
+.notes-title { color: #1f2937; }
+.notes-content { background: #f1f3f5; font-size: 12px; line-height: 1.8; }
+body.body--dark .notes-header { background: #334155; color: #e5e7eb; }
+body.body--dark .notes-title { color: #e5e7eb; }
+body.body--dark .notes-content { background: #252540; color: #cbd5e1; font-weight: 400; }
+
+.bm-report-table :deep(.q-table__middle) { overflow-x: auto; }
+body.body--dark .bm-report-table :deep(th),
+body.body--dark .bm-report-table :deep(td) { color: #cbd5e1; font-weight: 400; }
+body.body--dark .bm-report-table :deep(.bm-total-row) { color: #cbd5e1; font-weight: 400; }
 
 .bm-total-row {
   background: #e8eaf6;

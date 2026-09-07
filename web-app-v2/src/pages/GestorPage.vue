@@ -694,15 +694,10 @@ async function loadData() {
 
         if (Array.isArray(amortizations)) {
           amortizations.forEach(a => {
-            const dueDate = new Date(a.dueDate)
-            const now = new Date()
-            const diffTime = dueDate - now
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+            const daysOverdue = Number(a.lateDays || 0)
+            const daysUntilDue = Number(a.daysUntilDue || 0)
 
-            const daysOverdue = diffDays < 0 && a.status !== 1 ? Math.abs(diffDays) : 0
-            const daysUntilDue = diffDays > 0 && a.status !== 1 ? diffDays : 0
-
-            const lateFee = daysOverdue > 0 ? Math.round(a.installment * 0.005 * daysOverdue * 100) / 100 : 0
+            const lateFee = Number(a.latePaymentInterest || a.lateFee || 0)
             const totalToPay = Number(a.installment || 0) + lateFee
 
             allInstallments.push({

@@ -335,7 +335,8 @@
               dense
               outlined
               label="Data de Nascimento"
-              placeholder="dd/mm/aaaa"
+              type="date"
+              :max="adultBirthDate"
             />
 
             <!-- Identificação -->
@@ -371,6 +372,8 @@
                   dense
                   outlined
                   label="Data de Emissão"
+                  type="date"
+                  :max="todayDate"
                 />
               </div>
               <div class="col-6">

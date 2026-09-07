@@ -20,9 +20,17 @@ const findAllDebts = async (req: Request, res: Response) => {
 
 const createDebt = async (req: Request, res: Response) => {
     let { loanId, amortisationId, accountNumber, updatedBy, companyId, debtAmount, dateInserted } = req.body;
+    const amortization: any = amortisationId
+        ? await AmorizationLoanModel.findByPk(amortisationId, { attributes: ["customerId"] })
+        : null;
+    const customerId = amortization?.getDataValue("customerId");
+    if (!customerId) {
+        return res.status(409).json({ success: false, message: "A dívida não está associada a um mutuário." });
+    }
 
     const newDebt = await DebtModel.create({
         companyId,
+        customerId,
         loanId,
         amortisationId,
         accountNumber,

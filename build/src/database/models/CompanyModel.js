@@ -3,10 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CompanyModel = void 0;
 const sequelize_1 = require("sequelize");
 const db_1 = require("../db");
-exports.CompanyModel = db_1.db.define("company", {
+exports.CompanyModel = db_1.db.define("companies", {
     id: {
         type: sequelize_1.DataTypes.INTEGER,
-        autoIncrement: true,
         allowNull: false,
         primaryKey: true,
     },
@@ -81,4 +80,7 @@ exports.CompanyModel = db_1.db.define("company", {
         defaultValue: 0,
         comment: 'Oculta a cláusula VIGÉSIMA PRIMEIRA (seguro/garantias) no contrato de concessão (1 = ocultar, 0 = mostrar).',
     },
+}, {
+    tableName: "companies",
+    freezeTableName: true,
 });

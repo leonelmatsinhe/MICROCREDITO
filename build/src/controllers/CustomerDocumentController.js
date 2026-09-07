@@ -16,6 +16,7 @@ exports.deleteDocument = exports.updateDocument = exports.createDocument = expor
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
+const CustomerModel_1 = require("../database/models/CustomerModel");
 const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) ||
     __dirname.endsWith(path_1.default.sep + "build");
 const projectRoot = isCompiled
@@ -52,10 +53,9 @@ const findAllDocuments = (req, res) => __awaiter(void 0, void 0, void 0, functio
 exports.findAllDocuments = findAllDocuments;
 const getCustomerDocuments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
+    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
     const document = yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll({
-        where: {
-            accountNumber: id,
-        },
+        where: Object.assign({ accountNumber: id }, (companyId ? { companyId } : {})),
     });
     return document
         ? res.status(200).send({ success: true, result: document })
@@ -89,9 +89,19 @@ const createDocument = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 message: "documentFileUrl inválido. Apenas referências locais '/documents/<ficheiro>' são permitidas.",
             });
         }
+        const customer = yield CustomerModel_1.CustomerModel.findOne({
+            where: { companyId: Number(companyId), accountNumber: String(accountNumber) },
+        });
+        if (!customer) {
+            return res.status(409).json({
+                success: false,
+                message: "A conta não existe nesta empresa.",
+            });
+        }
         const document = yield CustomerDocumentsModel_1.CustomerDocumentsModel.create({
             companyId: Number(companyId),
             accountNumber: Number(accountNumber),
+            customerId: customer.getDataValue("id"),
             documentName: String(documentName),
             documentFileUrl: String(documentFileUrl),
             uploadedBy: String(uploadedBy),

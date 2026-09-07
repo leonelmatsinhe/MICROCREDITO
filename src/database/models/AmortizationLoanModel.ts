@@ -24,20 +24,24 @@ export const AmorizationLoanModel = db.define("amortization_loan", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  customerId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
   amortization: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   rateAmount: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   installment: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   remainingBalance: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     comment: "Saldo devedor após o pagamento desta prestação (Sistema Francês)",
   },
@@ -50,7 +54,7 @@ export const AmorizationLoanModel = db.define("amortization_loan", {
     allowNull: false,
   },
   paidAmount: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     defaultValue: 0,
     comment: "Valor total pago nesta prestação (para pagamentos parciais)",

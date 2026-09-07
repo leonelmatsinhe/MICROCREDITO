@@ -23,15 +23,7 @@
       >
         <template v-slot:body-cell-customer="props">
           <q-td :props="props">
-            <div class="row items-center no-wrap">
-              <q-avatar size="28px" :color="getAvatarColor(props.row)" text-color="white" class="q-mr-sm">
-                <span style="font-size: 10px">{{ getInitials(props.row.customerName) }}</span>
-              </q-avatar>
-              <div>
-                <div class="text-weight-medium" style="font-size: 12px">{{ props.row.customerName }}</div>
-                <div class="text-grey-5" style="font-size: 10px">{{ props.row.accountNumber }}</div>
-              </div>
-            </div>
+            <div class="table-borrower-name" style="font-size: 12px">{{ props.row.customerName }}</div>
           </q-td>
         </template>
 
@@ -58,7 +50,7 @@
         <template v-slot:body-cell-status="props">
           <q-td :props="props">
             <q-badge v-if="props.row.status === -1" color="warning" text-color="white" rounded>Parcial</q-badge>
-            <q-badge v-else color="grey-4" text-color="grey-7" rounded>Pendente</q-badge>
+            <q-badge v-else class="pending-status-badge" rounded>Pendente</q-badge>
           </q-td>
         </template>
 
@@ -75,7 +67,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { formatMoney, getInitials } from '@/utils/formatters'
+import { formatMoney } from '@/utils/formatters'
 
 defineProps({
   items: { type: Array, default: () => [] }
@@ -90,12 +82,6 @@ const columns = [
   { name: 'days', label: 'Dias', field: 'daysUntilDue', align: 'center', sortable: true },
   { name: 'status', label: 'Estado', field: 'status', align: 'center' }
 ]
-
-function getAvatarColor(row) {
-  const colors = ['primary', 'secondary', 'teal', 'orange', 'purple', 'blue']
-  const index = row.customerName ? row.customerName.charCodeAt(0) % colors.length : 0
-  return colors[index]
-}
 
 function getDaysColor(days) {
   if (days <= 3) return 'negative'
@@ -140,5 +126,16 @@ body.body--dark .table-card {
     font-size: 12px;
     padding: 8px 12px;
   }
+}
+
+.pending-status-badge {
+  background: #e5e7eb;
+  color: #374151;
+  font-weight: 400;
+}
+
+body.body--dark .pending-status-badge {
+  background: #475569;
+  color: #e2e8f0;
 }
 </style>

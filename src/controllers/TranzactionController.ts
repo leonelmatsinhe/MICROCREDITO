@@ -7,6 +7,8 @@ import { NotificationModel } from "../database/models/NotificationModel";
 import { UserModel } from "../database/models/UserModel";
 import { Op, fn, col } from "sequelize";
 import { enqueuePaymentSms } from "../services/SmsGatewayService";
+import { CompanyModel } from "../database/models/CompanyModel";
+import { installmentPanification } from "../utils/calculateLateAmount";
 
 const findAlltranzactions = async (req: Request, res: Response) => {
   const { from, to, companyId } = req.query;
@@ -267,11 +269,26 @@ const findAllPaymentsOverview = async (req: Request, res: Response) => {
       });
     }
 
+    const displayedLateByPaymentGroup: Record<string, boolean> = {};
     const result = tranzactions.map((t: any) => {
       const customer = customerByAccount[String(t.accountNumber)] || null;
       const amort = amortById[Number(t.amortizationLoanId)] || null;
+      const paymentDate = String(t.paymentDate || t.createdAt || '').slice(0, 10);
+      const paymentGroup = `${Number(t.amortizationLoanId) || 0}:${paymentDate}`;
+      const rawLateInterest = Number(t.latePaymentInterest) || 0;
+      // Registos antigos podem repetir a mesma mora em pagamentos parciais
+      // da mesma prestação no mesmo dia. Apresentar a mora uma só vez.
+      const displayedLateInterest = rawLateInterest > 0 && !displayedLateByPaymentGroup[paymentGroup]
+        ? rawLateInterest
+        : 0;
+      if (displayedLateInterest > 0) displayedLateByPaymentGroup[paymentGroup] = true;
+      const discountAmount = Number(t.discountAmount) || 0;
+      const totalAmount = Number(t.totalAmount) || (Number(t.amount) || 0) + displayedLateInterest - discountAmount;
       return {
         ...t,
+        latePaymentInterest: displayedLateInterest,
+        displayedLatePaymentInterest: displayedLateInterest,
+        totalAmount: Math.round(totalAmount * 100) / 100,
         customerName: customer?.customerName || `Conta ${t.accountNumber}`,
         customerPhone: customer?.customerPhone || "",
         installmentOrder: amort?.installmentOrder ?? null,
@@ -304,12 +321,62 @@ const getCustomerTranzactions = async (req: Request, res: Response) => {
     });
 };
 
+const getLoanLateInterest = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const loan: any = await LoanModel.findByPk(id, { attributes: ["id", "companyId", "status"] });
+  if (!loan) return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+
+  const transactions: any[] = await TranzactionModel.findAll({
+    where: { loanId: id },
+    attributes: ["latePaymentInterest", "paymentDate"],
+    raw: true,
+  });
+  const lateInterestByDate: Record<string, number> = {};
+  transactions.forEach((transaction: any) => {
+    const date = String(transaction.paymentDate || "").slice(0, 10);
+    lateInterestByDate[date] = Math.max(
+      lateInterestByDate[date] || 0,
+      Number(transaction.latePaymentInterest) || 0
+    );
+  });
+  const chargedLateInterest = Object.values(lateInterestByDate).reduce(
+    (sum: number, interest: number) => sum + interest,
+    0
+  );
+
+  let totalLateInterest = chargedLateInterest;
+  if (Number(loan.status) === 1) {
+    const company = await CompanyModel.findByPk(loan.companyId, { attributes: ["forfeit"] });
+    const pendingInstallments = await AmorizationLoanModel.findAll({
+      where: { loanId: id, status: { [Op.ne]: 1 } },
+    });
+    const calculated = installmentPanification(
+      pendingInstallments,
+      Number(company?.getDataValue("forfeit") || 0)
+    );
+    totalLateInterest = calculated.reduce(
+      (sum: number, installment: any) => sum + (Number(installment.latePaymentInterest) || 0),
+      0
+    );
+  }
+
+  return res.status(200).json({
+    success: true,
+    result: {
+      totalLateInterest: Math.round(totalLateInterest * 100) / 100,
+      chargedLateInterest: Math.round(chargedLateInterest * 100) / 100,
+      source: Number(loan.status) === 1 ? "pending" : "charged",
+    },
+  });
+};
+
 const addTranzaction = async (req: Request, res: Response) => {
   let {
     companyId,
     accountNumber,
     amortizationLoanId,
     amount,
+    totalAmount,
     latePaymentInterest,
     interestRateAmount,
     phoneNumber,
@@ -324,11 +391,37 @@ const addTranzaction = async (req: Request, res: Response) => {
     notes,
   } = req.body;
 
+  const todayDate = new Date().toISOString().slice(0, 10);
+  if (paymentDate && String(paymentDate).slice(0, 10) > todayDate) {
+    return res.status(400).send({ success: false, message: "A data de pagamento não pode ser futura." });
+  }
+
   // ── Buscar a prestação para comparar valores ──
   const installment: any = await AmorizationLoanModel.findByPk(amortizationLoanId);
   if (!installment) {
     return res.status(404).send({ success: false, message: "Prestação não encontrada." });
   }
+  const loan = await LoanModel.findByPk(installment.loanId, { attributes: ["companyId"] });
+  const company = loan
+    ? await CompanyModel.findByPk(loan.getDataValue("companyId"), { attributes: ["forfeit"] })
+    : null;
+  const paymentReferenceDate = paymentDate || new Date().toISOString().slice(0, 10);
+  const calculatedInstallment = installmentPanification(
+    [installment],
+    Number(company?.getDataValue("forfeit") || 0),
+    paymentReferenceDate
+  )[0];
+  const previousLateInterest = await TranzactionModel.findAll({
+    where: { amortizationLoanId },
+    attributes: ["latePaymentInterest"],
+    raw: true,
+  });
+  const alreadyChargedLate = previousLateInterest.reduce(
+    (sum: number, transaction: any) => sum + (Number(transaction.latePaymentInterest) || 0),
+    0
+  );
+  latePaymentInterest = Math.max(0, Number(calculatedInstallment?.latePaymentInterest || 0) - alreadyChargedLate);
+  totalAmount = Math.max(0, Number(amount || 0) + latePaymentInterest - Number(req.body.discountAmount || 0));
 
   // ═══════════════════════════════════════════════════════════════
   // LÓGICA DE PAGAMENTO:
@@ -361,8 +454,10 @@ const addTranzaction = async (req: Request, res: Response) => {
   const tranzaction = await TranzactionModel.create({
     companyId,
     accountNumber,
+    customerId: installment.getDataValue("customerId"),
     amortizationLoanId,
     amount,
+    totalAmount,
     latePaymentInterest,
     interestRateAmount,
     phoneNumber,
@@ -404,6 +499,7 @@ const addTranzaction = async (req: Request, res: Response) => {
         } else {
           await DebtModel.create({
             companyId,
+            customerId: installment.customerId,
             accountNumber: String(accountNumber),
             loanId: loanId || installment.loanId,
             amortisationId: amortizationLoanId,
@@ -602,6 +698,7 @@ export {
   findPaginatedTransactions,
   findAllPaymentsOverview,
   getCustomerTranzactions,
+  getLoanLateInterest,
   addTranzaction,
   updateTranzaction,
   checkAndLiquidateLoan,

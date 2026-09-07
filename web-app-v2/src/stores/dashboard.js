@@ -11,6 +11,8 @@ export const useDashboardStore = defineStore('dashboard', {
       capitalRecovered: 0,
       totalWithInterest: 0,
       totalInterestReceived: 0,
+      totalLateInterest: 0,
+      cashReceived: 0,
       totalReimbursed: 0
     },
     chartData: {
@@ -62,8 +64,10 @@ export const useDashboardStore = defineStore('dashboard', {
             totalWithInterest: financial.totalWithInterest || 0,
             // Juros recebidos: juros normais + juros de mora (inclui descontos de pagamento antecipado)
             totalInterestReceived: financial.totalInterestReceived || 0,
-            // Total Reembolsado: total do dinheiro reembolsado no período
-            totalReimbursed: financial.totalReimbursed || financial.totalCollected || 0
+            totalLateInterest: financial.totalLateInterest || 0,
+            cashReceived: financial.cashReceived || financial.totalCollected || 0,
+            // Capital + juros normais recebidos; a mora fica discriminada abaixo.
+            totalReimbursed: (financial.capitalRecovered || 0) + (financial.totalInterestCollected || 0)
           }
 
           // Map alerts to overdue installments
@@ -126,6 +130,7 @@ export const useDashboardStore = defineStore('dashboard', {
         capitalRecovered: 0,
         totalWithInterest: 0,
         totalInterestReceived: 0,
+        totalLateInterest: 0,
         totalReimbursed: 0
       }
       this.chartData = { labels: [], disbursed: [], payments: [] }

@@ -141,6 +141,21 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       });
     }
 
+    const loan = await LoanModel.findByPk(loanId);
+    if (!loan) {
+      return res.status(404).json({
+        success: false,
+        message: "Crédito não encontrado.",
+      });
+    }
+    const customerId = loan.getDataValue("customerId");
+    if (!customerId) {
+      return res.status(409).json({
+        success: false,
+        message: "O crédito ainda não está associado a uma conta oficial.",
+      });
+    }
+
     // Gera o plano de amortização usando o sistema francês
     const customerAmortizationPlan = simulator({
       companyId,
@@ -155,7 +170,10 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
 
     // Insere o plano de amortização no banco de dados
     const bulckInsert = await AmorizationLoanModel.bulkCreate(
-      customerAmortizationPlan
+      customerAmortizationPlan.map((installment: any) => ({
+        ...installment,
+        customerId,
+      }))
     );
 
     // Atualiza o status do empréstimo e guarda a data real de desembolso:

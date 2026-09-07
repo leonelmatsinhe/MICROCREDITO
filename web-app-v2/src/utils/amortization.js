@@ -9,10 +9,14 @@
  * PMT = P * [r(1+r)^n] / [(1+r)^n - 1]
  */
 export function calculateInstallment(principal, monthlyRate, periods) {
-  if (monthlyRate === 0) return principal / periods
-  const num = monthlyRate * Math.pow(1 + monthlyRate, periods)
-  const den = Math.pow(1 + monthlyRate, periods) - 1
-  return principal * (num / den)
+  const amount = Number(principal) || 0
+  const rate = Number(monthlyRate) || 0
+  const count = Math.max(1, Math.trunc(Number(periods) || 0))
+  if (rate === 0) return amount / count
+  if (count === 1) return amount * (1 + rate)
+  const num = rate * Math.pow(1 + rate, count)
+  const den = Math.pow(1 + rate, count) - 1
+  return amount * (num / den)
 }
 
 /**
@@ -24,15 +28,18 @@ export function calculateInstallment(principal, monthlyRate, periods) {
  * @returns {Array} Plano de amortização
  */
 export function generateAmortizationPlan(capital, monthlyRate, periods, disbursementDate = null) {
-  const installment = calculateInstallment(capital, monthlyRate, periods)
-  let balance = capital
+  const amount = Number(capital) || 0
+  const rate = Number(monthlyRate) || 0
+  const count = Math.max(1, Math.trunc(Number(periods) || 0))
+  const installment = calculateInstallment(amount, rate, count)
+  let balance = amount
   const plan = []
 
   // Usar data de desembolso ou hoje
   const startDate = disbursementDate ? new Date(disbursementDate) : new Date()
   
-  for (let i = 0; i < periods; i++) {
-    const interest = balance * monthlyRate
+  for (let i = 0; i < count; i++) {
+    const interest = balance * rate
     const amort = installment - interest
     balance -= amort
     

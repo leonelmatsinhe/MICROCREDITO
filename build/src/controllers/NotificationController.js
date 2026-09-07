@@ -23,6 +23,10 @@ const getNotifications = (req, res) => __awaiter(void 0, void 0, void 0, functio
         if (recipientId) {
             where.recipientId = recipientId;
         }
+        if (recipientType === "customer")
+            where.customerId = recipientId;
+        if (recipientType === "admin" || recipientType === "gestor")
+            where.userId = recipientId;
         if (unreadOnly === "true") {
             where.isRead = false;
         }
@@ -53,6 +57,10 @@ const getUnreadCount = (req, res) => __awaiter(void 0, void 0, void 0, function*
         if (recipientId) {
             where.recipientId = recipientId;
         }
+        if (recipientType === "customer")
+            where.customerId = recipientId;
+        if (recipientType === "admin" || recipientType === "gestor")
+            where.userId = recipientId;
         const count = yield NotificationModel_1.NotificationModel.count({ where });
         return res.status(200).json({ success: true, result: count });
     }
@@ -70,6 +78,7 @@ const getCustomerNotifications = (req, res) => __awaiter(void 0, void 0, void 0,
                 companyId,
                 recipientType: "customer",
                 recipientId: customerId,
+                customerId,
             },
             order: [["createdAt", "DESC"]],
         });
@@ -89,6 +98,7 @@ const getCustomerUnreadCount = (req, res) => __awaiter(void 0, void 0, void 0, f
                 companyId,
                 recipientType: "customer",
                 recipientId: customerId,
+                customerId,
                 isRead: false,
             },
         });
@@ -107,6 +117,8 @@ const createNotification = (req, res) => __awaiter(void 0, void 0, void 0, funct
             companyId,
             recipientType,
             recipientId,
+            userId: recipientType === "admin" || recipientType === "gestor" ? recipientId : null,
+            customerId: recipientType === "customer" ? recipientId : null,
             title,
             message,
             type: type || "general",
@@ -127,16 +139,21 @@ const createBulkNotifications = (req, res) => __awaiter(void 0, void 0, void 0, 
         if (!Array.isArray(notifications) || notifications.length === 0) {
             return res.status(400).json({ success: false, message: "Nenhuma notificação fornecida." });
         }
-        const created = yield NotificationModel_1.NotificationModel.bulkCreate(notifications.map((n) => ({
-            companyId: n.companyId,
-            recipientType: n.recipientType,
-            recipientId: n.recipientId,
-            title: n.title,
-            message: n.message,
-            type: n.type || "general",
-            referenceId: n.referenceId || null,
-            isRead: false,
-        })));
+        const created = yield NotificationModel_1.NotificationModel.bulkCreate(notifications.map((n) => {
+            var _a, _b;
+            return ({
+                companyId: n.companyId,
+                recipientType: n.recipientType,
+                recipientId: n.recipientId,
+                userId: (_a = n.userId) !== null && _a !== void 0 ? _a : ((n.recipientType === "admin" || n.recipientType === "gestor") ? n.recipientId : null),
+                customerId: (_b = n.customerId) !== null && _b !== void 0 ? _b : (n.recipientType === "customer" ? n.recipientId : null),
+                title: n.title,
+                message: n.message,
+                type: n.type || "general",
+                referenceId: n.referenceId || null,
+                isRead: false,
+            });
+        }));
         return res.status(201).json({ success: true, result: created.length });
     }
     catch (err) {
@@ -166,6 +183,7 @@ const markAllAsRead = (req, res) => __awaiter(void 0, void 0, void 0, function* 
         if (customerId) {
             where.recipientType = "customer";
             where.recipientId = customerId;
+            where.customerId = customerId;
         }
         else {
             if (recipientType) {
@@ -173,6 +191,10 @@ const markAllAsRead = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             }
             if (recipientId) {
                 where.recipientId = recipientId;
+                if (recipientType === "customer")
+                    where.customerId = recipientId;
+                if (recipientType === "admin" || recipientType === "gestor")
+                    where.userId = recipientId;
             }
         }
         yield NotificationModel_1.NotificationModel.update({ isRead: true }, { where });

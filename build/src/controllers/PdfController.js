@@ -17,7 +17,9 @@ const generatePDF_1 = require("../utils/generatePDF");
 const customerContract = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { companyId, accountNumber, loanId } = req.params;
     const company = yield CompanyModel_1.CompanyModel.findOne({ where: { id: companyId, }, });
-    const customer = yield CustomerModel_1.CustomerModel.findOne({ where: { accountNumber } });
+    const customer = yield CustomerModel_1.CustomerModel.findOne({
+        where: { companyId, accountNumber: String(accountNumber) },
+    });
     const amortization = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({ where: { loanId } });
     if (company != null && customer != null && amortization != null) {
         const firm = {

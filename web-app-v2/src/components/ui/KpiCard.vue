@@ -22,6 +22,7 @@
               rounded
             />
           </div>
+          <div v-if="secondaryText" class="kpi-secondary text-grey-6">{{ secondaryText }}</div>
         </div>
       </div>
     </q-card-section>
@@ -40,6 +41,7 @@ const props = defineProps({
   format: { type: String, default: 'number' }, // 'number' | 'money' | 'percent'
   prefix: { type: String, default: '' },
   suffix: { type: String, default: '' },
+  secondaryText: { type: String, default: '' },
   trend: { type: Number, default: null }
 })
 
@@ -51,7 +53,7 @@ const formattedValue = computed(() => {
   if (props.format === 'money') {
     const num = Number(props.value)
     if (isNaN(num)) return '--'
-    return props.prefix + num.toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MT'
+    return props.prefix + num.toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MZN'
   }
 
   if (props.format === 'percent') {
@@ -90,6 +92,12 @@ body.body--dark .kpi-card {
 
 .kpi-value {
   font-size: 22px;
+  line-height: 1.2;
+}
+
+.kpi-secondary {
+  margin-top: 3px;
+  font-size: 10px;
   line-height: 1.2;
 }
 

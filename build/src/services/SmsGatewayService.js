@@ -51,17 +51,18 @@ const getCustomerForSms = (companyId, accountNumber) => __awaiter(void 0, void 0
     });
 });
 const buildQueuePayload = (payload) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const normalizedPhone = normalizePhoneForGateway(payload.phone || null);
     if (!normalizedPhone)
         return null;
     return {
         companyId: payload.companyId,
         accountNumber: payload.accountNumber ? String(payload.accountNumber) : null,
-        loanId: (_a = payload.loanId) !== null && _a !== void 0 ? _a : null,
-        amortizationLoanId: (_b = payload.amortizationLoanId) !== null && _b !== void 0 ? _b : null,
-        transactionId: (_c = payload.transactionId) !== null && _c !== void 0 ? _c : null,
-        debtId: (_d = payload.debtId) !== null && _d !== void 0 ? _d : null,
+        customerId: (_a = payload.customerId) !== null && _a !== void 0 ? _a : null,
+        loanId: (_b = payload.loanId) !== null && _b !== void 0 ? _b : null,
+        amortizationLoanId: (_c = payload.amortizationLoanId) !== null && _c !== void 0 ? _c : null,
+        transactionId: (_d = payload.transactionId) !== null && _d !== void 0 ? _d : null,
+        debtId: (_e = payload.debtId) !== null && _e !== void 0 ? _e : null,
         customerName: payload.customerName || null,
         phone: normalizedPhone,
         messageType: payload.messageType,
@@ -95,6 +96,7 @@ const isCompanySmsEnabled = (companyId) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.isCompanySmsEnabled = isCompanySmsEnabled;
 const enqueueSms = (payload) => __awaiter(void 0, void 0, void 0, function* () {
+    var _d;
     // Se a empresa desactivou o SMS, nenhuma operação de SMS ocorre.
     if (!(yield (0, exports.isCompanySmsEnabled)(payload.companyId))) {
         return { created: false, reason: "sms_disabled" };
@@ -102,6 +104,13 @@ const enqueueSms = (payload) => __awaiter(void 0, void 0, void 0, function* () {
     const queuePayload = buildQueuePayload(payload);
     if (!queuePayload) {
         return { created: false, reason: "invalid_phone" };
+    }
+    if (payload.accountNumber && !queuePayload.customerId) {
+        const customer = yield CustomerModel_1.CustomerModel.findOne({
+            where: { companyId: payload.companyId, accountNumber: String(payload.accountNumber) },
+            attributes: ["id"],
+        });
+        queuePayload.customerId = (_d = customer === null || customer === void 0 ? void 0 : customer.getDataValue("id")) !== null && _d !== void 0 ? _d : null;
     }
     const created = yield SmsQueueModel_1.SmsQueueModel.create(queuePayload);
     return { created: true, row: created };
@@ -131,7 +140,7 @@ const enqueueDisbursementSms = (params) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.enqueueDisbursementSms = enqueueDisbursementSms;
 const enqueuePaymentSms = (params) => __awaiter(void 0, void 0, void 0, function* () {
-    var _d, _e;
+    var _e, _f;
     const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
     if (!customer)
         return { created: false, reason: "customer_not_found" };
@@ -140,8 +149,8 @@ const enqueuePaymentSms = (params) => __awaiter(void 0, void 0, void 0, function
     const msg = `Ola ${customer.customerName}. Pagamento de ${safeMoney(params.paidAmount)} MZN confirmado.${interest > 0 ? ` Mora: ${safeMoney(interest)} MZN.` : ''} Ref: ${params.reference || 'N/A'}. Obrigado.`;
     return (0, exports.enqueueSms)({
         companyId: params.companyId,
-        loanId: (_d = params.loanId) !== null && _d !== void 0 ? _d : null,
-        amortizationLoanId: (_e = params.amortizationLoanId) !== null && _e !== void 0 ? _e : null,
+        loanId: (_e = params.loanId) !== null && _e !== void 0 ? _e : null,
+        amortizationLoanId: (_f = params.amortizationLoanId) !== null && _f !== void 0 ? _f : null,
         transactionId: params.transactionId,
         accountNumber: params.accountNumber,
         customerName: customer.customerName,
@@ -159,7 +168,7 @@ const enqueuePaymentSms = (params) => __awaiter(void 0, void 0, void 0, function
 });
 exports.enqueuePaymentSms = enqueuePaymentSms;
 const enqueueLateInterestSms = (params) => __awaiter(void 0, void 0, void 0, function* () {
-    var _f, _g;
+    var _g, _h;
     const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
     if (!customer)
         return { created: false, reason: "customer_not_found" };
@@ -167,8 +176,8 @@ const enqueueLateInterestSms = (params) => __awaiter(void 0, void 0, void 0, fun
     const msg = `Ola ${customer.customerName}. Sua prestacao esta em atraso. Valor: ${safeMoney(params.debtAmount)} MZN. ${params.dueDate ? `Vencimento: ${params.dueDate}.` : ''} Regularize para evitar juros.`;
     return (0, exports.enqueueSms)({
         companyId: params.companyId,
-        loanId: (_f = params.loanId) !== null && _f !== void 0 ? _f : null,
-        amortizationLoanId: (_g = params.amortizationLoanId) !== null && _g !== void 0 ? _g : null,
+        loanId: (_g = params.loanId) !== null && _g !== void 0 ? _g : null,
+        amortizationLoanId: (_h = params.amortizationLoanId) !== null && _h !== void 0 ? _h : null,
         debtId: params.debtId,
         accountNumber: params.accountNumber,
         customerName: customer.customerName,
@@ -316,7 +325,7 @@ const isTransientGatewayError = (error) => {
  * Se a chave ainda não estiver configurada no .env, não toca na fila (deferred).
  */
 const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, function* () {
-    var _h, _j;
+    var _j, _k;
     const limit = Math.min(200, Math.max(1, params.limit || 50));
     const results = {
         sent: 0,
@@ -338,7 +347,7 @@ const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, funct
     }));
     const enabledCompanyIds = new Set();
     for (const company of companies) {
-        const value = Number((_j = (_h = company.getDataValue) === null || _h === void 0 ? void 0 : _h.call(company, "smsEnabled")) !== null && _j !== void 0 ? _j : 1);
+        const value = Number((_k = (_j = company.getDataValue) === null || _j === void 0 ? void 0 : _j.call(company, "smsEnabled")) !== null && _k !== void 0 ? _k : 1);
         if (value === 1)
             enabledCompanyIds.add(Number(company.id));
     }
@@ -478,13 +487,13 @@ const hydrateSmsQueuePayload = (row) => {
 exports.hydrateSmsQueuePayload = hydrateSmsQueuePayload;
 // Template para reenvio de senha
 const enqueuePasswordResetSms = (params) => __awaiter(void 0, void 0, void 0, function* () {
-    var _k;
+    var _l;
     const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
     if (!customer)
         return { created: false, reason: "customer_not_found" };
     // Buscar nome da empresa
     const company = yield CompanyModel_1.CompanyModel.findByPk(params.companyId);
-    const companyName = ((_k = company === null || company === void 0 ? void 0 : company.toJSON()) === null || _k === void 0 ? void 0 : _k.companyName) || 'Mais Mola';
+    const companyName = ((_l = company === null || company === void 0 ? void 0 : company.toJSON()) === null || _l === void 0 ? void 0 : _l.companyName) || 'Mais Mola';
     // Template: max 160 chars, sem caracteres especiais
     const msg = `Ola ${customer.customerName}. Sua senha de acesso ao portal da ${companyName} e: ${params.newPassword}. Telefone: ${customer.customerPhone}. Altere apos o primeiro acesso.`;
     return (0, exports.enqueueSms)({

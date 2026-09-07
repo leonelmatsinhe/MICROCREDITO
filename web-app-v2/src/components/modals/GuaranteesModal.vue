@@ -35,7 +35,7 @@
                 v-model.number="form.purchaseAmount"
                 dense
                 outlined
-                label="Valor estimado (MT) *"
+                label="Valor estimado (MZN) *"
                 type="number"
                 input-style="font-size: 13px"
               >
@@ -218,6 +218,7 @@
 import { ref, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useGuaranteesStore } from '@/stores/guarantees'
+import { formatMoney } from '@/utils/formatters'
 import { logCreateGuarantee, logDeleteGuarantee } from '@/utils/logger'
 
 const $q = useQuasar()
@@ -262,13 +263,6 @@ watch(show, (val) => {
     guaranteesStore.fetchGuarantees(props.loanId)
   }
 })
-
-function formatMoney(value) {
-  return new Intl.NumberFormat('pt-MZ', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value || 0) + ' MT'
-}
 
 function triggerFileInput() {
   fileInput.value?.click()

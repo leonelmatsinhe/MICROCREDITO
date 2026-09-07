@@ -139,7 +139,6 @@
     </div>
 
     <q-card v-else flat bordered class="table-card" style="border-radius: 12px; overflow: hidden">
-      <!-- Empty state -->
       <q-card-section v-if="filteredRows.length === 0" class="text-center q-pa-xl">
         <q-icon name="account_balance_wallet" size="64px" color="grey-4" />
         <div class="text-h6 text-grey-6 q-mt-md">Nenhum crédito {{ segment.single.toLowerCase() }}</div>
@@ -148,7 +147,6 @@
         </div>
       </q-card-section>
 
-      <!-- Tabela -->
       <q-table
         v-else
         :rows="filteredRows"
@@ -162,36 +160,20 @@
         v-model:pagination="pagination"
         class="credits-table"
       >
-        <!-- Mutuário -->
         <template v-slot:body-cell-customer="props">
           <q-td :props="props">
             <div class="row items-center no-wrap">
-              <q-avatar
-                :color="getAvatarColor(props.row.customerName)"
-                text-color="white"
-                size="32px"
-                class="q-mr-sm"
+              <div class="table-borrower-name" style="font-size: 13px">{{ props.row.customerName }}</div>
+              <q-badge
+                v-if="Number(props.row.isSelfRegistered) === 1"
+                color="teal"
+                outline
+                rounded
+                class="q-ml-xs"
+                style="font-size: 9px"
               >
-                {{ getInitials(props.row.customerName) || '?' }}
-              </q-avatar>
-              <div class="no-wrap">
-                <div class="row items-center no-wrap">
-                  <div class="text-weight-medium" style="font-size: 13px">{{ props.row.customerName }}</div>
-                  <q-badge
-                    v-if="Number(props.row.isSelfRegistered) === 1"
-                    color="teal"
-                    outline
-                    rounded
-                    class="q-ml-xs"
-                    style="font-size: 9px"
-                  >
-                    Auto-cadastro
-                  </q-badge>
-                </div>
-                <div class="text-caption text-grey-6" style="font-size: 11px">
-                  Conta {{ props.row.accountNumber }}<template v-if="props.row.customerPhone"> · {{ props.row.customerPhone }}</template>
-                </div>
-              </div>
+                Auto-cadastro
+              </q-badge>
             </div>
           </q-td>
         </template>
@@ -234,7 +216,7 @@
         <!-- Período -->
         <template v-slot:body-cell-installments="props">
           <q-td :props="props" class="text-center">
-            <span class="text-weight-medium">{{ props.row.numberOfInstallments }} <span class="text-caption text-grey-6">meses</span></span>
+            <span class="text-weight-medium">{{ formatPeriod(props.row.numberOfInstallments) }}</span>
           </q-td>
         </template>
 
@@ -426,7 +408,7 @@
             <div class="col-6">
               <div class="text-caption text-grey-5">Prazo</div>
               <div class="text-weight-bold" style="font-size: 15px">
-                {{ reviewLoan?.numberOfInstallments }} {{ reviewLoan?.numberOfInstallments === 1 ? 'mês' : 'meses' }}
+                {{ formatPeriod(reviewLoan?.numberOfInstallments) }}
               </div>
             </div>
             <div class="col-12" v-if="reviewLoan?.loanDescription">
@@ -706,7 +688,7 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
-import { formatMoney, formatDateShort, formatInterestRate, getInitials } from '@/utils/formatters'
+import { formatMoney, formatDateShort, formatInterestRate, formatPeriod, getInitials } from '@/utils/formatters'
 import { logReopenLoan, logApproveLoan, logRejectLoan, logSendSms } from '@/utils/logger'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'

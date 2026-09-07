@@ -21,6 +21,7 @@ const getCustomer = async (companyId: number, accountNumber: any) => {
 type WhatsAppPayload = {
   companyId: number;
   accountNumber?: string | number;
+  customerId?: number | null;
   phone?: string;
   messageType: string;
   messageBody: string;
@@ -38,6 +39,12 @@ export const sendWhatsAppMessage = async (payload: WhatsAppPayload) => {
     companyId: payload.companyId,
     phone: normalizedPhone,
     accountNumber: payload.accountNumber ? String(payload.accountNumber) : null,
+    customerId: payload.customerId ?? (payload.accountNumber
+      ? (await CustomerModel.findOne({
+          where: { companyId: payload.companyId, accountNumber: String(payload.accountNumber) },
+          attributes: ["id"],
+        }))?.getDataValue("id") ?? null
+      : null),
     messageType: payload.messageType,
     messageBody: payload.messageBody,
     status: "queued",

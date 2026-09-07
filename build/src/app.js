@@ -18,6 +18,7 @@ const path_1 = __importDefault(require("path"));
 const routes_1 = require("./routes");
 const migrations_1 = require("./migrations");
 const CompanyModel_1 = require("./database/models/CompanyModel");
+require("./database/associations");
 const SmsGatewayService_1 = require("./services/SmsGatewayService");
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));

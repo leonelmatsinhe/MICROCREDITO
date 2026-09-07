@@ -56,6 +56,22 @@ const stripPassword = (entity) => {
     delete plain.password;
     return plain;
 };
+const validateCustomerDates = (dateOfBirth, issuedAt) => {
+    const today = new Date();
+    const todayDate = today.toISOString().slice(0, 10);
+    const adultDate = new Date(today);
+    adultDate.setFullYear(adultDate.getFullYear() - 18);
+    const adultDateString = adultDate.toISOString().slice(0, 10);
+    const birth = dateOfBirth ? String(dateOfBirth).slice(0, 10) : "";
+    const issue = issuedAt ? String(issuedAt).slice(0, 10) : "";
+    if (birth && birth > todayDate)
+        return "A data de nascimento não pode ser futura.";
+    if (birth && birth > adultDateString)
+        return "O mutuário deve ter pelo menos 18 anos.";
+    if (issue && issue > todayDate)
+        return "A data de emissão não pode ser futura.";
+    return null;
+};
 const findAllCustomers = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const page = parseInt(req.query.page) || 1;
@@ -140,6 +156,9 @@ const findOneCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function
 exports.findOneCustomer = findOneCustomer;
 const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     let { customerName, sex, companyId, customerEmail, customerNuit, customerPhone, customerNationalId, issuedAt, localOfIssue, customerDateOfBirth, customerLocalOfBirth, customerProfession, customerMonthlySalary, customerLocalOfWork, customerAddress, customerBairro, maritalStatus, customerSpouseName, customerSpouseContact, customerEmergencyPerson, customerEmergencyContact, customerStatus, interestRateId, } = req.body;
+    const dateError = validateCustomerDates(customerDateOfBirth, issuedAt);
+    if (dateError)
+        return res.status(400).json({ success: false, message: dateError });
     const accNumber = yield CustomerModel_1.CustomerModel.findOne({
         where: {
             companyId
@@ -220,6 +239,9 @@ const registerCustomer = (req, res) => __awaiter(void 0, void 0, void 0, functio
         if (password.length < 4) {
             return res.status(400).json({ success: false, message: "A senha deve ter pelo menos 4 caracteres." });
         }
+        const dateError = validateCustomerDates(customerDateOfBirth, issuedAt);
+        if (dateError)
+            return res.status(400).json({ success: false, message: dateError });
         // --- Empresa destino ---
         // O auto-cadastro é público e não conhece a empresa: usa a fornecida no
         // corpo ou a empresa padrão dos auto-cadastros (COMPANY_DEFAULT_ID, por

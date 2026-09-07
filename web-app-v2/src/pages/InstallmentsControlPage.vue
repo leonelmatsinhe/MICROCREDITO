@@ -116,15 +116,7 @@
       >
         <template v-slot:body-cell-customer="props">
           <q-td :props="props">
-            <div class="row items-center no-wrap">
-              <q-avatar size="28px" :color="getAvatarColor(props.row)" text-color="white" class="q-mr-sm">
-                <span style="font-size: 10px">{{ getInitials(props.row.customerName) }}</span>
-              </q-avatar>
-              <div>
-                <div class="text-weight-medium" style="font-size: 12px">{{ props.row.customerName }}</div>
-                <div class="text-grey-5" style="font-size: 10px">Conta {{ props.row.accountNumber }}</div>
-              </div>
-            </div>
+            <div class="table-borrower-name" style="font-size: 12px">{{ props.row.customerName }}</div>
           </q-td>
         </template>
 
@@ -153,7 +145,7 @@
               <q-icon name="schedule" size="12px" class="q-mr-xs" />
               {{ props.row.daysUntilDue }} dias pra vencer
             </div>
-            <div v-else class="text-grey-5">Vence hoje</div>
+            <div v-else class="text-dark">Vence hoje</div>
           </q-td>
         </template>
 
@@ -278,7 +270,7 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
-import { getInitials } from '@/utils/formatters'
+import { formatMoney as formatMoneyValue, formatPeriod, getInitials } from '@/utils/formatters'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
@@ -302,7 +294,7 @@ const statusOptions = [
   { label: 'Pago', value: 1 },
   { label: 'Pago Parcial', value: -1 }
 ]
-const pagination = ref({ rowsPerPage: 10, sortBy: 'dueDate', descending: false })
+const pagination = ref({ rowsPerPage: 10, sortBy: null, descending: false })
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
   { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', sortable: true },
@@ -329,11 +321,20 @@ const filteredInstallments = computed(() => {
   }
   if (filter.value.from) result = result.filter(i => i.dueDate >= filter.value.from)
   if (filter.value.to) result = result.filter(i => i.dueDate <= filter.value.to)
-  return result
+  return sortInstallments(result)
 })
 
+function sortInstallments(rows) {
+  return [...rows].sort((first, second) => {
+    const firstOverdue = first.status !== 1 && Number(first.daysOverdue) > 0
+    const secondOverdue = second.status !== 1 && Number(second.daysOverdue) > 0
+    if (firstOverdue !== secondOverdue) return firstOverdue ? -1 : 1
+    return new Date(second.dueDate) - new Date(first.dueDate)
+  })
+}
+
 function clearFilter() { filter.value = { status: null, search: '', from: '', to: '' } }
-function formatMoney(val) { return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val || 0) }
+function formatMoney(val) { return formatMoneyValue(val) }
 function formatDate(dateStr) {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
@@ -377,8 +378,8 @@ function buildDueAlertMessage(row) {
   const data = formatDate(row.dueDate)
   const company = (companyStore.company?.companyName || 'MBR Microcredito').replace(/[^a-zA-Z0-9 .,&-]/g, '')
   const base = row.daysOverdue > 0
-    ? `Caro/a ${nome}, prestacao N. ${n} de ${valor} MT esta em atraso desde ${data}. Regularize para evitar juros.`
-    : `Caro/a ${nome}, prestacao N. ${n} de ${valor} MT vence em ${data}. Pague para evitar juros de mora.`
+    ? `Caro/a ${nome}, prestacao N. ${n} de ${valor} MZN esta em atraso desde ${data}. Regularize para evitar juros.`
+    : `Caro/a ${nome}, prestacao N. ${n} de ${valor} MZN vence em ${data}. Pague para evitar juros de mora.`
   const suffix = ` ${company}`
   if (base.length + suffix.length <= 160) return base + suffix
   if (base.length >= 160) return `${base.slice(0, 159)}.`
@@ -421,7 +422,7 @@ async function downloadPDF() {
     const header = buildCompanyHeader(company, logoBase64, 'CONTROLE DE PRESTAÇÕES POR VENCIMENTO')
 
     // Tabela única — ordenar por vencimento (recente → antigo)
-    const sorted = [...filteredInstallments.value].sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate))
+    const sorted = sortInstallments(filteredInstallments.value)
 
     const dateStr = `${String(new Date().getDate()).padStart(2, '0')}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
 
@@ -515,12 +516,9 @@ async function loadData() {
         const amortizations = amortData?.result || []
         if (Array.isArray(amortizations)) {
           amortizations.forEach(a => {
-            const dueDate = new Date(a.dueDate)
-            const now = new Date()
-            const diffDays = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24))
-            const daysOverdue = diffDays < 0 && a.status !== 1 ? Math.abs(diffDays) : 0
-            const daysUntilDue = diffDays > 0 && a.status !== 1 ? diffDays : 0
-            const lateFee = daysOverdue > 0 ? Math.round(a.installment * 0.005 * daysOverdue * 100) / 100 : 0
+            const daysOverdue = Number(a.lateDays || 0)
+            const daysUntilDue = Number(a.daysUntilDue || 0)
+            const lateFee = Number(a.latePaymentInterest || a.lateFee || 0)
             allInstallments.push({ id: `${loan.id}-${a.id || a.installmentOrder}`, loanId: loan.id, customerName, accountNumber: loan.accountNumber, customerPhone: customerPhoneMap[String(loan.accountNumber)] || '', installmentOrder: a.installmentOrder ?? '', installment: Number(a.installment) || 0, paidAmount: Number(a.paidAmount) || 0, status: Number(a.status), dueDate: a.dueDate, daysOverdue, daysUntilDue, lateFee, totalToPay: Number(a.installment || 0) + lateFee, amortization: Number(a.amortization) || 0, rateAmount: Number(a.rateAmount) || 0 })
           })
         }
@@ -538,6 +536,7 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
+.text-dark { color: #1f2937 !important; }
 .kpi-card { border-radius: 12px; transition: transform 0.2s; &:hover { transform: translateY(-2px); } }
 .filter-card { border-radius: 12px; }
 .installments-header { background-color: $grey-1; }

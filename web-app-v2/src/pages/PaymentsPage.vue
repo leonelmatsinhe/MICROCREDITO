@@ -107,14 +107,14 @@
         <!-- Mutuário (só o nome) -->
         <template v-slot:body-cell-customer="props">
           <q-td :props="props">
-            <span class="text-weight-medium" style="font-size: 13px">{{ props.row.customerName }}</span>
+            <span class="table-borrower-name" style="font-size: 13px">{{ props.row.customerName }}</span>
           </q-td>
         </template>
 
         <!-- Montante: se o pagamento é parcial, mostra o saldo devedor da prestação -->
         <template v-slot:body-cell-amount="props">
           <q-td :props="props" class="text-right">
-            <div class="text-weight-bold text-positive" style="font-size: 13px">{{ formatMoney(props.row.amount) }}</div>
+            <div class="text-weight-bold text-positive" style="font-size: 13px">{{ formatMoney(props.row.totalAmount ?? props.row.amount) }}</div>
             <div
               v-if="Number(props.row.installmentStatus) === -1 && remainingBalance(props.row) > 0"
               class="text-caption text-negative"
@@ -122,6 +122,19 @@
             >
               Saldo devedor: {{ formatMoney(remainingBalance(props.row)) }}
             </div>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-lateInterest="props">
+          <q-td :props="props" class="text-right">
+            <span class="text-negative text-weight-medium">{{ formatMoney(props.row.displayedLatePaymentInterest ?? props.row.latePaymentInterest ?? 0) }}</span>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-discount="props">
+          <q-td :props="props" class="text-right">
+            <span v-if="Number(props.row.discountAmount) > 0" class="text-teal text-weight-medium">−{{ formatMoney(props.row.discountAmount) }}</span>
+            <span v-else class="text-grey-5">—</span>
           </q-td>
         </template>
 
@@ -163,7 +176,7 @@
             <q-td class="text-right">
               <span class="text-weight-bold text-positive">{{ formatMoney(totalAmount) }}</span>
             </q-td>
-            <q-td colspan="4" />
+            <q-td colspan="6" />
           </q-tr>
         </template>
       </q-table>
@@ -273,13 +286,15 @@ watch(filteredRows, (rows) => {
 })
 
 // ─── Total do conjunto filtrado (última linha da grelha) ───
-const totalAmount = computed(() => filteredRows.value.reduce((acc, r) => acc + (Number(r.amount) || 0), 0))
+const totalAmount = computed(() => filteredRows.value.reduce((acc, r) => acc + (Number(r.totalAmount ?? r.amount) || 0), 0))
 
 // ─── Colunas (Data é a última) ───
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
   { name: 'installment', label: 'Prestação', field: 'installmentOrder', align: 'center' },
   { name: 'amount', label: 'Montante', field: 'amount', align: 'right', sortable: true },
+  { name: 'lateInterest', label: 'Juros de mora', field: 'latePaymentInterest', align: 'right', sortable: true },
+  { name: 'discount', label: 'Desconto', field: 'discountAmount', align: 'right', sortable: true },
   { name: 'method', label: 'Método', field: 'paymentMethod', align: 'center' },
   { name: 'reference', label: 'Referência', field: 'tranzactionReference', align: 'center' },
   { name: 'staff', label: 'Operador', field: 'staffName', align: 'center', sortable: true },

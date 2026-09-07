@@ -23,6 +23,14 @@ exports.NotificationModel = db_1.db.define("notifications", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    userId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+    },
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+    },
     title: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,

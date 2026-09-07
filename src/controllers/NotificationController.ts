@@ -17,6 +17,8 @@ const getNotifications = async (req: Request, res: Response) => {
     if (recipientId) {
       where.recipientId = recipientId;
     }
+    if (recipientType === "customer") where.customerId = recipientId;
+    if (recipientType === "admin" || recipientType === "gestor") where.userId = recipientId;
 
     if (unreadOnly === "true") {
       where.isRead = false;
@@ -54,6 +56,8 @@ const getUnreadCount = async (req: Request, res: Response) => {
     if (recipientId) {
       where.recipientId = recipientId;
     }
+    if (recipientType === "customer") where.customerId = recipientId;
+    if (recipientType === "admin" || recipientType === "gestor") where.userId = recipientId;
 
     const count = await NotificationModel.count({ where });
 
@@ -73,6 +77,7 @@ const getCustomerNotifications = async (req: Request, res: Response) => {
         companyId,
         recipientType: "customer",
         recipientId: customerId,
+        customerId,
       },
       order: [["createdAt", "DESC"]],
     });
@@ -93,6 +98,7 @@ const getCustomerUnreadCount = async (req: Request, res: Response) => {
         companyId,
         recipientType: "customer",
         recipientId: customerId,
+        customerId,
         isRead: false,
       },
     });
@@ -112,6 +118,8 @@ const createNotification = async (req: Request, res: Response) => {
       companyId,
       recipientType,
       recipientId,
+      userId: recipientType === "admin" || recipientType === "gestor" ? recipientId : null,
+      customerId: recipientType === "customer" ? recipientId : null,
       title,
       message,
       type: type || "general",
@@ -139,6 +147,8 @@ const createBulkNotifications = async (req: Request, res: Response) => {
         companyId: n.companyId,
         recipientType: n.recipientType,
         recipientId: n.recipientId,
+        userId: n.userId ?? ((n.recipientType === "admin" || n.recipientType === "gestor") ? n.recipientId : null),
+        customerId: n.customerId ?? (n.recipientType === "customer" ? n.recipientId : null),
         title: n.title,
         message: n.message,
         type: n.type || "general",
@@ -177,12 +187,15 @@ const markAllAsRead = async (req: Request, res: Response) => {
     if (customerId) {
       where.recipientType = "customer";
       where.recipientId = customerId;
+      where.customerId = customerId;
     } else {
       if (recipientType) {
         where.recipientType = recipientType;
       }
       if (recipientId) {
         where.recipientId = recipientId;
+        if (recipientType === "customer") where.customerId = recipientId;
+        if (recipientType === "admin" || recipientType === "gestor") where.userId = recipientId;
       }
     }
 

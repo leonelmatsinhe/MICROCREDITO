@@ -1,10 +1,9 @@
 import { DataTypes } from "sequelize";
 import { db } from "../db";
 
-export const CompanyModel = db.define("company", {
+export const CompanyModel = db.define("companies", {
   id: {
     type: DataTypes.INTEGER,
-    autoIncrement: true,
     allowNull: false,
     primaryKey: true,
   },
@@ -79,4 +78,7 @@ export const CompanyModel = db.define("company", {
     defaultValue: 0,
     comment: 'Oculta a cláusula VIGÉSIMA PRIMEIRA (seguro/garantias) no contrato de concessão (1 = ocultar, 0 = mostrar).',
   },
+}, {
+    tableName: "companies",
+    freezeTableName: true,
 });

@@ -16,6 +16,10 @@ export const CustomerDocumentsModel = db.define("customer_documents", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  customerId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
   documentName: {
     type: DataTypes.STRING,
     allowNull: false,

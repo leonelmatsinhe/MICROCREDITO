@@ -12,6 +12,7 @@ export type SmsQueueStatus = "queued" | "processing" | "sent" | "failed" | "canc
 type EnqueuePayload = {
   companyId: number;
   accountNumber?: string | number | null;
+  customerId?: number | null;
   loanId?: number | null;
   amortizationLoanId?: number | null;
   transactionId?: number | null;
@@ -62,6 +63,7 @@ const buildQueuePayload = (payload: EnqueuePayload) => {
   return {
     companyId: payload.companyId,
     accountNumber: payload.accountNumber ? String(payload.accountNumber) : null,
+    customerId: payload.customerId ?? null,
     loanId: payload.loanId ?? null,
     amortizationLoanId: payload.amortizationLoanId ?? null,
     transactionId: payload.transactionId ?? null,
@@ -103,6 +105,13 @@ export const enqueueSms = async (payload: EnqueuePayload) => {
   const queuePayload = buildQueuePayload(payload);
   if (!queuePayload) {
     return { created: false, reason: "invalid_phone" };
+  }
+  if (payload.accountNumber && !queuePayload.customerId) {
+    const customer = await CustomerModel.findOne({
+      where: { companyId: payload.companyId, accountNumber: String(payload.accountNumber) },
+      attributes: ["id"],
+    });
+    queuePayload.customerId = customer?.getDataValue("id") ?? null;
   }
   const created = await SmsQueueModel.create(queuePayload);
   return { created: true, row: created };

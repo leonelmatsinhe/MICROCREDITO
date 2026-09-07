@@ -49,7 +49,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
 
     // Buscar créditos do cliente
     const loans = await LoanModel.findAll({
-      where: { companyId: companyIdNum, accountNumber: customerData.accountNumber },
+      where: { companyId: companyIdNum, customerId: customerIdNum },
       order: [["id", "DESC"]],
     });
 
@@ -73,6 +73,35 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
       // cada prestação com paidAmount, remainingBalance, lateDays e latePaymentInterest
       // (mora = prestação × (forfeit/100) × dias em atraso).
       const installmentList = installmentPanification(installments, forfeit);
+      const installmentIds = installments.map((item: any) => item.id);
+      const paidTransactions: any[] = installmentIds.length > 0
+        ? await TranzactionModel.findAll({
+          where: { amortizationLoanId: { [Op.in]: installmentIds } },
+          attributes: ["id", "amortizationLoanId", "amount", "latePaymentInterest", "paymentDate"],
+          order: [["id", "ASC"]],
+          raw: true,
+        })
+        : [];
+      const chargedLateByInstallment: Record<number, { interest: number; days: number; date: string | null; paid: number; value: number }> = {};
+      paidTransactions.forEach((tx: any) => {
+        const item = installments.find((entry: any) => Number(entry.id) === Number(tx.amortizationLoanId));
+        if (!item) return;
+        const key = Number(tx.amortizationLoanId);
+        const paymentDate = tx.paymentDate ? String(tx.paymentDate).slice(0, 10) : null;
+        const dueDate = String((item as any).dueDate || '').slice(0, 10);
+        const days = paymentDate && dueDate
+          ? Math.max(0, Math.floor((new Date(`${paymentDate}T00:00:00`).getTime() - new Date(`${dueDate}T00:00:00`).getTime()) / 86400000))
+          : 0;
+        const current = chargedLateByInstallment[key] || { interest: 0, days: 0, date: null, paid: 0, value: Number((item as any).installment) || 0 };
+        current.paid += Number(tx.amount) || 0;
+        const dateInterest = Number(tx.latePaymentInterest) || 0;
+        current.interest = Math.max(current.interest, dateInterest);
+        if (!current.date && current.paid >= current.value - 0.01) {
+          current.days = days;
+          current.date = paymentDate;
+        }
+        chargedLateByInstallment[key] = current;
+      });
       const paidInstallments = installmentList.filter((a: any) => Number(a.status) === 1);
       const pendingInstallments = installmentList.filter((a: any) => Number(a.status) !== 1);
 
@@ -119,9 +148,12 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
           amortization: Number(a.amortization) || 0,
           rateAmount: Number(a.rateAmount) || 0,
           remainingBalance: Number(a.remainingBalance) || 0,
-          lateDays: Number(a.lateDays) || 0,
-          latePaymentInterest: Number(a.latePaymentInterest) || 0,
-          totalToPay: Math.round((Number(a.installment) + Number(a.latePaymentInterest)) * 100) / 100,
+          lateDays: Number(a.status) === 1 ? (chargedLateByInstallment[Number(a.id)]?.days || 0) : Number(a.lateDays) || 0,
+          latePaymentInterest: Number(a.status) === 1 ? (chargedLateByInstallment[Number(a.id)]?.interest || 0) : Number(a.latePaymentInterest) || 0,
+          chargedLateDays: chargedLateByInstallment[Number(a.id)]?.days || 0,
+          chargedLatePaymentInterest: chargedLateByInstallment[Number(a.id)]?.interest || 0,
+          chargedLateDate: chargedLateByInstallment[Number(a.id)]?.date || null,
+          totalToPay: Math.round((Number(a.installment) + (Number(a.status) === 1 ? (chargedLateByInstallment[Number(a.id)]?.interest || 0) : Number(a.latePaymentInterest) || 0)) * 100) / 100,
         })),
       });
     }
@@ -136,7 +168,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
 
     // Histórico de pagamentos (todas as transações da conta)
     const transactions = await TranzactionModel.findAll({
-      where: { companyId: companyIdNum, accountNumber: customerData.accountNumber },
+      where: { companyId: companyIdNum, customerId },
       order: [["createdAt", "DESC"]],
     });
     const payments = transactions.map((t: any) => {
@@ -220,10 +252,10 @@ export const getCustomerLoanDetail = async (req: Request, res: Response) => {
 
     // Verificar se pertence ao cliente
     const customer = await CustomerModel.findOne({
-      where: { id: customerIdNum, accountNumber: loanData.accountNumber },
+      where: { id: customerIdNum, companyId: loanData.companyId },
     });
 
-    if (!customer) {
+    if (!customer || Number(loanData.customerId) !== customerIdNum) {
       return res.status(403).json({ success: false, message: "Acesso negado." });
     }
 
@@ -274,7 +306,7 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       amount,
       method, // 'mpesa' | 'transfer'
       phone, // obrigatório p/ M-Pesa
-      account, // conta bancária da empresa (transferência)
+      account: bankAccountInput, // conta bancária da empresa (transferência)
       reference, // referência opcional
     } = req.body;
 
@@ -310,13 +342,12 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Cliente não encontrado." });
     }
     const customerData = customer.toJSON() as any;
-
     // Crédito do cliente
     const loan = await LoanModel.findOne({
       where: {
         id: loanIdNum,
         companyId: companyIdNum,
-        accountNumber: customerData.accountNumber,
+        customerId: customerIdNum,
       },
     });
     if (!loan) {
@@ -343,12 +374,36 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Não existe saldo em falta nesta prestação." });
     }
 
-    // Valor entre 15% e 100% da prestação (saldo em falta como limite)
+    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
+    const forfeit = Number(company?.getDataValue("forfeit") || 0);
+    const calculatedInstallment = installmentPanification(
+      [{ ...installmentData, paidAmount: alreadyPaid }],
+      forfeit
+    )[0];
+    const currentLateInterest = round2(Number(calculatedInstallment?.latePaymentInterest || 0));
+    const currentTotalDue = round2(remaining + currentLateInterest);
+    const nextInstallment = await AmorizationLoanModel.findOne({
+      where: { loanId: loanIdNum, status: { [Op.ne]: 1 }, id: { [Op.gt]: installmentIdNum } },
+      order: [["dueDate", "ASC"], ["id", "ASC"]],
+    });
+    const nextData = nextInstallment?.toJSON() as any;
+    const nextRemaining = nextData
+      ? round2(Math.max(0, toNumber(nextData.installment) - toNumber(nextData.paidAmount)))
+      : 0;
     const minAllowed = Math.min(remaining, round2(installmentValue * 0.15));
-    if (paymentAmount < minAllowed - 0.001 || paymentAmount > remaining + 0.001) {
+    if (paymentAmount < minAllowed - 0.001) {
       return res.status(400).json({
         success: false,
-        message: `O valor a pagar deve estar entre ${minAllowed.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} e ${remaining.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN.`,
+        message: `O valor a pagar deve ser no mínimo ${minAllowed.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN.`,
+      });
+    }
+    const excess = round2(Math.max(0, paymentAmount - currentTotalDue));
+    if (excess > 0 && (!nextInstallment || excess > nextRemaining + 0.001)) {
+      return res.status(400).json({
+        success: false,
+        message: nextInstallment
+          ? `Pagamento rejeitado: o troco de ${excess.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN excede o saldo da prestação seguinte.`
+          : "Pagamento rejeitado: não existe prestação seguinte para receber o troco.",
       });
     }
 
@@ -366,7 +421,7 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       }
       payerPhone = normalizedPhone;
     } else {
-      bankAccount = String(account || "").trim();
+      bankAccount = String(bankAccountInput || "").trim();
       if (!bankAccount) {
         return res.status(400).json({ success: false, message: "Seleccione a conta bancária da empresa para a transferência." });
       }
@@ -435,19 +490,21 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
         ? `Pagamento via M-Pesa (${payerPhone}) — Prestação ${installmentData.installmentOrder || installmentIdNum} do crédito ${loanIdNum}${mpesaReceipt ? ` (referência M-Pesa: ${mpesaReceipt})` : ""}`
         : `Transferência bancária para a conta ${bankAccount} — Prestação ${installmentData.installmentOrder || installmentIdNum} do crédito ${loanIdNum}${reference ? ` (referência: ${reference})` : ""}`;
 
-    const newTotalPaid = round2(alreadyPaid + paymentAmount);
+    const currentPaymentAmount = round2(Math.min(remaining, Math.max(0, paymentAmount - currentLateInterest)));
+    const newTotalPaid = round2(alreadyPaid + currentPaymentAmount);
     const isFullPayment = newTotalPaid >= installmentValue - 0.01;
     const newStatus = isFullPayment ? 1 : -1;
     const finalPaidAmount = Math.min(newTotalPaid, installmentValue);
     const debtAmount = isFullPayment ? 0 : round2(Math.max(0, installmentValue - finalPaidAmount));
-
     const tranzaction = await TranzactionModel.create({
       companyId: companyIdNum,
       amortizationLoanId: installmentIdNum,
       loanId: loanIdNum,
       accountNumber: customerData.accountNumber,
-      amount: paymentAmount,
-      latePaymentInterest: 0,
+      customerId: customerIdNum,
+      amount: currentPaymentAmount,
+      totalAmount: round2(currentPaymentAmount + currentLateInterest),
+      latePaymentInterest: currentLateInterest,
       interestRateAmount: 0,
       phoneNumber: payerPhone,
       paymentDate: todayStr,
@@ -502,6 +559,43 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       } catch { /* sem dívida */ }
     }
 
+    if (excess > 0 && nextInstallment && nextData) {
+      const nextPaymentAmount = excess;
+      const nextPaid = round2(toNumber(nextData.paidAmount));
+      const nextValue = round2(toNumber(nextData.installment));
+      const nextTotalPaid = round2(nextPaid + nextPaymentAmount);
+      const nextFull = nextTotalPaid >= nextValue - 0.01;
+      await TranzactionModel.create({
+        companyId: companyIdNum,
+        amortizationLoanId: nextData.id,
+        loanId: loanIdNum,
+        accountNumber: customerData.accountNumber,
+        customerId: customerIdNum,
+        amount: nextPaymentAmount,
+        totalAmount: nextPaymentAmount,
+        latePaymentInterest: 0,
+        interestRateAmount: 0,
+        phoneNumber: payerPhone,
+        paymentDate: todayStr,
+        tranzactionReference: txReference,
+        paymentMethod: paymentMethodNum,
+        description: `Troco aplicado na prestação ${nextData.installmentOrder || nextData.id}`,
+        receiptUrl: null,
+        staffName: "Portal do Mutuário",
+        notes: reference ? String(reference) : null,
+        discountApplied: false,
+        discountAmount: 0,
+      });
+      await AmorizationLoanModel.update(
+        {
+          status: nextFull ? 1 : -1,
+          paidAmount: Math.min(nextTotalPaid, nextValue),
+          remainingBalance: nextFull ? 0 : round2(nextValue - nextTotalPaid),
+        },
+        { where: { id: nextData.id } }
+      );
+    }
+
     // Notificar o cliente
     try {
       await NotificationModel.create({
@@ -509,7 +603,7 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
         recipientType: "customer",
         recipientId: customerData.id,
         title: isFullPayment ? "Prestação paga" : "Pagamento parcial registado",
-        message: `O seu pagamento de ${paymentAmount.toLocaleString("pt-MZ")} MZN (${payMethod === "mpesa" ? "M-Pesa" : "transferência bancária"}) foi registado.${isFullPayment ? "" : ` Saldo em falta: ${debtAmount.toLocaleString("pt-MZ")} MZN.`}`,
+        message: `O seu pagamento de ${paymentAmount.toLocaleString("pt-MZ")} MZN (${payMethod === "mpesa" ? "M-Pesa" : "transferência bancária"}) foi registado.${excess > 0 ? ` Troco de ${excess.toLocaleString("pt-MZ")} MZN aplicado à prestação seguinte.` : isFullPayment ? "" : ` Saldo em falta: ${debtAmount.toLocaleString("pt-MZ")} MZN.`}`,
         type: "payment_received",
         referenceId: (tranzaction as any).id,
         isRead: false,
@@ -528,7 +622,7 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
     return res.status(201).json({
       success: true,
       message: isFullPayment
-        ? `Pagamento de ${paymentAmount.toLocaleString("pt-MZ")} MZN registado. Prestação liquidada.`
+        ? `Pagamento de ${paymentAmount.toLocaleString("pt-MZ")} MZN registado.${excess > 0 ? ` Troco de ${excess.toLocaleString("pt-MZ")} MZN aplicado à prestação seguinte.` : " Prestação liquidada."}`
         : `Pagamento parcial de ${paymentAmount.toLocaleString("pt-MZ")} MZN registado. Saldo em falta: ${debtAmount.toLocaleString("pt-MZ")} MZN.`,
       reference: txReference,
       isPartial: !isFullPayment,
@@ -581,12 +675,11 @@ export const requestCustomerLoan = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Cliente não encontrado." });
     }
     const customerData = customer.toJSON() as any;
-
     // O mutuário só pode solicitar novo crédito quando toda a dívida estiver liquidada
     const outstandingLoans = await LoanModel.findAll({
       where: {
         companyId: companyIdNum,
-        accountNumber: customerData.accountNumber,
+        customerId: customerIdNum,
         status: { [Op.in]: [1, 3] },
       },
     });
@@ -616,7 +709,7 @@ export const requestCustomerLoan = async (req: Request, res: Response) => {
     const existingPending = await LoanModel.findOne({
       where: {
         companyId: companyIdNum,
-        accountNumber: customerData.accountNumber,
+        customerId: customerIdNum,
         status: 0,
       },
     });
@@ -629,7 +722,7 @@ export const requestCustomerLoan = async (req: Request, res: Response) => {
 
     // Atribuir gestor: mantém o do último crédito ou usa o primeiro gestor da empresa
     const lastLoan = await LoanModel.findOne({
-      where: { companyId: companyIdNum, accountNumber: customerData.accountNumber },
+      where: { companyId: companyIdNum, customerId: customerIdNum },
       order: [["id", "DESC"]],
     });
     let creditManager = lastLoan ? toNumber((lastLoan as any).creditManager) : 0;
@@ -649,6 +742,7 @@ export const requestCustomerLoan = async (req: Request, res: Response) => {
     const loan = await LoanModel.create({
       companyId: companyIdNum,
       accountNumber: customerData.accountNumber,
+      customerId: customerIdNum,
       amount: loanAmount,
       numberOfInstallments: installments,
       // A taxa de juro é definida pelo Admin/Gestor na aprovação (0 até lá)

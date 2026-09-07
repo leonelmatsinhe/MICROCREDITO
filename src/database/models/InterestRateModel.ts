@@ -17,11 +17,11 @@ export const InterestRateModel = db.define("interest_rates", {
     allowNull: false,
   },
   tax: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(8, 4),
     allowNull: false,
   },
   administrativeFee: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
 });

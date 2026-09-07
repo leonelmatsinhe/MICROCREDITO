@@ -563,7 +563,7 @@ async function fetchData() {
         overdueInstallments.value = (data.alerts || []).map(a => ({
           ...a,
           lateDays: a.daysOverdue || 0,
-          latePaymentInterest: (a.amountDue || 0) * 0.02 * (a.daysOverdue || 0)
+          latePaymentInterest: a.latePaymentInterest || 0
         }))
       } else {
         console.warn('Dashboard API: resposta inválida', data)

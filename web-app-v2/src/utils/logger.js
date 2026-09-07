@@ -1,4 +1,5 @@
 import { api } from '@/boot/axios'
+import { formatMoney as formatCurrency } from '@/utils/formatters'
 
 /**
  * Regista uma acção no sistema de logs
@@ -481,9 +482,5 @@ export async function logSendSms(customerName, message) {
  * Formatação de moeda
  */
 function formatMoney(value) {
-  if (!value) return '0,00 MT'
-  return new Intl.NumberFormat('pt-MZ', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value) + ' MT'
+  return formatCurrency(value)
 }

@@ -5,6 +5,7 @@ import fs from "fs";
 import { routes } from "./routes";
 import { runMigrations } from "./migrations";
 import { CompanyModel } from "./database/models/CompanyModel";
+import "./database/associations";
 import {
   processSmsQueue,
   enqueueUpcomingInstallmentAlerts,

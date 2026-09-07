@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { LoanModel } from "../database/models/LoanModel";
 import { CustomerModel } from "../database/models/CustomerModel";
+import { CompanyModel } from "../database/models/CompanyModel";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { NotificationModel } from "../database/models/NotificationModel";
 import { UserModel } from "../database/models/UserModel";
@@ -140,7 +141,7 @@ const findAllLoans = async (req: Request, res: Response) => {
 };
 
 const getLoanAmortization = async (req: Request, res: Response) => {
-  const { id, forfeit } = req.params;
+  const { id } = req.params;
   const loans = await AmorizationLoanModel.findAll({
     where: {
       loanId: id,
@@ -151,7 +152,57 @@ const getLoanAmortization = async (req: Request, res: Response) => {
     ],
   });
 
-  const installments = installmentPanification(loans, parseFloat(forfeit));
+  const loan = await LoanModel.findByPk(id, { attributes: ["companyId"] });
+  if (!loan) {
+    return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+  }
+  const company = await CompanyModel.findByPk(loan.getDataValue("companyId"), {
+    attributes: ["forfeit"],
+  });
+  const installments = installmentPanification(
+    loans,
+    Number(company?.getDataValue("forfeit") || 0)
+  );
+  const installmentIds = loans.map((item: any) => item.id);
+  const paidLateInterest: any[] = installmentIds.length > 0
+    ? await TranzactionModel.findAll({
+      where: { amortizationLoanId: { [Op.in]: installmentIds } },
+      attributes: ["id", "amortizationLoanId", "amount", "latePaymentInterest", "paymentDate"],
+      order: [["id", "ASC"]],
+      raw: true,
+    })
+    : [];
+  const transactionsByInstallment: Record<number, any[]> = {};
+  paidLateInterest.forEach((item: any) => {
+    const key = Number(item.amortizationLoanId);
+    (transactionsByInstallment[key] ||= []).push(item);
+  });
+  installments.forEach((item: any) => {
+    const key = Number(item.id);
+    const transactions = transactionsByInstallment[key] || [];
+    let cumulativePaid = 0;
+    let completionPayment: any = null;
+    transactions.forEach((transaction: any) => {
+      cumulativePaid += Number(transaction.amount) || 0;
+      if (!completionPayment && cumulativePaid >= (Number(item.installment) || 0) - 0.01) {
+        completionPayment = transaction;
+      }
+    });
+    const paidDate = completionPayment?.paymentDate
+      ? String(completionPayment.paymentDate).slice(0, 10)
+      : null;
+    const lateByDate: Record<string, number> = {};
+    transactions.forEach((transaction: any) => {
+      const date = String(transaction.paymentDate || '').slice(0, 10);
+      lateByDate[date] = Math.max(lateByDate[date] || 0, Number(transaction.latePaymentInterest) || 0);
+    });
+    item.chargedLatePaymentInterest = Math.round(Object.values(lateByDate).reduce((sum, value) => sum + value, 0) * 100) / 100;
+    const dueDate = String(item.dueDate || '').slice(0, 10);
+    item.chargedLateDays = paidDate && dueDate
+      ? Math.max(0, Math.floor((new Date(`${paidDate}T00:00:00`).getTime() - new Date(`${dueDate}T00:00:00`).getTime()) / 86400000))
+      : 0;
+    item.chargedLateDate = paidDate || null;
+  });
   const totals = totalsOfInstallments(installments)
 
   return loans != null && loans.length > 0
@@ -194,8 +245,17 @@ const createLoan = async (req: Request, res: Response) => {
     });
   }
 
+  const customer = await CustomerModel.findOne({
+    where: { companyId, accountNumber },
+    attributes: ["id"],
+  });
+  if (!customer) {
+    return res.status(404).json({ success: false, message: "Mutuário não encontrado." });
+  }
+
   const loan = await LoanModel.create({
     accountNumber,
+    customerId: customer.getDataValue("id"),
     companyId,
     amount,
     numberOfInstallments,
@@ -518,6 +578,9 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       (amortByLoan[Number(a.loanId)] = amortByLoan[Number(a.loanId)] || []).push(a);
     });
 
+    const company = await CompanyModel.findByPk(companyId, { attributes: ["forfeit"] });
+    const forfeit = Number(company?.getDataValue("forfeit") || 0);
+
     const todayStr = new Date().toISOString().slice(0, 10);
 
     const result = loans.map((loan: any) => {
@@ -525,6 +588,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       const customer = customerMap[String(loan.accountNumber)] || null;
       const txs = txByLoan[Number(loan.id)] || [];
       const amorts = amortByLoan[Number(loan.id)] || [];
+      const calculatedAmorts = installmentPanification(amorts, forfeit);
 
       const sum = (rows: any[], field: string) =>
         rows.reduce((acc: number, r: any) => acc + (Number(r[field]) || 0), 0);
@@ -532,6 +596,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       const totalPaid = Math.round(sum(txs, "amount") * 100) / 100;
       const totalInterestPaid = Math.round(sum(txs, "interestRateAmount") * 100) / 100;
       const totalLateInterestPaid = Math.round(sum(txs, "latePaymentInterest") * 100) / 100;
+      const totalLateInterest = Math.round(sum(calculatedAmorts, "latePaymentInterest") * 100) / 100;
       const totalDiscount = Math.round(sum(txs, "discountAmount") * 100) / 100;
 
       // Datas do plano: 1ª e última prestação (vencimento final do crédito)
@@ -559,7 +624,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       let nextDueDate: string | null = null;
       const contractTotal = Math.round(sum(amorts, "installment") * 100) / 100;
 
-      amorts.forEach((a: any) => {
+      calculatedAmorts.forEach((a: any) => {
         const status = Number(a.status);
         const installmentValue = Number(a.installment) || 0;
         const paidValue = Number(a.paidAmount) || 0;
@@ -573,7 +638,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
 
         // Em aberto (0) ou parcial (-1): o que falta pagar desta prestação
         const remaining = Math.max(0, installmentValue - paidValue);
-        amountInDebt += remaining;
+        amountInDebt += remaining + (Number(a.latePaymentInterest) || 0);
 
         if (due) {
           if (due < todayStr) {
@@ -600,6 +665,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
         totalPaid,
         totalInterestPaid,
         totalLateInterestPaid,
+        totalLateInterest,
         totalDiscount,
         amountInDebt,
         installmentsCount: amorts.length,

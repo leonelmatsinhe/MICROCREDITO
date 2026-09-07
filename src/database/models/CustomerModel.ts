@@ -92,6 +92,10 @@ export const CustomerModel = db.define("customers", {
   customerEmergencyContact: {
     type: DataTypes.STRING,
   },
+  interestRateId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   passportPhotoUrl: {
     type: DataTypes.STRING,
     allowNull: true,

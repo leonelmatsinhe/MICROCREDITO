@@ -84,7 +84,7 @@
                   v-model.number="form.amount"
                   dense
                   outlined
-                  label="Valor (MT) *"
+                  label="Valor (MZN) *"
                   type="number"
                   input-style="font-size: 13px"
                 />
@@ -212,6 +212,7 @@ import { ref, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { usePaymentsStore } from '@/stores/payments'
+import { formatMoney } from '@/utils/formatters'
 import { useCompanyStore } from '@/stores/company'
 import { useSettingsStore } from '@/stores/settings'
 import { useLoansStore } from '@/stores/loans'
@@ -328,13 +329,6 @@ watch(() => form.value.loanId, async (loanId) => {
     installmentOptions.value = []
   }
 })
-
-function formatMoney(value) {
-  return new Intl.NumberFormat('pt-MZ', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(value || 0) + ' MT'
-}
 
 function formatDate(dateStr) {
   if (!dateStr) return '—'

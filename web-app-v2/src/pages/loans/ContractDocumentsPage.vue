@@ -556,7 +556,7 @@ async function generateContract() {
                     { text: formatMoney(totalAmortization), fontSize: 7, alignment: 'right', bold: true },
                     { text: formatMoney(totalInterest), fontSize: 7, alignment: 'right', bold: true },
                     { text: formatMoney(totalInstallment), fontSize: 7, alignment: 'right', bold: true },
-                    { text: '0,00 MT', fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
+                    { text: '0,00 MZN', fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
                     { text: '', fontSize: 7 },
                   ],
                 ],
@@ -935,7 +935,7 @@ async function generateGuarantees() {
                 { text: '#', style: 'columnsTitle' },
                 { text: 'Descrição', style: 'columnsTitle' },
                 { text: 'Data de submissão', style: 'columnsTitle' },
-                { text: 'Avaliação (MT)', style: 'columnsTitle' },
+                { text: 'Avaliação (MZN)', style: 'columnsTitle' },
               ],
               ...guarRows,
             ],
@@ -1020,8 +1020,7 @@ onMounted(async () => {
 
     // Fetch amortization
     try {
-      const forfeit = company.value?.forfeit || 0.1
-      await loansStore.fetchAmortization(loanId, forfeit)
+      await loansStore.fetchAmortization(loanId)
       amortization.value = loansStore.amortization || []
     } catch { amortization.value = [] }
 

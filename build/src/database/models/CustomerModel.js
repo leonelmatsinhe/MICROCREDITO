@@ -94,6 +94,10 @@ exports.CustomerModel = db_1.db.define("customers", {
     customerEmergencyContact: {
         type: sequelize_1.DataTypes.STRING,
     },
+    interestRateId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+    },
     passportPhotoUrl: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: true,

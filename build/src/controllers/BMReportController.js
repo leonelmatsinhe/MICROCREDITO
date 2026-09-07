@@ -43,6 +43,7 @@ const CustomerModel_1 = require("../database/models/CustomerModel");
 const LoanModel_1 = require("../database/models/LoanModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
+const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 function formatDateBR(date) {
     if (!date)
         return "-";
@@ -85,18 +86,25 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         }
         catch (_a) { }
         // 3. Buscar créditos do período — apenas desembolsados (status 1)
-        const loanWhere = { companyId: companyIdNum, status: 1 };
-        // Filtrar por período se especificado (data de desembolso)
+        const loanWhere = {
+            companyId: companyIdNum,
+            status: 1,
+            [sequelize_1.Op.and]: [
+                { disbursementDate: { [sequelize_1.Op.not]: null } },
+                { disbursementDate: { [sequelize_1.Op.ne]: "" } },
+            ],
+        };
+        // Filtrar exclusivamente pelo campo real de desembolso do crédito.
         if (from && to) {
-            loanWhere.dateCreated = {
-                [sequelize_1.Op.between]: [String(from), String(to)],
-            };
+            loanWhere[sequelize_1.Op.and].push({ disbursementDate: {
+                    [sequelize_1.Op.between]: [String(from), String(to)],
+                } });
         }
         else if (from) {
-            loanWhere.dateCreated = { [sequelize_1.Op.gte]: String(from) };
+            loanWhere[sequelize_1.Op.and].push({ disbursementDate: { [sequelize_1.Op.gte]: String(from) } });
         }
         else if (to) {
-            loanWhere.dateCreated = { [sequelize_1.Op.lte]: String(to) };
+            loanWhere[sequelize_1.Op.and].push({ disbursementDate: { [sequelize_1.Op.lte]: String(to) } });
         }
         const loans = yield LoanModel_1.LoanModel.findAll({
             where: loanWhere,
@@ -123,6 +131,8 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 order: [["dueDate", "ASC"], ["id", "ASC"]],
             });
             const amortList = amortizations.map((a) => a.toJSON());
+            const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
+            const calculatedAmortizations = (0, calculateLateAmount_1.installmentPanification)(amortList, Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0));
             // Buscar transações reais do crédito
             const transactions = yield TranzactionModel_1.TranzactionModel.findAll({
                 where: {
@@ -137,14 +147,14 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             const lastInstallment = amortList[amortList.length - 1];
             // Prestações em atraso (status = 0 e data vencida)
             const now = (0, moment_1.default)();
-            const overdueInstallments = amortList.filter((a) => {
-                if (Number(a.status) !== 0)
+            const overdueInstallments = calculatedAmortizations.filter((a) => {
+                if (![0, -1].includes(Number(a.status)))
                     return false;
                 const dueDate = (0, moment_1.default)(a.dueDate);
                 return dueDate.isBefore(now, "day");
             });
             // Crédito em Atraso (11): soma das prestações vencidas + juros de mora
-            const overdueAmount = overdueInstallments.reduce((sum, a) => sum + (Number(a.installment) || 0) + (Number(a.latePaymentInterest) || 0), 0);
+            const overdueAmount = overdueInstallments.reduce((sum, a) => sum + Math.max(0, (Number(a.installment) || 0) - (Number(a.paidAmount) || 0)) + (Number(a.latePaymentInterest) || 0), 0);
             // Máximo dias em atraso
             const maxDaysOverdue = overdueInstallments.reduce((max, a) => {
                 const days = now.diff((0, moment_1.default)(a.dueDate), "days");
@@ -166,7 +176,7 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 // (2) Nome do Cliente
                 customerName: (customerData === null || customerData === void 0 ? void 0 : customerData.customerName) || "-",
                 // (3) Data Desembolso
-                disbursementDate: formatDateBR(loanData.dateCreated),
+                disbursementDate: formatDateBR(loanData.disbursementDate),
                 // (4) Montante do Desembolso
                 disbursementAmount: Number(loanData.amount) || 0,
                 // (5) Finalidade do Crédito — usar borrowerInfo.finalidade se disponível, senão loanDescription

@@ -14,6 +14,10 @@ exports.DebtModel = db_1.db.define("debts", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
     accountNumber: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
@@ -27,7 +31,7 @@ exports.DebtModel = db_1.db.define("debts", {
         allowNull: true,
     },
     debtAmount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     updatedBy: {

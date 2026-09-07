@@ -80,6 +80,8 @@
                 dense
                 outlined
                 label="Data de Emissão"
+                type="date"
+                :max="todayDate"
               />
             </div>
             <div class="col-6">
@@ -97,6 +99,8 @@
             dense
             outlined
             label="Data de Nascimento"
+            type="date"
+            :max="adultBirthDate"
           />
 
           <q-input
@@ -330,6 +334,12 @@ const defaultForm = {
 
 const form = ref({ ...defaultForm })
 const formRef = ref(null)
+const todayDate = new Date().toISOString().split('T')[0]
+const adultBirthDate = (() => {
+  const date = new Date()
+  date.setFullYear(date.getFullYear() - 18)
+  return date.toISOString().split('T')[0]
+})()
 
 // Mostrar campos de cônjuge apenas para Casado ou União de Facto
 const showSpouseFields = computed(() => {

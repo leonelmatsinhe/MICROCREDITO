@@ -125,6 +125,14 @@
                   <div class="text-caption text-grey-5" style="font-size: 10px">Capacidade (1/3)</div>
                   <div class="text-weight-bold text-positive">{{ formatMoney(maxCapacity) }}</div>
                 </div>
+                <div class="col-6" v-if="Number(currentPaymentInstallment?.latePaymentInterest) > 0">
+                  <div class="text-caption text-grey-5">Juros de mora</div>
+                  <div class="text-weight-bold text-negative">{{ formatMoney(currentPaymentInstallment.latePaymentInterest) }}</div>
+                </div>
+                <div class="col-6" v-if="Number(currentPaymentInstallment?.latePaymentInterest) > 0">
+                  <div class="text-caption text-grey-5">Total a pagar</div>
+                  <div class="text-weight-bold text-negative">{{ formatMoney(paymentRemaining + Number(currentPaymentInstallment.latePaymentInterest || 0)) }}</div>
+                </div>
                 <div class="col-4">
                   <div class="text-caption text-grey-5" style="font-size: 10px">Prestação</div>
                   <div class="text-weight-bold text-primary">{{ estimatedInstallment > 0 ? formatMoney(estimatedInstallment) : '—' }}</div>
@@ -152,51 +160,32 @@
                 <q-icon name="receipt_long" size="40px" />
                 <div class="text-caption q-mt-sm">Ainda não há créditos registados.</div>
               </div>
-              <q-list v-else separator>
-                <q-item v-for="loan in customerLoans" :key="loan.id" class="loan-item">
-                  <q-item-section avatar>
-                    <q-avatar :color="getLoanStatusColor(loan.status)" text-color="white" size="40px">
-                      <q-icon name="attach_money" size="20px" />
-                    </q-avatar>
-                  </q-item-section>
-                  <q-item-section>
-                    <q-item-label class="text-weight-medium">
-                      {{ formatMoney(loan.amount) }}
-                      <q-badge :color="getLoanStatusColor(loan.status)" :label="getLoanStatusText(loan.status)" rounded class="q-ml-sm" style="font-size: 10px" />
-                    </q-item-label>
-                    <q-item-label caption style="font-size: 11px">
-                      {{ loan.numberOfInstallments }}x |
-                      <template v-if="Number(loan.status) === 0">Taxa a definir |</template>
-                      <template v-else>{{ (loan.interestRate * 100).toFixed(1) }}% |</template>
-                      {{ loan.dateCreated }}
-                    </q-item-label>
-                    <!-- Activos e Terminados: total + juros, pago até agora e última prestação -->
-                    <q-item-label
-                      v-if="loanMetrics[Number(loan.id)] && (Number(loan.status) === 1 || Number(loan.status) === 3)"
-                      caption
-                      class="q-mt-xs"
-                      style="font-size: 11px; line-height: 1.55"
-                    >
-                      Total + Juros: <strong class="text-weight-bold">{{ formatMoney(loanMetrics[Number(loan.id)].contractTotal) }}</strong>
-                      <span class="text-grey-6"> · Pago até agora: </span>
-                      <strong class="text-weight-bold text-positive">{{ formatMoney(loanMetrics[Number(loan.id)].totalPaid) }}</strong>
-                      <span class="text-grey-6"> · Última prestação: </span>
-                      <strong class="text-weight-bold">{{ formatDate(loanMetrics[Number(loan.id)].finalDueDate) }}</strong>
-                    </q-item-label>
-                  </q-item-section>
-                  <q-item-section side>
+              <div v-else class="loan-card-list">
+                <q-card v-for="loan in customerLoans" :key="loan.id" flat bordered class="loan-history-card">
+                  <q-card-section class="loan-card-header text-center">
+                    <div class="loan-card-amount">{{ formatMoney(loan.amount) }}</div>
+                    <q-badge :color="getLoanStatusColor(loan.status)" :label="getLoanStatusText(loan.status)" rounded style="font-size: 10px" />
+                  </q-card-section>
+
+                  <q-card-section class="loan-card-body">
+                    <div class="loan-card-debt">
+                      <span>Total da dívida</span>
+                      <strong>{{ formatMoney((loanMetrics[Number(loan.id)]?.contractTotal || loan.amount) + (loanAppliedLateInterest[Number(loan.id)] || 0)) }}</strong>
+                      <small v-if="Number(loanAppliedLateInterest[Number(loan.id)]) > 0">
+                        Inclui {{ formatMoney(loanAppliedLateInterest[Number(loan.id)]) }} de juros de mora aplicados
+                      </small>
+                    </div>
+                    <div class="loan-card-dates">
+                      <div><span>Desembolso</span><strong>{{ formatDate(loan.disbursementDate || loan.dateCreated) }}</strong></div>
+                      <div class="text-right"><span>Data fim</span><strong>{{ formatDate(loanMetrics[Number(loan.id)]?.finalDueDate) || '—' }}</strong></div>
+                    </div>
+                  </q-card-section>
+
+                  <q-card-actions class="loan-card-footer justify-center">
                     <div class="row q-gutter-xs items-center">
                       <!-- Ver Plano (apenas aprovado ou terminado) -->
                       <q-btn v-if="Number(loan.status) === 1 || Number(loan.status) === 3" flat round dense icon="table_chart" size="sm" color="teal" @click.stop="openAmortization(loan)">
                         <q-tooltip>Plano de Amortização</q-tooltip>
-                      </q-btn>
-                      <!-- Aprovar (apenas pendente) -->
-                      <q-btn v-if="Number(loan.status) === 0 && canApproveLoan(authStore.userRole)" unelevated round dense icon="check_circle" size="sm" color="positive" @click.stop="openLoanApproval(loan)">
-                        <q-tooltip>Aprovar Crédito</q-tooltip>
-                      </q-btn>
-                      <!-- Editar (apenas pendente) -->
-                      <q-btn v-if="Number(loan.status) === 0" flat round dense icon="edit" size="sm" color="blue" @click.stop="openEditLoan(loan)">
-                        <q-tooltip>Editar</q-tooltip>
                       </q-btn>
                       <!-- Documentos (apenas aprovado ou terminado) -->
                       <q-btn v-if="Number(loan.status) === 1 || Number(loan.status) === 3" flat round dense icon="description" size="sm" color="primary" @click.stop="goToDocuments(loan.id)">
@@ -210,18 +199,10 @@
                       <q-btn v-if="Number(loan.status) === 1 || Number(loan.status) === 3" flat round dense icon="info" size="sm" color="teal" @click.stop="openBorrowerInfo(loan)">
                         <q-tooltip>Info. Mutuário (Contrato)</q-tooltip>
                       </q-btn>
-                      <!-- Rejeitar (apenas pendente) -->
-                      <q-btn v-if="Number(loan.status) === 0" flat round dense icon="cancel" size="sm" color="negative" @click.stop="rejectLoan(loan)">
-                        <q-tooltip>Rejeitar</q-tooltip>
-                      </q-btn>
-                      <!-- Eliminar (apenas pendente) -->
-                      <q-btn v-if="Number(loan.status) === 0" flat round dense icon="delete" size="sm" color="negative" @click.stop="confirmDeleteLoan(loan)">
-                        <q-tooltip>Eliminar</q-tooltip>
-                      </q-btn>
                     </div>
-                  </q-item-section>
-                </q-item>
-              </q-list>
+                  </q-card-actions>
+                </q-card>
+              </div>
             </q-card-section>
           </q-card>
         </div>
@@ -394,7 +375,7 @@
                     <q-td :props="props" class="text-right" :class="props.row.latePaymentInterest > 0 ? 'text-negative text-weight-bold' : ''">{{ formatMoney(props.row.latePaymentInterest || 0) }}</q-td>
                   </template>
                   <template v-slot:body-cell-totalToPay="props">
-                    <q-td :props="props" class="text-right text-weight-bold">{{ formatMoney((props.row.installment || 0) + (props.row.latePaymentInterest || 0)) }}</q-td>
+                    <q-td :props="props" class="text-right text-weight-bold">{{ formatMoney(installmentTotalDue(props.row)) }}</q-td>
                   </template>
                   <template v-slot:body-cell-dueDate="props">
                     <q-td :props="props" class="text-right">{{ formatDateShort(props.row.dueDate) }}</q-td>
@@ -425,6 +406,20 @@
                   <template v-slot:body-cell-paidAmount="props">
                     <q-td :props="props" class="text-right">
                       <span class="text-positive text-weight-bold">{{ formatMoney(props.row.paidAmount || props.row.installment) }}</span>
+                    </q-td>
+                  </template>
+                  <template v-slot:body-cell-chargedLatePaymentInterest="props">
+                    <q-td :props="props" class="text-right">
+                      <span :class="props.row.chargedLatePaymentInterest > 0 ? 'text-negative text-weight-bold' : 'text-grey-5'">
+                        {{ formatMoney(props.row.chargedLatePaymentInterest || 0) }}
+                      </span>
+                    </q-td>
+                  </template>
+                  <template v-slot:body-cell-chargedLateDays="props">
+                    <q-td :props="props" class="text-center">
+                      <span :class="props.row.chargedLateDays > 0 ? 'text-negative text-weight-bold' : 'text-grey-5'">
+                        {{ props.row.chargedLateDays || 0 }}
+                      </span>
                     </q-td>
                   </template>
                   <template v-slot:body-cell-discount="props">
@@ -512,13 +507,25 @@
             <div class="text-subtitle1 text-weight-bold q-mb-md"><q-icon name="send" size="18px" class="q-mr-xs" />Submissão do Crédito</div>
             <div class="row q-col-gutter-md">
               <div class="col-12 col-sm-6">
-                <q-input v-model="loanForm.loanDescription" dense outlined label="Parecer técnico" type="textarea" rows="3" input-style="font-size: 13px" />
+                <q-select
+                  v-model="loanForm.loanDescription"
+                  dense
+                  outlined
+                  use-input
+                  fill-input
+                  hide-selected
+                  input-debounce="0"
+                  label="Finalidade do crédito"
+                  :options="filteredPurposeOptions"
+                  @filter="filterPurposeOptions"
+                  input-style="font-size: 13px"
+                />
               </div>
               <div class="col-6 col-sm-3">
-                <q-input v-model="loanForm.dateCreated" dense outlined label="Data" type="date" disable input-style="font-size: 13px" />
+                <q-input v-model="loanForm.dateCreated" dense outlined label="Data" type="date" :min="sixMonthsAgo" :max="todayDate" input-style="font-size: 13px" />
               </div>
               <div class="col-6 col-sm-3">
-                <q-select v-model="loanForm.creditManager" dense outlined :options="managerOptions" label="Gestor" emit-value map-options input-style="font-size: 13px" />
+                  <q-select v-model="loanForm.creditManager" dense outlined :options="managerOptions" label="Gestor" emit-value map-options input-style="font-size: 13px" />
               </div>
               <div class="col-12" v-if="!elegibility">
                 <q-input v-model="loanForm.capacityExcessObservation" dense outlined label="Observação de excesso (mín. 10 caracteres)" type="textarea" rows="2" input-style="font-size: 13px" />
@@ -558,7 +565,7 @@
             <!-- Payment Form -->
             <div class="row q-col-gutter-md">
               <div class="col-6">
-                <q-input v-model="paymentForm.paymentDate" dense outlined label="Data de pagamento" type="date" input-style="font-size: 13px" />
+                <q-input v-model="paymentForm.paymentDate" dense outlined label="Data de pagamento" type="date" :max="todayDate" input-style="font-size: 13px" />
               </div>
               <div class="col-6">
                 <q-select v-model="paymentForm.paymentMethod" dense outlined :options="paymentMethods" label="Meio de pagamento" emit-value map-options input-style="font-size: 13px" />
@@ -567,7 +574,7 @@
                 <q-input v-model="paymentForm.paymentReference" dense outlined label="Referência" input-style="font-size: 13px" />
               </div>
               <div class="col-6">
-                <q-input v-model.number="paymentForm.amountReceived" dense outlined label="Valor a pagar" type="number" input-style="font-size: 13px" />
+                <q-input v-model.number="paymentForm.amountReceived" dense outlined label="Valor a pagar" type="number" input-style="font-size: 13px" @update:model-value="markPaymentAmountAsManual" />
               </div>
               <div class="col-6">
                 <q-input v-model="paymentForm.phoneNumber" dense outlined label="Telefone do cliente" input-style="font-size: 13px" />
@@ -583,9 +590,15 @@
               <div v-if="paymentForm.amountReceived > 0 && paymentForm.amountReceived < (currentPaymentInstallment?.installment - (currentPaymentInstallment?.paidAmount || 0))" class="col-12">
                 <q-banner class="bg-warning text-white" rounded>
                   <template v-slot:avatar><q-icon name="warning" /></template>
-                  Pagamento parcial: ficará um saldo devedor de {{ formatMoney((currentPaymentInstallment?.installment || 0) - (currentPaymentInstallment?.paidAmount || 0) - paymentForm.amountReceived) }}
+                  Pagamento parcial: ficará um saldo devedor de {{ formatMoney(Math.max(0, installmentTotalDue(currentPaymentInstallment) - paymentForm.amountReceived)) }}
                 </q-banner>
               </div>
+              <q-banner v-if="paymentExcessAmount > 0" class="col-12 bg-info text-white payment-excess-banner" rounded>
+                <template v-slot:avatar><q-icon name="forward" size="24px" /></template>
+                O valor excede o total desta prestação em {{ formatMoney(paymentExcessAmount) }}.
+                <span v-if="nextPaymentInstallment"> O excedente será aplicado à prestação seguinte.</span>
+                <span v-else> Não existe prestação seguinte para receber o troco.</span>
+              </q-banner>
             </div>
           </q-card-section>
 
@@ -653,7 +666,7 @@
             <!-- Payment Form -->
             <div class="row q-col-gutter-md">
               <div class="col-6">
-                <q-input v-model="globalPaymentForm.paymentDate" dense outlined label="Data de pagamento" type="date" input-style="font-size: 13px" />
+                <q-input v-model="globalPaymentForm.paymentDate" dense outlined label="Data de pagamento" type="date" :max="todayDate" input-style="font-size: 13px" />
               </div>
               <div class="col-6">
                 <q-select v-model="globalPaymentForm.paymentMethod" dense outlined :options="paymentMethods" label="Meio de pagamento" emit-value map-options input-style="font-size: 13px" />
@@ -902,6 +915,7 @@ import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 import { canRegisterPayment, canApproveLoan, canDeleteCustomer } from '@/utils/permissions'
 import { generateSixDigitCode } from '@/utils/codeGenerator'
 import { buildCompanyHeader, buildFooterWithSignature, commonStyles, tableLayout, infoTableLayout } from '@/utils/pdfHeader'
+import { getPdfMake } from '@/utils/pdfMake'
 import { logApproveLoan, logPayment, logPartialPayment, logFullPayment, logDeleteDocument, logCreateGuarantee, logDeleteGuarantee, logUploadDocument, logEditCustomer, logRejectLoan } from '@/utils/logger'
 import { generateAmortizationPlan } from '@/utils/amortization'
 
@@ -924,6 +938,7 @@ const uploading = ref(false)
 const uploadProgress = ref(0)
 // Métricas agregadas por crédito (total + juros, pago até agora, última prestação)
 const loanMetrics = ref({})
+const loanAppliedLateInterest = ref({})
 
 // Modals
 const showEditModal = ref(false)
@@ -986,7 +1001,7 @@ const documentTypeOptions = ['BI / Passaporte / Carta de condução', 'NUIT', 'A
 // Loan simulation
 const loanForm = ref({
   capital: 0, prestacoes: null, juros: null, creditManager: null,
-  loanDescription: 'Crédito desembolsado mediante apresentação de garantias',
+  loanDescription: '',
   capacityExcessObservation: '', dateCreated: new Date().toISOString().split('T')[0]
 })
 const simulationResult = ref([])
@@ -1006,11 +1021,20 @@ const amortLoading = ref(false)
 // Payment modal
 const currentPaymentInstallment = ref(null)
 const paymentSaving = ref(false)
+const paymentAmountIsAutomatic = ref(false)
 const paymentForm = ref({ paymentDate: new Date().toISOString().split('T')[0], paymentMethod: null, paymentReference: '', amountReceived: 0, receiptFile: null, phoneNumber: '', staffName: authStore.userName || '' })
+const todayDate = new Date().toISOString().split('T')[0]
 
 // Global payment computed
+const installmentRemaining = (installment) => Math.max(0, Number(installment?.installment || 0) - Number(installment?.paidAmount || 0))
+const installmentLateInterest = (installment) => Number(installment?.latePaymentInterest || 0)
+const installmentTotalDue = (installment) => installmentRemaining(installment) + installmentLateInterest(installment)
+const installmentHistoricalTotal = (installment) => Number(installment?.status) === 1
+  ? Number(installment?.installment || 0) + Number(installment?.chargedLatePaymentInterest || 0)
+  : installmentTotalDue(installment)
+
 const totalPendingAmount = computed(() =>
-  pendingInstallments.value.reduce((sum, inst) => sum + (inst.installment || 0), 0)
+  pendingInstallments.value.reduce((sum, inst) => sum + installmentTotalDue(inst), 0)
 )
 
 const globalTotalWithDiscount = computed(() => {
@@ -1041,6 +1065,31 @@ const numeroPrestacoes = [
 ]
 const rateOptions = ref([{ label: 'Taxa de juros', value: null }])
 const managerOptions = ref([{ label: 'Selecionar Gestor', value: null }])
+const purposeOptions = [
+  'Comércio',
+  'Criação de animais',
+  'Educação',
+  'Habitação',
+  'Negócio',
+  'Saúde',
+  'Transporte',
+  'Outro'
+]
+const filteredPurposeOptions = ref([...purposeOptions])
+const sixMonthsAgo = (() => {
+  const date = new Date()
+  date.setMonth(date.getMonth() - 6)
+  return date.toISOString().split('T')[0]
+})()
+
+function filterPurposeOptions(value, update) {
+  update(() => {
+    const needle = String(value || '').toLowerCase()
+    filteredPurposeOptions.value = needle
+      ? purposeOptions.filter(purpose => purpose.toLowerCase().includes(needle))
+      : [...purposeOptions]
+  })
+}
 const paymentMethods = computed(() => {
   // Buscar meios de pagamento da tabela accounts (Contas Bancárias)
   const accounts = settingsStore.accounts || []
@@ -1080,6 +1129,49 @@ const canSubmit = computed(() => {
 
 const canPay = computed(() => paymentForm.value.paymentDate && paymentForm.value.paymentMethod && paymentForm.value.amountReceived > 0 && paymentForm.value.paymentReference && paymentForm.value.staffName)
 
+const nextPaymentInstallment = computed(() => {
+  const current = currentPaymentInstallment.value
+  if (!current) return null
+  const installments = [...amortInstallments.value].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+  const index = installments.findIndex(item => Number(item.id) === Number(current.id))
+  return installments.slice(index + 1).find(item => Number(item.status) !== 1) || null
+})
+
+const paymentExcessAmount = computed(() => {
+  const amount = Number(paymentForm.value.amountReceived) || 0
+  const remaining = installmentRemaining(currentPaymentInstallment.value)
+  return Math.max(0, Math.round((amount - remaining - paymentLateInterest.value) * 100) / 100)
+})
+
+// Mora deve respeitar a data efectiva do pagamento, mesmo quando o lançamento
+// é feito posteriormente no sistema.
+const paymentLateInterest = computed(() => {
+  const installment = currentPaymentInstallment.value
+  if (!installment || Number(installment.status) === 1) return 0
+  return calculateLateInterestForDate(installment, paymentForm.value.paymentDate)
+})
+
+function calculateLateInterestForDate(installment, paymentDateValue) {
+  const dueDate = new Date(installment?.dueDate)
+  const paymentDate = new Date(`${paymentDateValue}T00:00:00`)
+  if (Number.isNaN(dueDate.getTime()) || Number.isNaN(paymentDate.getTime())) return 0
+  const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate())
+  const paidDay = new Date(paymentDate.getFullYear(), paymentDate.getMonth(), paymentDate.getDate())
+  const daysLate = Math.max(0, Math.floor((paidDay - dueDay) / 86400000))
+  const forfeit = Number(companyStore.company?.forfeit) || 0
+  return Math.round((Number(installment?.installment || 0) * (forfeit / 100) * daysLate) * 100) / 100
+}
+
+watch(() => paymentForm.value.paymentDate, (paymentDate) => {
+  if (!paymentAmountIsAutomatic.value || !currentPaymentInstallment.value) return
+  const remaining = installmentRemaining(currentPaymentInstallment.value)
+  paymentForm.value.amountReceived = Math.round((remaining + calculateLateInterestForDate(currentPaymentInstallment.value, paymentDate)) * 100) / 100
+})
+
+function markPaymentAmountAsManual() {
+  paymentAmountIsAutomatic.value = false
+}
+
 
 
 // Amortization modal computed
@@ -1114,9 +1206,21 @@ const amortTotalPaid = computed(() => {
   return amortInstallments.value.reduce((sum, inst) => sum + (parseFloat(inst.paidAmount) || 0), 0)
 })
 
+const amortTotalLateInterest = computed(() => {
+  return amortInstallments.value.reduce((sum, inst) => sum + installmentLateInterest(inst), 0)
+})
+
+const amortChargedLateInterest = computed(() => {
+  return amortInstallments.value.reduce((sum, inst) => sum + (Number(inst.chargedLatePaymentInterest) || 0), 0)
+})
+
+const amortTotalDebtWithLateInterest = computed(() => {
+  return Math.round((amortTotalDebt.value + amortTotalLateInterest.value + amortChargedLateInterest.value) * 100) / 100
+})
+
 // Saldo remanescente = Total da dívida - Total pago
 const amortRemainingDebt = computed(() => {
-  return Math.max(0, Math.round((amortTotalDebt.value - amortTotalPaid.value) * 100) / 100)
+  return Math.round(pendingInstallments.value.reduce((sum, inst) => sum + installmentTotalDue(inst), 0) * 100) / 100
 })
 
 const simSummary = computed(() => [
@@ -1133,12 +1237,8 @@ const paymentSummary = computed(() => {
   const remaining = Math.round(Math.max(0, installmentValue - alreadyPaid) * 100) / 100
   const isPartial = Number(p.status) === -1 && alreadyPaid > 0
   
-  // Calcular juros de mora em tempo real
-  const today = new Date()
-  const dueDate = new Date(p.dueDate)
-  const daysOverdue = Math.max(0, Math.floor((today - dueDate) / (1000 * 60 * 60 * 24)))
-  const dailyRate = (companyStore.company?.forfeit || 0.1) / 100
-  const lateFee = daysOverdue > 0 ? daysOverdue * dailyRate * installmentValue : 0
+  const daysOverdue = Number(p.lateDays || 0)
+  const lateFee = paymentLateInterest.value
   const totalDue = remaining + lateFee
   
   const items = [
@@ -1155,14 +1255,8 @@ const paymentSummary = computed(() => {
     )
   }
   
-  if (lateFee > 0) {
-    items.push(
-      { label: 'Juros de Mora', value: formatMoney(lateFee), class: 'text-negative text-weight-bold' }
-    )
-    items.push(
-      { label: 'Total a Pagar', value: formatMoney(totalDue), class: 'text-negative text-weight-bold' }
-    )
-  }
+  items.push({ label: 'Juros de Mora', value: formatMoney(lateFee), class: 'text-negative text-weight-bold' })
+  items.push({ label: 'Total a Pagar', value: formatMoney(totalDue), class: 'text-negative text-weight-bold' })
   
   return items
 })
@@ -1181,6 +1275,8 @@ const paidAmortColumns = [
   { name: 'rateAmount', label: 'Juros', field: 'rateAmount', align: 'right', style: 'font-size: 11px' },
   { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', style: 'font-size: 11px' },
   { name: 'paidAmount', label: 'Valor Pago', field: 'paidAmount', align: 'right', style: 'font-size: 11px' },
+  { name: 'chargedLateDays', label: 'Dias de Mora', field: 'chargedLateDays', align: 'center', style: 'font-size: 11px' },
+  { name: 'chargedLatePaymentInterest', label: 'Juros de Mora', field: 'chargedLatePaymentInterest', align: 'right', style: 'font-size: 11px' },
   { name: 'discount', label: 'Desconto', field: 'discount', align: 'right', style: 'font-size: 11px' },
   { name: 'dueDate', label: 'Vencimento', field: 'dueDate', align: 'right', style: 'font-size: 11px' },
   { name: 'actions', label: 'Acções', field: 'actions', align: 'center', style: 'font-size: 11px' }
@@ -1213,14 +1309,6 @@ const simColumns = [
 
 // ===================== FUNCTIONS =====================
 
-function calculateInstallment(principal, rate, periods) {
-  if (rate === 0) return principal / periods
-  const num = rate * Math.pow(1 + rate, periods)
-  const den = Math.pow(1 + rate, periods) - 1
-  return principal * (num / den)
-}
-
-// Re-export from shared utility
 import { calculateInstallment as calcInstallment } from '@/utils/amortization'
 
 // Watch juros
@@ -1234,10 +1322,10 @@ watch(() => loanForm.value.juros, (rateId) => {
 })
 
 // Watch capital/prestacoes
-watch([() => loanForm.value.capital, () => loanForm.value.prestacoes], () => {
+watch([() => loanForm.value.capital, () => loanForm.value.prestacoes, selectedRate], () => {
   const { capital, prestacoes } = loanForm.value
   if (capital > 0 && prestacoes > 0 && selectedRate.value > 0) {
-    estimatedInstallment.value = calculateInstallment(capital, selectedRate.value, prestacoes)
+    estimatedInstallment.value = calcInstallment(capital, selectedRate.value, prestacoes)
     maxCapacity.value = (customer.value?.customerMonthlySalary || 0) / 3
   } else {
     estimatedInstallment.value = 0
@@ -1245,14 +1333,21 @@ watch([() => loanForm.value.capital, () => loanForm.value.prestacoes], () => {
 })
 
 function simulateLoan() {
-  const { capital, prestacoes, dateCreated } = loanForm.value
-  if (!capital || !prestacoes || !selectedRate.value) {
-    $q.notify({ type: 'warning', message: 'Preencha montante, prestações e taxa', position: 'top' })
+  const capital = Number(loanForm.value.capital)
+  const prestacoes = Number(loanForm.value.prestacoes)
+  const rate = Number(selectedRate.value)
+  const dateCreated = loanForm.value.dateCreated
+  if (!(capital > 0) || !Number.isInteger(prestacoes) || prestacoes < 1 || !(rate > 0)) {
+    $q.notify({ type: 'warning', message: 'Preencha montante, prazo e taxa', position: 'top' })
     return
   }
   // Usar função partilhada para garantir consistência com CLÁUSULA QUARTA
   // Passar data de desembolso para calcular vencimentos (30 dias após desembolso)
-  const plan = generateAmortizationPlan(capital, selectedRate.value, prestacoes, dateCreated)
+  const plan = generateAmortizationPlan(capital, rate, prestacoes, dateCreated)
+  if (plan.length !== prestacoes) {
+    $q.notify({ type: 'negative', message: 'Não foi possível gerar o plano completo de amortização.', position: 'top' })
+    return
+  }
   simulationResult.value = plan
   estimatedInstallment.value = plan[0]?.installment || 0
   maxCapacity.value = (customer.value?.customerMonthlySalary || 0) / 3
@@ -1306,11 +1401,7 @@ async function getLogoBase64ForPdf() {
 
 async function previewReceipt(amortization) {
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
+    const pdfMake = await getPdfMake()
 
     const company = companyStore.company || {}
     const cust = customer.value || {}
@@ -1475,10 +1566,8 @@ function confirmDeleteLoan(loan) {
 
 function openPaymentModal(installment) {
   currentPaymentInstallment.value = installment
-  // Valor restante da prestação (APENAS capital+juros, sem juros de mora)
-  const installmentValue = installment.installment || 0
-  const alreadyPaid = installment.paidAmount || 0
-  const remainingAmount = Math.round(Math.max(0, installmentValue - alreadyPaid) * 100) / 100
+  // Preencher com o total devido, incluindo juros de mora.
+  const remainingAmount = Math.round(installmentTotalDue(installment) * 100) / 100
   
   paymentForm.value = {
     paymentDate: new Date().toISOString().split('T')[0],
@@ -1489,6 +1578,7 @@ function openPaymentModal(installment) {
     phoneNumber: customer.value?.customerPhone || '',
     staffName: authStore.userName || ''
   }
+  paymentAmountIsAutomatic.value = true
   showPaymentModal.value = true
 }
 
@@ -1549,7 +1639,7 @@ async function printCreditExtract() {
               { text: `${((parseFloat(loan.interestRate) || 0) * 100).toFixed(1)}%`, fontSize: 9, bold: true, alignment: 'center' },
               { text: `${loan.numberOfInstallments || 0}`, fontSize: 9, bold: true, alignment: 'center' },
               { text: formatMoney(amortTotalInterest.value), fontSize: 9, bold: true, alignment: 'center' },
-              { text: formatMoney(amortTotalDebt.value), fontSize: 9, bold: true, alignment: 'center', color: '#c62828' }
+              { text: formatMoney(amortTotalDebtWithLateInterest.value), fontSize: 9, bold: true, alignment: 'center', color: '#c62828' }
             ]
           ]
         },
@@ -1584,41 +1674,39 @@ async function printCreditExtract() {
       }
     ]
 
-    // Section: Plano de amortização com coluna Saldo
-    // Calcular saldo corrente para cada prestação
-    let saldoCorrente = parseFloat(loan.amount) || 0
+    // Section: Plano de amortização
     const installmentsBody = allAmorts.map(row => {
       const status = Number(row.status) === 1 ? 'Pago' : Number(row.status) === -1 ? 'Parcial' : 'Pendente'
       const statusColor = Number(row.status) === 1 ? '#2e7d32' : Number(row.status) === -1 ? '#f57c00' : '#333'
-      const paidAmount = row.paidAmount || 0
-      const discount = paidAmount > 0 && paidAmount < row.installment ? row.installment - paidAmount : 0
+      const discount = Number(row.discountAmount) || 0
       
-      // Saldo = saldo anterior - amortização (capital)
-      const saldo = Math.max(0, saldoCorrente - (row.amortization || 0))
-      saldoCorrente = saldo
+      const lateFee = Number(row.status) === 1
+        ? Number(row.chargedLatePaymentInterest || 0)
+        : Number(row.latePaymentInterest || 0)
+      const lateDays = Number(row.status) === 1
+        ? Number(row.chargedLateDays || 0)
+        : Number(row.lateDays || 0)
+      const totalToPay = installmentHistoricalTotal(row)
       
       return [
         { text: row.installmentOrder || '', fontSize: 7, alignment: 'center' },
         { text: formatDateShort(row.dueDate), fontSize: 7, alignment: 'center' },
-        { text: formatMoney(row.amortization), fontSize: 7, alignment: 'right' },
-        { text: formatMoney(row.rateAmount), fontSize: 7, alignment: 'right' },
         { text: formatMoney(row.installment), fontSize: 7, alignment: 'right', bold: true },
-        { text: formatMoney(saldo), fontSize: 7, alignment: 'right', color: saldo > 0 ? '#c62828' : '#2e7d32' },
-        { text: formatMoney(paidAmount), fontSize: 7, alignment: 'right', color: paidAmount > 0 ? '#2e7d32' : '#999' },
+        { text: `${lateDays}`, fontSize: 7, alignment: 'center', color: lateDays > 0 ? '#c62828' : '#666' },
+        { text: formatMoney(lateFee), fontSize: 7, alignment: 'right', color: lateFee > 0 ? '#c62828' : '#999' },
         { text: discount > 0 ? '-' + formatMoney(discount) : '—', fontSize: 7, alignment: 'right', color: discount > 0 ? '#f57c00' : '#999' },
+        { text: formatMoney(totalToPay), fontSize: 7, alignment: 'right', bold: true, color: totalToPay > 0 ? '#c62828' : '#2e7d32' },
         { text: status, fontSize: 7, bold: true, color: statusColor, alignment: 'center' }
       ]
     })
 
     installmentsBody.push([
-      { text: 'TOTAIS', fontSize: 7, bold: true, colSpan: 2, color: '#1a237e' }, {},
-      { text: formatMoney(parseFloat(loan.amount) || 0), fontSize: 7, alignment: 'right', bold: true },
-      { text: formatMoney(amortTotalInterest.value), fontSize: 7, alignment: 'right', bold: true },
-      { text: formatMoney(amortTotalDebt.value), fontSize: 7, alignment: 'right', bold: true },
-      { text: '0,00 MT', fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
-      { text: formatMoney(amortTotalPaid.value), fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
+      { text: 'TOTAIS', fontSize: 7, bold: true, colSpan: 3, color: '#1a237e' }, {}, {},
+      { text: formatMoney(amortTotalDebtWithLateInterest.value), fontSize: 7, alignment: 'right', bold: true },
       { text: '', fontSize: 7 },
-      { text: '', fontSize: 7 }
+      { text: formatMoney(allAmorts.reduce((sum, row) => sum + Number(row.chargedLatePaymentInterest || row.latePaymentInterest || 0), 0)), fontSize: 7, alignment: 'right', bold: true, color: '#c62828' },
+      { text: '', fontSize: 7 },
+      { text: formatMoney(allAmorts.reduce((sum, row) => sum + installmentHistoricalTotal(row), 0)), fontSize: 7, alignment: 'right', bold: true, color: '#c62828' }
     ])
 
     const amortSection = [
@@ -1626,17 +1714,16 @@ async function printCreditExtract() {
       {
         table: {
           headerRows: 1,
-          widths: ['auto', 'auto', '*', '*', '*', '*', '*', '*', 'auto'],
+          widths: ['auto', 'auto', '*', 'auto', 'auto', 'auto', '*', 'auto'],
           body: [
             [
               { text: 'Ordem', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
               { text: 'Vencimento', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
-              { text: 'Capital', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Juros', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
               { text: 'Prestação', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Saldo', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Pago', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
+              { text: 'Dias de mora', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
+              { text: 'Mora', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
               { text: 'Desconto', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
+              { text: 'Total a pagar', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
               { text: 'Estado', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' }
             ],
             ...installmentsBody
@@ -1669,6 +1756,14 @@ async function printCreditExtract() {
 
 async function submitPayment() {
   if (!currentPaymentInstallment.value || !amortLoan.value) return
+  if (paymentExcessAmount.value > 0 && !nextPaymentInstallment.value) {
+    $q.notify({ type: 'negative', message: 'Pagamento rejeitado: não existe prestação seguinte para receber o troco.', position: 'top' })
+    return
+  }
+  if (paymentExcessAmount.value > 0 && paymentExcessAmount.value > installmentRemaining(nextPaymentInstallment.value)) {
+    $q.notify({ type: 'negative', message: 'Pagamento rejeitado: o troco excede o saldo da prestação seguinte.', position: 'top' })
+    return
+  }
   paymentSaving.value = true
   try {
     let receiptUrl = ''
@@ -1685,20 +1780,18 @@ async function submitPayment() {
       if (uploadData.success) receiptUrl = uploadData.documentFileUrl || uploadData.imageUrl || ''
     }
 
-    // Calculate late payment interest if overdue
-    const today = new Date()
-    const dueDate = new Date(currentPaymentInstallment.value.dueDate)
-    const daysOverdue = Math.max(0, Math.floor((today - dueDate) / (1000 * 60 * 60 * 24)))
-    // Juros de mora = prestação × (forfeit / 100) × dias em atraso
-    const dailyRate = (companyStore.company?.forfeit || 0.1) / 100
-    const latePaymentInterest = daysOverdue > 0 ? daysOverdue * dailyRate * (currentPaymentInstallment.value.installment || 0) : 0
+    const latePaymentInterest = paymentLateInterest.value
+    const amountReceived = Math.min(
+      Math.max(0, Number(paymentForm.value.amountReceived) || 0),
+      installmentRemaining(currentPaymentInstallment.value)
+    )
 
     await paymentsStore.createPayment({
       companyId: authStore.companyId,
       accountNumber: amortLoan.value.accountNumber,
       amortizationLoanId: currentPaymentInstallment.value.id,
       loanId: amortLoan.value.id,
-      amount: paymentForm.value.amountReceived,
+      amount: amountReceived,
       latePaymentInterest,
       interestRateAmount: currentPaymentInstallment.value.rateAmount || 0,
       phoneNumber: paymentForm.value.phoneNumber || customer.value?.customerPhone || '',
@@ -1710,9 +1803,31 @@ async function submitPayment() {
       paymentDate: paymentForm.value.paymentDate
     })
 
+    const carryAmount = paymentExcessAmount.value
+    if (carryAmount > 0 && nextPaymentInstallment.value) {
+      const next = nextPaymentInstallment.value
+      const nextAmount = Math.min(carryAmount, installmentRemaining(next))
+      await paymentsStore.createPayment({
+        companyId: authStore.companyId,
+        accountNumber: amortLoan.value.accountNumber,
+        amortizationLoanId: next.id,
+        loanId: amortLoan.value.id,
+        amount: nextAmount,
+        latePaymentInterest: installmentLateInterest(next),
+        interestRateAmount: next.rateAmount || 0,
+        phoneNumber: paymentForm.value.phoneNumber || customer.value?.customerPhone || '',
+        tranzactionReference: paymentForm.value.paymentReference,
+        paymentMethod: paymentForm.value.paymentMethod,
+        description: `Troco aplicado na prestação ${next.installmentOrder}`,
+        receiptUrl,
+        staffName: paymentForm.value.staffName || '',
+        paymentDate: paymentForm.value.paymentDate
+      })
+    }
+
     const installmentOrder = currentPaymentInstallment.value.installmentOrder
-    const isPartial = paymentForm.value.amountReceived < (currentPaymentInstallment.value.installment || 0)
-    const remaining = (currentPaymentInstallment.value.installment || 0) - paymentForm.value.amountReceived
+    const isPartial = paymentForm.value.amountReceived < installmentTotalDue(currentPaymentInstallment.value)
+    const remaining = Math.max(0, installmentTotalDue(currentPaymentInstallment.value) - paymentForm.value.amountReceived)
     
     if (isPartial) {
       logPartialPayment(customer.value?.customerName, paymentForm.value.amountReceived, installmentOrder, remaining)
@@ -1756,26 +1871,22 @@ async function submitGlobalPayment() {
 
     // Pay each pending installment
     for (const installment of pendingInstallments.value) {
-      const today = new Date()
-      const dueDate = new Date(installment.dueDate)
-      const daysOverdue = Math.max(0, Math.floor((today - dueDate) / (1000 * 60 * 60 * 24)))
-
       // Calculate individual amount with discount
-      let installmentAmount = installment.installment || 0
+      let installmentAmount = installmentRemaining(installment)
       if (globalPaymentForm.value.applyDiscount) {
+        const totalDue = installmentTotalDue(installment)
         if (globalPaymentForm.value.discountType === 'percentage') {
-          installmentAmount = installmentAmount * (1 - (globalPaymentForm.value.discountPercentage || 0) / 100)
+          installmentAmount = totalDue * (1 - (globalPaymentForm.value.discountPercentage || 0) / 100)
         } else {
           const proportionalDiscount = (globalPaymentForm.value.discountFixed || 0) / pendingInstallments.value.length
-          installmentAmount = Math.max(0, installmentAmount - proportionalDiscount)
+          installmentAmount = Math.max(0, totalDue - proportionalDiscount)
         }
+        installmentAmount = Math.max(0, installmentAmount - installmentLateInterest(installment))
         // Arredondar a 2 casas decimais para evitar floating point
         installmentAmount = Math.round(installmentAmount * 100) / 100
       }
 
-      // Juros de mora = prestação × (forfeit / 100) × dias em atraso
-      const forfeitRate = (companyStore.company?.forfeit || 0.1) / 100
-      const dailyLateInterest = daysOverdue > 0 ? daysOverdue * forfeitRate * (installment.installment || 0) : 0
+      const dailyLateInterest = Number(installment.latePaymentInterest || 0)
 
       await paymentsStore.createPayment({
         companyId: authStore.companyId,
@@ -1978,7 +2089,7 @@ async function sendCredentials() {
 }
 
 
-function getLoanStatusColor(status) { const s = Number(status); return { 0: 'orange', 1: 'positive', '-1': 'negative', 3: 'grey' }[s] || 'grey' }
+function getLoanStatusColor(status) { const s = Number(status); return { 0: 'orange', 1: 'positive', '-1': 'negative', 3: 'positive' }[s] || 'grey' }
 function getLoanStatusText(status) { const s = Number(status); return { 0: 'Pendente', 1: 'Activo', '-1': 'Rejeitado', 3: 'Terminado' }[s] || 'Desconhecido' }
 function getStatusColor(status) { return (status === 1 || status === 'ativo') ? 'positive' : (status === 0 || status === 'inativo') ? 'grey' : 'blue' }
 function getStatusText(status) { return (status === 1 || status === 'ativo') ? 'Activo' : (status === 0 || status === 'inativo') ? 'Inactivo' : 'Activo' }
@@ -1992,8 +2103,20 @@ async function fetchLoans() {
       await loansStore.fetchLoans(companyId)
       loansStore.loans = loansStore.loans.filter(l => String(l.accountNumber) === String(route.params.accountNumber))
       fetchLoanMetrics(companyId)
+      await fetchLoanAppliedLateInterest()
     }
   } catch { /* silent */ }
+}
+
+async function fetchLoanAppliedLateInterest() {
+  const metrics = {}
+  await Promise.all(customerLoans.value.map(async (loan) => {
+    try {
+      const { data } = await api.get(`/api/tranzaction/loan/${loan.id}/late-interest`)
+      metrics[Number(loan.id)] = Number(data?.result?.totalLateInterest || 0)
+    } catch { metrics[Number(loan.id)] = 0 }
+  }))
+  loanAppliedLateInterest.value = metrics
 }
 
 // Métricas por crédito a partir do endpoint agregado de créditos: usa o mapa
@@ -2026,6 +2149,8 @@ onMounted(async () => {
     try {
       await settingsStore.fetchUsers(authStore.companyId)
       managerOptions.value = settingsStore.users.filter(u => u.userRole === 1 || u.userRole === 3).map(u => ({ label: u.name, value: u.id }))
+      const currentUser = managerOptions.value.find(manager => Number(manager.value) === Number(authStore.user?.id))
+      if (!loanForm.value.creditManager && currentUser) loanForm.value.creditManager = currentUser.value
     } catch { /* silent */ }
 
     try {
@@ -2041,6 +2166,18 @@ onMounted(async () => {
 </script>
 
 <style lang="scss" scoped>
+.payment-excess-banner {
+  margin: 8px 0 4px;
+  padding: 10px 14px;
+  line-height: 1.45;
+  font-size: 12px;
+  font-weight: 500;
+
+  :deep(.q-banner__avatar) {
+    padding-right: 10px;
+  }
+}
+
 .mini-stat { background: rgba(0,0,0,0.02); border-radius: 8px; padding: 8px 12px; border: 1px solid rgba(0,0,0,0.06); }
 body.body--dark .mini-stat { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
 .capacity-strip { background: rgba(0,0,0,0.02); border-radius: 8px; padding: 12px; border: 1px solid rgba(0,0,0,0.06); }
@@ -2053,6 +2190,24 @@ body.body--dark .summary-card { background: rgba(255,255,255,0.03); border-color
 }
 .loan-item { border-radius: 8px; margin-bottom: 4px; transition: background 0.15s; &:hover { background: rgba(0,0,0,0.03); } }
 body.body--dark .loan-item:hover { background: rgba(255,255,255,0.04); }
+.loan-card-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.loan-history-card { display: flex; flex-direction: column; min-width: 0; border-radius: 10px; overflow: hidden; transition: box-shadow 0.15s, transform 0.15s; &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); } }
+.loan-card-header { padding: 14px 12px 10px; background: linear-gradient(135deg, #eef2f7 0%, #dce5ef 52%, #c5d2df 100%); }
+.loan-card-amount { font-size: 19px; font-weight: 700; line-height: 1.2; margin-bottom: 6px; }
+.loan-card-body { flex: 1; padding: 14px 14px 12px; }
+.loan-card-debt { text-align: center; margin-bottom: 16px; }
+.loan-card-debt span, .loan-card-dates span { display: block; color: #6b7280; font-size: 10px; line-height: 1.2; margin-bottom: 4px; }
+.loan-card-debt strong { display: block; font-size: 18px; line-height: 1.2; color: #b91c1c; }
+.loan-card-debt small { display: block; margin-top: 5px; color: #b45309; font-size: 10px; line-height: 1.25; }
+.loan-card-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.loan-card-dates { text-align: left; border-top: 1px solid rgba(107,114,128,0.16); padding-top: 10px; }
+.loan-card-dates strong { display: block; font-size: 11px; line-height: 1.2; }
+.loan-card-footer { min-height: 46px; padding: 6px 10px; border-top: 1px solid rgba(107,114,128,0.16); }
+@media (min-width: 700px) { .loan-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .loan-card-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+body.body--dark .loan-card-header { background: linear-gradient(135deg, #334155 0%, #475569 52%, #64748b 100%); }
+body.body--dark .loan-card-dates { border-color: rgba(255,255,255,0.12); }
+body.body--dark .loan-card-footer { border-color: rgba(255,255,255,0.12); }
 
 // ==================== AMORTIZATION MODAL - MODERN DESIGN ====================
 .amort-modal-card {

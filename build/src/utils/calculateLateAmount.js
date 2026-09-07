@@ -5,8 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.totalsOfInstallments = exports.installmentPanification = void 0;
 const moment_1 = __importDefault(require("moment"));
-const today = (0, moment_1.default)().format("YYYY-MM-DD");
-const calculatePendingDays = (installment) => {
+const calculatePendingDays = (installment, referenceDate) => {
+    const today = referenceDate ? (0, moment_1.default)(referenceDate).startOf("day") : (0, moment_1.default)().startOf("day");
     const diffDays = (0, moment_1.default)(today).diff((0, moment_1.default)(installment.dueDate), "days");
     // Retorna apenas dias positivos (atraso), caso contrário retorna 0
     return diffDays > 0 ? diffDays : 0;
@@ -22,7 +22,8 @@ const calculatePendingDays = (installment) => {
  * @param fine - Taxa diária de mora em percentagem (ex: 2 para 2%/dia)
  * @returns Valor total dos juros de mora acumulados
  */
-const latePaymentInterest = (installment, fine) => {
+const latePaymentInterest = (installment, fine, referenceDate) => {
+    const today = referenceDate ? (0, moment_1.default)(referenceDate).startOf("day") : (0, moment_1.default)().startOf("day");
     const diffDays = (0, moment_1.default)(today).diff((0, moment_1.default)(installment.dueDate), "days");
     // Calcula juros de mora se atrasada (dias positivos)
     // Status 1 = totalmente pago (sem juros)
@@ -32,11 +33,15 @@ const latePaymentInterest = (installment, fine) => {
         return 0;
     }
     // Converte a percentagem para taxa decimal: ex: 2 → 0.02
-    const dailyRate = fine / 100;
-    const dailyPenalty = parseFloat(installment.installment) * dailyRate;
+    const dailyRate = Number(fine || 0) / 100;
+    // A mora incide sobre o valor integral da prestação vencida.
+    // O pagamento parcial reduz o saldo da prestação, mas não retroage
+    // o valor da mora já acumulada até à data do pagamento.
+    const installmentAmount = Math.max(0, parseFloat(installment.installment) || 0);
+    const dailyPenalty = installmentAmount * dailyRate;
     return Math.round(dailyPenalty * diffDays * 100) / 100;
 };
-const installmentPanification = (installments, forfeit) => {
+const installmentPanification = (installments, forfeit, referenceDate) => {
     const installmentPlan = [];
     // Calculate total loan amount from all installments
     const totalLoanAmount = installments.reduce((sum, el) => sum + (parseFloat(el.installment) || 0), 0);
@@ -59,8 +64,8 @@ const installmentPanification = (installments, forfeit) => {
             paidAmount: parseFloat(element.paidAmount) || 0,
             // Saldo devedor calculado dinamicamente (Sistema Francês)
             remainingBalance: Math.max(0, Math.round(calculatedRemainingBalance * 100) / 100),
-            lateDays: calculatePendingDays(element),
-            latePaymentInterest: latePaymentInterest(element, forfeit),
+            lateDays: calculatePendingDays(element, referenceDate),
+            latePaymentInterest: latePaymentInterest(element, forfeit, referenceDate),
             dueDate: element.dueDate,
             status: element.status,
             createdAt: element.createdAt,

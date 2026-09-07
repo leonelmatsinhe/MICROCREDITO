@@ -12,6 +12,10 @@ export const DebtModel = db.define("debts", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  customerId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
   accountNumber: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -25,7 +29,7 @@ export const DebtModel = db.define("debts", {
     allowNull: true,
   },
   debtAmount: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   updatedBy: {

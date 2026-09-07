@@ -18,6 +18,10 @@ exports.SmsQueueModel = db_1.db.define("sms_queue", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: true,
     },
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+    },
     loanId: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: true,

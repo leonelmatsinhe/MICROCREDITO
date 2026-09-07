@@ -23,11 +23,14 @@ exports.GuarateeAssessmentModel = db_1.db.define("loan_guarantees", {
         allowNull: false,
     },
     purchaseAmount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: true,
     },
     status: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: true,
     },
+}, {
+    tableName: "loan_guarantees",
+    freezeTableName: true,
 });

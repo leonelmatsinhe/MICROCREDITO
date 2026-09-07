@@ -26,20 +26,24 @@ exports.AmorizationLoanModel = db_1.db.define("amortization_loan", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
     amortization: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     rateAmount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     installment: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     remainingBalance: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: true,
         comment: "Saldo devedor após o pagamento desta prestação (Sistema Francês)",
     },
@@ -52,7 +56,7 @@ exports.AmorizationLoanModel = db_1.db.define("amortization_loan", {
         allowNull: false,
     },
     paidAmount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: true,
         defaultValue: 0,
         comment: "Valor total pago nesta prestação (para pagamentos parciais)",

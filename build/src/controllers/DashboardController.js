@@ -21,6 +21,8 @@ const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanMode
 const DebtModel_1 = require("../database/models/DebtModel");
 const UserModel_1 = require("../database/models/UserModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
+const CompanyModel_1 = require("../database/models/CompanyModel");
+const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const parseDateSafe = (value) => {
     if (!value)
         return null;
@@ -145,6 +147,8 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             ],
             order: [["id", "DESC"]],
         });
+        const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
+        const forfeit = toNumber(company === null || company === void 0 ? void 0 : company.getDataValue("forfeit"));
         const fromMoment = from ? (0, moment_1.default)(String(from)).startOf("day") : null;
         const toMoment = to ? (0, moment_1.default)(String(to)).endOf("day") : null;
         const loanIds = loans.map((l) => l.id);
@@ -237,14 +241,15 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             }
             return toNumber(a.installment);
         };
-        const overdueRows = openInstallments
+        const calculatedInstallments = (0, calculateLateAmount_1.installmentPanification)(amortizations, forfeit);
+        const overdueRows = calculatedInstallments
             .map((a) => {
             const due = parseDateSafe(a.dueDate);
             const daysOverdue = due ? now.diff(due, "days") : 0;
-            return Object.assign(Object.assign({}, a), { daysOverdue: daysOverdue > 0 ? daysOverdue : 0, amountDue: installmentExposure(a) });
+            return Object.assign(Object.assign({}, a), { daysOverdue: daysOverdue > 0 ? daysOverdue : 0, amountDue: installmentExposure(a) + toNumber(a.latePaymentInterest) });
         })
             .filter((a) => a.daysOverdue > 0);
-        const outstandingPortfolio = openInstallments.reduce((sum, a) => sum + installmentExposure(a), 0);
+        const outstandingPortfolio = calculatedInstallments.reduce((sum, a) => sum + installmentExposure(a), 0);
         const overdueAmount = overdueRows.reduce((sum, a) => sum + toNumber(a.amountDue), 0);
         const par30Amount = overdueRows
             .filter((a) => a.daysOverdue > 30)
@@ -267,7 +272,7 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         const rejectedAmount = rejectedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
         // Capital recuperado: soma do capital das prestações pagas (valor pago - juros normais - juros de mora)
         const totalCollected = transactions.reduce((sum, t) => sum + toNumber(t.amount), 0);
-        const capitalRecovered = transactions.reduce((sum, t) => sum + (toNumber(t.amount) - toNumber(t.interestRateAmount) - toNumber(t.latePaymentInterest)), 0);
+        const capitalRecovered = transactions.reduce((sum, t) => sum + Math.max(0, toNumber(t.amount) - toNumber(t.interestRateAmount)), 0);
         const totalLateInterest = transactions.reduce((sum, t) => sum + toNumber(t.latePaymentInterest), 0);
         const totalInterestCollected = transactions.reduce((sum, t) => sum + toNumber(t.interestRateAmount), 0);
         // Total de descontos aplicados (pagamento antecipado)
@@ -349,6 +354,7 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 accountNumber: a.accountNumber,
                 dueDate: a.dueDate,
                 daysOverdue: a.daysOverdue,
+                latePaymentInterest: Number(toNumber(a.latePaymentInterest).toFixed(2)),
                 amountDue: Number(toNumber(a.amountDue).toFixed(2)),
                 managerId,
                 managerName: managerNameMap[managerId] || `Gestor #${managerId}`,
@@ -371,6 +377,8 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     liquidatedAmount: Number(liquidatedAmount.toFixed(2)),
                     rejectedAmount: Number(rejectedAmount.toFixed(2)),
                     totalCollected: Number(totalCollected.toFixed(2)),
+                    // Reconciliação: dinheiro efectivamente recebido na tesouraria.
+                    cashReceived: Number(totalCollected.toFixed(2)),
                     // Capital recuperado: soma do capital das prestações pagas (valor pago - juros)
                     capitalRecovered: Number(capitalRecovered.toFixed(2)),
                     // Total com Juros: crédito desembolsado com seus juros (base de recuperação)
@@ -380,8 +388,8 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     totalDiscount: Number(totalDiscount.toFixed(2)),
                     // Total de juros recebidos: juros normais + juros de mora - descontos aplicados
                     totalInterestReceived: Number(totalInterestReceived.toFixed(2)),
-                    // Total Reembolsado: total do dinheiro reembolsado no período
-                    totalReimbursed: Number(totalCollected.toFixed(2)),
+                    // Total Reembolsado: capital + juros normais + mora aplicada.
+                    totalReimbursed: Number((capitalRecovered + totalInterestCollected + totalLateInterest - totalDiscount).toFixed(2)),
                     totalLateInterest: Number(totalLateInterest.toFixed(2)),
                     recoveryBaseAmount: Number(recoveryBaseAmount.toFixed(2)),
                     recoveryCollectedAmount: Number(totalRecoveryCollected.toFixed(2)),

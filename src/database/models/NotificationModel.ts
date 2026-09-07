@@ -21,6 +21,14 @@ export const NotificationModel = db.define("notifications", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  userId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  customerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   title: {
     type: DataTypes.STRING,
     allowNull: false,

@@ -64,6 +64,7 @@ import {
   findPaginatedTransactions,
   findAllPaymentsOverview,
   getCustomerTranzactions,
+  getLoanLateInterest,
   addTranzaction,
   updateTranzaction,
 } from "./controllers/TranzactionController";
@@ -366,6 +367,7 @@ routes.post("/api/account", createAccount);
 
 // Tranzaction Routes
 routes.get("/api/tranzaction", findAlltranzactions);
+routes.get("/api/tranzaction/loan/:id/late-interest", getLoanLateInterest);
 routes.get("/api/tranzaction/:id", getCustomerTranzactions);
 routes.get("/api/monthllyTransactions/:id", findTransactionsByCompany);
 routes.get("/api/payments/:id/paginated", findPaginatedTransactions);

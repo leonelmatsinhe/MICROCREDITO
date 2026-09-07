@@ -18,12 +18,7 @@ function formatDateBR(date) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-/**
- * Formatar valor em MZN
- */
-export function formatMoney(value) {
-  return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(value || 0)
-}
+export { formatMoney } from './formatters'
 
 /**
  * Converte o logo da empresa em data-URL base64 para o pdfmake.

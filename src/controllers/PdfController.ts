@@ -8,7 +8,9 @@ const customerContract = async (req: Request, res: Response) => {
     const { companyId, accountNumber, loanId } = req.params;
 
     const company = await CompanyModel.findOne({ where: { id: companyId, }, });
-    const customer = await CustomerModel.findOne({ where: { accountNumber } })
+    const customer = await CustomerModel.findOne({
+        where: { companyId, accountNumber: String(accountNumber) },
+    });
     const amortization = await AmorizationLoanModel.findAll({ where: { loanId } })
 
     if (company != null && customer != null && amortization != null) {

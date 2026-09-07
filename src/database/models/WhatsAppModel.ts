@@ -20,6 +20,10 @@ export const WhatsAppModel = db.define("whatsapp_messages", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  customerId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   customerName: {
     type: DataTypes.STRING,
     allowNull: true,

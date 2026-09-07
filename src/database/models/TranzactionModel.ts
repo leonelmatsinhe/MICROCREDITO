@@ -24,16 +24,25 @@ export const TranzactionModel = db.define("tranzactions", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
-  amount: {
-    type: DataTypes.FLOAT,
+  customerId: {
+    type: DataTypes.INTEGER,
     allowNull: false,
   },
+  amount: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: false,
+  },
+  totalAmount: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: true,
+    comment: "Valor total recebido: base + juros de mora - desconto",
+  },
   latePaymentInterest: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   interestRateAmount: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   phoneNumber: {
@@ -74,7 +83,7 @@ export const TranzactionModel = db.define("tranzactions", {
     defaultValue: false,
   },
   discountAmount: {
-    type: DataTypes.FLOAT,
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     defaultValue: 0,
   },

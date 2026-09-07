@@ -7,6 +7,8 @@ import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { DebtModel } from "../database/models/DebtModel";
 import { UserModel } from "../database/models/UserModel";
 import { CustomerModel } from "../database/models/CustomerModel";
+import { CompanyModel } from "../database/models/CompanyModel";
+import { installmentPanification } from "../utils/calculateLateAmount";
 
 const parseDateSafe = (value: any) => {
   if (!value) return null;
@@ -134,6 +136,8 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       ],
       order: [["id", "DESC"]],
     });
+    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
+    const forfeit = toNumber(company?.getDataValue("forfeit"));
     const fromMoment = from ? moment(String(from)).startOf("day") : null;
     const toMoment = to ? moment(String(to)).endOf("day") : null;
 
@@ -236,19 +240,20 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       return toNumber(a.installment);
     };
 
-    const overdueRows = openInstallments
+    const calculatedInstallments = installmentPanification(amortizations, forfeit);
+    const overdueRows = calculatedInstallments
       .map((a: any) => {
         const due = parseDateSafe(a.dueDate);
         const daysOverdue = due ? now.diff(due, "days") : 0;
         return {
           ...a,
           daysOverdue: daysOverdue > 0 ? daysOverdue : 0,
-          amountDue: installmentExposure(a),
+          amountDue: installmentExposure(a) + toNumber(a.latePaymentInterest),
         };
       })
       .filter((a: any) => a.daysOverdue > 0);
 
-    const outstandingPortfolio = openInstallments.reduce(
+    const outstandingPortfolio = calculatedInstallments.reduce(
       (sum: number, a: any) => sum + installmentExposure(a),
       0
     );
@@ -296,7 +301,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       0
     );
     const capitalRecovered = transactions.reduce(
-      (sum: number, t: any) => sum + (toNumber(t.amount) - toNumber(t.interestRateAmount) - toNumber(t.latePaymentInterest)),
+      (sum: number, t: any) => sum + Math.max(0, toNumber(t.amount) - toNumber(t.interestRateAmount)),
       0
     );
     const totalLateInterest = transactions.reduce(
@@ -399,6 +404,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
           accountNumber: a.accountNumber,
           dueDate: a.dueDate,
           daysOverdue: a.daysOverdue,
+          latePaymentInterest: Number(toNumber(a.latePaymentInterest).toFixed(2)),
           amountDue: Number(toNumber(a.amountDue).toFixed(2)),
           managerId,
           managerName: managerNameMap[managerId] || `Gestor #${managerId}`,
@@ -426,6 +432,8 @@ const getDashboardOverview = async (req: Request, res: Response) => {
           rejectedAmount: Number(rejectedAmount.toFixed(2)),
 
           totalCollected: Number(totalCollected.toFixed(2)),
+          // Reconciliação: dinheiro efectivamente recebido na tesouraria.
+          cashReceived: Number(totalCollected.toFixed(2)),
           // Capital recuperado: soma do capital das prestações pagas (valor pago - juros)
           capitalRecovered: Number(capitalRecovered.toFixed(2)),
           // Total com Juros: crédito desembolsado com seus juros (base de recuperação)
@@ -435,8 +443,8 @@ const getDashboardOverview = async (req: Request, res: Response) => {
           totalDiscount: Number(totalDiscount.toFixed(2)),
           // Total de juros recebidos: juros normais + juros de mora - descontos aplicados
           totalInterestReceived: Number(totalInterestReceived.toFixed(2)),
-          // Total Reembolsado: total do dinheiro reembolsado no período
-          totalReimbursed: Number(totalCollected.toFixed(2)),
+          // Total Reembolsado: capital + juros normais + mora aplicada.
+          totalReimbursed: Number((capitalRecovered + totalInterestCollected + totalLateInterest - totalDiscount).toFixed(2)),
           totalLateInterest: Number(totalLateInterest.toFixed(2)),
           recoveryBaseAmount: Number(recoveryBaseAmount.toFixed(2)),
           recoveryCollectedAmount: Number(totalRecoveryCollected.toFixed(2)),

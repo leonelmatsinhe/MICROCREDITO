@@ -81,7 +81,7 @@ const chartOptions = {
       padding: 10,
       cornerRadius: 8,
       callbacks: {
-        label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('pt-MZ')} MT`
+        label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('pt-MZ')} MZN`
       }
     }
   },

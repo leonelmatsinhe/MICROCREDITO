@@ -321,6 +321,12 @@
                     <div v-if="inst.status !== 1" class="text-right">
                       <div class="text-caption text-grey-6">Prestação</div>
                       <div class="text-subtitle1 text-weight-bold text-primary">{{ formatMoney(inst.installment) }}</div>
+                      <div v-if="Number(inst.latePaymentInterest) > 0" class="text-caption text-negative">
+                        Mora: {{ formatMoney(inst.latePaymentInterest) }}
+                      </div>
+                      <div v-if="Number(inst.latePaymentInterest) > 0" class="text-caption text-negative text-weight-bold">
+                        Total: {{ formatMoney(Math.max(0, Number(inst.installment || 0) - Number(inst.paidAmount || 0)) + Number(inst.latePaymentInterest || 0)) }}
+                      </div>
                     </div>
                   </div>
 
@@ -586,7 +592,7 @@
               outlined
               type="number"
               :min="paymentMinAmount || 0"
-              :max="paymentMaxAmount || 0"
+              :max="paymentAllowedMax || 0"
               step="0.01"
               class="q-mb-sm"
               :error="amountError && Number(paymentAmount) > 0"
@@ -597,8 +603,14 @@
               </template>
             </q-input>
             <div class="text-caption text-grey-6 q-mb-md">
-              Pode pagar entre <strong>15%</strong> da prestação ({{ formatMoney(paymentMinAmount) }}) e o saldo em falta ({{ formatMoney(paymentMaxAmount) }}).
+              Pode pagar entre <strong>15%</strong> da prestação ({{ formatMoney(paymentMinAmount) }}) e {{ formatMoney(paymentAllowedMax) }} MZN.
             </div>
+            <q-banner v-if="paymentExcessAmount > 0" class="bg-info text-white q-mb-md payment-excess-banner" rounded>
+              <template v-slot:avatar><q-icon name="forward" size="24px" /></template>
+              O valor excede esta prestação em {{ formatMoney(paymentExcessAmount) }}.
+              <span v-if="nextPaymentInstallment"> O excedente será aplicado à prestação seguinte.</span>
+              <span v-else> Não existe prestação seguinte para receber o troco.</span>
+            </q-banner>
           </template>
         </q-card-section>
 
@@ -733,7 +745,7 @@
             <div class="col-12">
               <q-input
                 v-model.number="loanRequest.amount"
-                label="Montante pretendido (MTn)"
+                label="Montante pretendido (MZN)"
                 dense
                 outlined
                 type="number"
@@ -884,17 +896,32 @@ const paymentAlreadyPaid = computed(() => Number(selectedInstallment.value?.paid
 const paymentRemaining = computed(() =>
   Math.max(0, Math.round((paymentInstallmentValue.value - paymentAlreadyPaid.value) * 100) / 100)
 )
+const paymentLateInterest = computed(() => Number(selectedInstallment.value?.latePaymentInterest) || 0)
+const paymentTotalDue = computed(() => Math.round((paymentRemaining.value + paymentLateInterest.value) * 100) / 100)
 const paymentMinAmount = computed(() => {
   if (paymentRemaining.value <= 0) return 0
   const min15 = Math.round(paymentInstallmentValue.value * 0.15 * 100) / 100
   return Math.min(paymentRemaining.value, min15)
 })
 const paymentMaxAmount = computed(() => paymentRemaining.value)
+const nextPaymentInstallment = computed(() => {
+  const current = selectedInstallment.value
+  if (!current) return null
+  const installments = [...filteredInstallments.value].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+  const index = installments.findIndex(item => Number(item.id) === Number(current.id))
+  return installments.slice(index + 1).find(item => Number(item.status) !== 1) || null
+})
+const nextPaymentRemaining = computed(() => nextPaymentInstallment.value
+  ? Math.max(0, Number(nextPaymentInstallment.value.installment || 0) - Number(nextPaymentInstallment.value.paidAmount || 0))
+  : 0
+)
+const paymentAllowedMax = computed(() => Math.round((paymentTotalDue.value + nextPaymentRemaining.value) * 100) / 100)
+const paymentExcessAmount = computed(() => Math.max(0, Math.round((Number(paymentAmount.value) - paymentTotalDue.value) * 100) / 100))
 const isValidMpesaPhone = computed(() => /^258(84|85)\d{7}$/.test(paymentPhone.value))
 const amountError = computed(() => {
   const v = Number(paymentAmount.value)
   if (!(v > 0) || paymentMaxAmount.value <= 0) return false
-  return v < paymentMinAmount.value - 0.001 || v > paymentMaxAmount.value + 0.001
+  return v < paymentMinAmount.value - 0.001 || v > paymentAllowedMax.value + 0.001
 })
 // Apenas o M-Pesa submete na BD; a transferência é informativa (offline)
 const canSubmitPayment = computed(() => {
@@ -991,8 +1018,8 @@ const kpis = computed(() => [
 // ---- Folha de pagamento (bottom sheet no telemóvel) ----
 const paymentSheetStyle = computed(() =>
   $q.screen.lt.sm
-    ? { borderRadius: '18px 18px 0 0', maxWidth: '100vw', width: '100%' }
-    : { borderRadius: '16px', width: '100%', maxWidth: '460px' }
+    ? { borderRadius: '18px 18px 0 0', maxWidth: 'calc(100vw - 32px)', width: 'calc(100vw - 32px)', margin: '0 16px' }
+    : { borderRadius: '16px', width: '100%', maxWidth: '460px', margin: '0 auto' }
 )
 
 // ---- Helpers dos cards de prestações / pagamentos ----
@@ -1188,6 +1215,10 @@ function openPaymentModal(installment) {
 async function processPayment() {
   const user = authStore.user
   if (!user || !selectedInstallment.value || paymentMethod.value !== 'mpesa') return
+  if (paymentExcessAmount.value > 0 && !nextPaymentInstallment.value) {
+    $q.notify({ type: 'negative', message: 'Pagamento rejeitado: não existe prestação seguinte para receber o troco.', position: 'top' })
+    return
+  }
   paying.value = true
   try {
     const { data } = await api.post(`/api/portal/${user.companyId}/${user.id}/payments`, {
@@ -1435,7 +1466,7 @@ async function downloadCreditExtract(loan) {
       { text: formatMoney(principal), fontSize: 7, alignment: 'right', bold: true },
       { text: formatMoney(totalInterest), fontSize: 7, alignment: 'right', bold: true },
       { text: formatMoney(totalDebt), fontSize: 7, alignment: 'right', bold: true },
-      { text: '0,00 MT', fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
+      { text: '0,00 MZN', fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
       { text: formatMoney(totalPaid), fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
       { text: '', fontSize: 7 },
       { text: '', fontSize: 7 }
@@ -1500,6 +1531,18 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
+.payment-excess-banner {
+  margin: 8px 0 4px;
+  padding: 10px 14px;
+  line-height: 1.45;
+  font-size: 12px;
+  font-weight: 500;
+
+  :deep(.q-banner__avatar) {
+    padding-right: 10px;
+  }
+}
+
 .portal-container {
   min-height: 100vh;
   background: #f4f4f4;

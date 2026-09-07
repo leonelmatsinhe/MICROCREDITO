@@ -1,9 +1,8 @@
 import moment from "moment";
 import { Installments, } from "../interfaces/Simulator";
 
-const today = moment().format("YYYY-MM-DD")
-
-const calculatePendingDays = (installment: any) => {
+const calculatePendingDays = (installment: any, referenceDate?: any) => {
+    const today = referenceDate ? moment(referenceDate).startOf("day") : moment().startOf("day");
     const diffDays = moment(today).diff(
         moment(installment.dueDate),
         "days"
@@ -23,7 +22,8 @@ const calculatePendingDays = (installment: any) => {
  * @param fine - Taxa diária de mora em percentagem (ex: 2 para 2%/dia)
  * @returns Valor total dos juros de mora acumulados
  */
-const latePaymentInterest = (installment: any, fine: number) => {
+const latePaymentInterest = (installment: any, fine: number, referenceDate?: any) => {
+    const today = referenceDate ? moment(referenceDate).startOf("day") : moment().startOf("day");
     const diffDays = moment(today).diff(
         moment(installment.dueDate),
         "days"
@@ -38,12 +38,16 @@ const latePaymentInterest = (installment: any, fine: number) => {
     }
 
     // Converte a percentagem para taxa decimal: ex: 2 → 0.02
-    const dailyRate = fine / 100;
-    const dailyPenalty = parseFloat(installment.installment) * dailyRate;
+    const dailyRate = Number(fine || 0) / 100;
+    // A mora incide sobre o valor integral da prestação vencida.
+    // O pagamento parcial reduz o saldo da prestação, mas não retroage
+    // o valor da mora já acumulada até à data do pagamento.
+    const installmentAmount = Math.max(0, parseFloat(installment.installment) || 0);
+    const dailyPenalty = installmentAmount * dailyRate;
     return Math.round(dailyPenalty * diffDays * 100) / 100;
 }
 
-const installmentPanification = (installments: any, forfeit: number) => {
+const installmentPanification = (installments: any, forfeit: number, referenceDate?: any) => {
 
     const installmentPlan: any[] = [];
     // Calculate total loan amount from all installments
@@ -69,8 +73,8 @@ const installmentPanification = (installments: any, forfeit: number) => {
             paidAmount: parseFloat(element.paidAmount) || 0,
             // Saldo devedor calculado dinamicamente (Sistema Francês)
             remainingBalance: Math.max(0, Math.round(calculatedRemainingBalance * 100) / 100),
-            lateDays: calculatePendingDays(element),
-            latePaymentInterest: latePaymentInterest(element, forfeit),
+            lateDays: calculatePendingDays(element, referenceDate),
+            latePaymentInterest: latePaymentInterest(element, forfeit, referenceDate),
             dueDate: element.dueDate,
             status: element.status,
             createdAt: element.createdAt,

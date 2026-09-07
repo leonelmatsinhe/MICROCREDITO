@@ -18,6 +18,10 @@ exports.CustomerDocumentsModel = db_1.db.define("customer_documents", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
     documentName: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,

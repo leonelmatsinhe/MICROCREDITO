@@ -34,4 +34,15 @@ exports.AccountModel = db_1.db.define("accounts", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: true,
     },
+    createdAt: {
+        type: sequelize_1.DataTypes.DATE,
+        allowNull: false,
+    },
+    updatedAt: {
+        type: sequelize_1.DataTypes.DATE,
+        allowNull: false,
+    },
+}, {
+    tableName: "accounts",
+    freezeTableName: true,
 });

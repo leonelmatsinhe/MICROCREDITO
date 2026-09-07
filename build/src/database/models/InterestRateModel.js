@@ -19,11 +19,11 @@ exports.InterestRateModel = db_1.db.define("interest_rates", {
         allowNull: false,
     },
     tax: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(8, 4),
         allowNull: false,
     },
     administrativeFee: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
 });

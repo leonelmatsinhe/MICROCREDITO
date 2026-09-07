@@ -224,6 +224,7 @@ routes.delete("/api/account/:id", AccountController_1.deleteAccount);
 routes.post("/api/account", AccountController_1.createAccount);
 // Tranzaction Routes
 routes.get("/api/tranzaction", TranzactionController_1.findAlltranzactions);
+routes.get("/api/tranzaction/loan/:id/late-interest", TranzactionController_1.getLoanLateInterest);
 routes.get("/api/tranzaction/:id", TranzactionController_1.getCustomerTranzactions);
 routes.get("/api/monthllyTransactions/:id", TranzactionController_1.findTransactionsByCompany);
 routes.get("/api/payments/:id/paginated", TranzactionController_1.findPaginatedTransactions);

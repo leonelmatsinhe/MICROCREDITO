@@ -22,8 +22,12 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
     amount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     numberOfInstallments: {
@@ -31,11 +35,11 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         allowNull: false,
     },
     interestRate: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(8, 4),
         allowNull: false,
     },
     administrativeFee: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
         comment: "Taxa de preparos administrativos (fracção, ex.: 0.01 = 1%) aplicada na concessão; 0 = isento.",

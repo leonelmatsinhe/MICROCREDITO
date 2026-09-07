@@ -73,7 +73,7 @@
                 v-model.number="form.amount"
                 dense
                 outlined
-                label="Montante (MT) *"
+                label="Montante (MZN) *"
                 type="number"
                 :rules="[val => !!val && val > 0 || 'Obrigatório']"
                 @update:model-value="calculateSimulation"

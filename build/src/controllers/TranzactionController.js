@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkAndLiquidateLoan = exports.updateTranzaction = exports.addTranzaction = exports.getCustomerTranzactions = exports.findAllPaymentsOverview = exports.findPaginatedTransactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
+exports.checkAndLiquidateLoan = exports.updateTranzaction = exports.addTranzaction = exports.getLoanLateInterest = exports.getCustomerTranzactions = exports.findAllPaymentsOverview = exports.findPaginatedTransactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
@@ -41,6 +41,8 @@ const NotificationModel_1 = require("../database/models/NotificationModel");
 const UserModel_1 = require("../database/models/UserModel");
 const sequelize_1 = require("sequelize");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
+const CompanyModel_1 = require("../database/models/CompanyModel");
+const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const findAlltranzactions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { from, to, companyId } = req.query;
     if (!companyId) {
@@ -273,11 +275,24 @@ const findAllPaymentsOverview = (req, res) => __awaiter(void 0, void 0, void 0, 
                 amortById[Number(a.id)] = a;
             });
         }
+        const displayedLateByPaymentGroup = {};
         const result = tranzactions.map((t) => {
             var _a, _b, _c, _d;
             const customer = customerByAccount[String(t.accountNumber)] || null;
             const amort = amortById[Number(t.amortizationLoanId)] || null;
-            return Object.assign(Object.assign({}, t), { customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || `Conta ${t.accountNumber}`, customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "", installmentOrder: (_a = amort === null || amort === void 0 ? void 0 : amort.installmentOrder) !== null && _a !== void 0 ? _a : null, installmentDueDate: (amort === null || amort === void 0 ? void 0 : amort.dueDate) ? String(amort.dueDate).slice(0, 10) : null, installmentValue: (_b = amort === null || amort === void 0 ? void 0 : amort.installment) !== null && _b !== void 0 ? _b : null, installmentPaidAmount: (_c = amort === null || amort === void 0 ? void 0 : amort.paidAmount) !== null && _c !== void 0 ? _c : null, installmentStatus: (_d = amort === null || amort === void 0 ? void 0 : amort.status) !== null && _d !== void 0 ? _d : null });
+            const paymentDate = String(t.paymentDate || t.createdAt || '').slice(0, 10);
+            const paymentGroup = `${Number(t.amortizationLoanId) || 0}:${paymentDate}`;
+            const rawLateInterest = Number(t.latePaymentInterest) || 0;
+            // Registos antigos podem repetir a mesma mora em pagamentos parciais
+            // da mesma prestação no mesmo dia. Apresentar a mora uma só vez.
+            const displayedLateInterest = rawLateInterest > 0 && !displayedLateByPaymentGroup[paymentGroup]
+                ? rawLateInterest
+                : 0;
+            if (displayedLateInterest > 0)
+                displayedLateByPaymentGroup[paymentGroup] = true;
+            const discountAmount = Number(t.discountAmount) || 0;
+            const totalAmount = Number(t.totalAmount) || (Number(t.amount) || 0) + displayedLateInterest - discountAmount;
+            return Object.assign(Object.assign({}, t), { latePaymentInterest: displayedLateInterest, displayedLatePaymentInterest: displayedLateInterest, totalAmount: Math.round(totalAmount * 100) / 100, customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || `Conta ${t.accountNumber}`, customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "", installmentOrder: (_a = amort === null || amort === void 0 ? void 0 : amort.installmentOrder) !== null && _a !== void 0 ? _a : null, installmentDueDate: (amort === null || amort === void 0 ? void 0 : amort.dueDate) ? String(amort.dueDate).slice(0, 10) : null, installmentValue: (_b = amort === null || amort === void 0 ? void 0 : amort.installment) !== null && _b !== void 0 ? _b : null, installmentPaidAmount: (_c = amort === null || amort === void 0 ? void 0 : amort.paidAmount) !== null && _c !== void 0 ? _c : null, installmentStatus: (_d = amort === null || amort === void 0 ? void 0 : amort.status) !== null && _d !== void 0 ? _d : null });
         });
         return res.status(200).json({ success: true, result });
     }
@@ -302,13 +317,66 @@ const getCustomerTranzactions = (req, res) => __awaiter(void 0, void 0, void 0, 
         });
 });
 exports.getCustomerTranzactions = getCustomerTranzactions;
+const getLoanLateInterest = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const loan = yield LoanModel_1.LoanModel.findByPk(id, { attributes: ["id", "companyId", "status"] });
+    if (!loan)
+        return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+    const transactions = yield TranzactionModel_1.TranzactionModel.findAll({
+        where: { loanId: id },
+        attributes: ["latePaymentInterest", "paymentDate"],
+        raw: true,
+    });
+    const lateInterestByDate = {};
+    transactions.forEach((transaction) => {
+        const date = String(transaction.paymentDate || "").slice(0, 10);
+        lateInterestByDate[date] = Math.max(lateInterestByDate[date] || 0, Number(transaction.latePaymentInterest) || 0);
+    });
+    const chargedLateInterest = Object.values(lateInterestByDate).reduce((sum, interest) => sum + interest, 0);
+    let totalLateInterest = chargedLateInterest;
+    if (Number(loan.status) === 1) {
+        const company = yield CompanyModel_1.CompanyModel.findByPk(loan.companyId, { attributes: ["forfeit"] });
+        const pendingInstallments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
+            where: { loanId: id, status: { [sequelize_1.Op.ne]: 1 } },
+        });
+        const calculated = (0, calculateLateAmount_1.installmentPanification)(pendingInstallments, Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0));
+        totalLateInterest = calculated.reduce((sum, installment) => sum + (Number(installment.latePaymentInterest) || 0), 0);
+    }
+    return res.status(200).json({
+        success: true,
+        result: {
+            totalLateInterest: Math.round(totalLateInterest * 100) / 100,
+            chargedLateInterest: Math.round(chargedLateInterest * 100) / 100,
+            source: Number(loan.status) === 1 ? "pending" : "charged",
+        },
+    });
+});
+exports.getLoanLateInterest = getLoanLateInterest;
 const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { companyId, accountNumber, amortizationLoanId, amount, latePaymentInterest, interestRateAmount, phoneNumber, tranzactionReference, paymentMethod, description, receiptUrl, staffName, loanId, paymentDate, discountApplied, notes, } = req.body;
+    let { companyId, accountNumber, amortizationLoanId, amount, totalAmount, latePaymentInterest, interestRateAmount, phoneNumber, tranzactionReference, paymentMethod, description, receiptUrl, staffName, loanId, paymentDate, discountApplied, notes, } = req.body;
+    const todayDate = new Date().toISOString().slice(0, 10);
+    if (paymentDate && String(paymentDate).slice(0, 10) > todayDate) {
+        return res.status(400).send({ success: false, message: "A data de pagamento não pode ser futura." });
+    }
     // ── Buscar a prestação para comparar valores ──
     const installment = yield AmortizationLoanModel_1.AmorizationLoanModel.findByPk(amortizationLoanId);
     if (!installment) {
         return res.status(404).send({ success: false, message: "Prestação não encontrada." });
     }
+    const loan = yield LoanModel_1.LoanModel.findByPk(installment.loanId, { attributes: ["companyId"] });
+    const company = loan
+        ? yield CompanyModel_1.CompanyModel.findByPk(loan.getDataValue("companyId"), { attributes: ["forfeit"] })
+        : null;
+    const paymentReferenceDate = paymentDate || new Date().toISOString().slice(0, 10);
+    const calculatedInstallment = (0, calculateLateAmount_1.installmentPanification)([installment], Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0), paymentReferenceDate)[0];
+    const previousLateInterest = yield TranzactionModel_1.TranzactionModel.findAll({
+        where: { amortizationLoanId },
+        attributes: ["latePaymentInterest"],
+        raw: true,
+    });
+    const alreadyChargedLate = previousLateInterest.reduce((sum, transaction) => sum + (Number(transaction.latePaymentInterest) || 0), 0);
+    latePaymentInterest = Math.max(0, Number((calculatedInstallment === null || calculatedInstallment === void 0 ? void 0 : calculatedInstallment.latePaymentInterest) || 0) - alreadyChargedLate);
+    totalAmount = Math.max(0, Number(amount || 0) + latePaymentInterest - Number(req.body.discountAmount || 0));
     // ═══════════════════════════════════════════════════════════════
     // LÓGICA DE PAGAMENTO:
     // - amount = valor que o cliente PAGA efectivamente (vai para a prestação)
@@ -336,8 +404,10 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
     const tranzaction = yield TranzactionModel_1.TranzactionModel.create({
         companyId,
         accountNumber,
+        customerId: installment.getDataValue("customerId"),
         amortizationLoanId,
         amount,
+        totalAmount,
         latePaymentInterest,
         interestRateAmount,
         phoneNumber,
@@ -376,6 +446,7 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 else {
                     yield DebtModel.create({
                         companyId,
+                        customerId: installment.customerId,
                         accountNumber: String(accountNumber),
                         loanId: loanId || installment.loanId,
                         amortisationId: amortizationLoanId,

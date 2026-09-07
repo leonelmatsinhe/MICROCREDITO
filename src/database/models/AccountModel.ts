@@ -32,4 +32,15 @@ export const AccountModel = db.define("accounts", {
     type: DataTypes.STRING,
     allowNull: true,
   },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+}, {
+  tableName: "accounts",
+  freezeTableName: true,
 });

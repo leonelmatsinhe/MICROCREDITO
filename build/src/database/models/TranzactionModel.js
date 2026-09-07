@@ -26,16 +26,25 @@ exports.TranzactionModel = db_1.db.define("tranzactions", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
-    amount: {
-        type: sequelize_1.DataTypes.FLOAT,
+    customerId: {
+        type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    amount: {
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+    },
+    totalAmount: {
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        comment: "Valor total recebido: base + juros de mora - desconto",
+    },
     latePaymentInterest: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     interestRateAmount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
     phoneNumber: {
@@ -76,7 +85,7 @@ exports.TranzactionModel = db_1.db.define("tranzactions", {
         defaultValue: false,
     },
     discountAmount: {
-        type: sequelize_1.DataTypes.FLOAT,
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: true,
         defaultValue: 0,
     },

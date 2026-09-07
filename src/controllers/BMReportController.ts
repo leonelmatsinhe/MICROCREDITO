@@ -6,6 +6,7 @@ import { CustomerModel } from "../database/models/CustomerModel";
 import { LoanModel } from "../database/models/LoanModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
+import { installmentPanification } from "../utils/calculateLateAmount";
 
 function formatDateBR(date: any): string {
   if (!date) return "-";
@@ -52,17 +53,24 @@ const getBMReport = async (req: Request, res: Response) => {
     } catch {}
 
     // 3. Buscar créditos do período — apenas desembolsados (status 1)
-    const loanWhere: any = { companyId: companyIdNum, status: 1 };
+    const loanWhere: any = {
+      companyId: companyIdNum,
+      status: 1,
+      [Op.and]: [
+        { disbursementDate: { [Op.not]: null } },
+        { disbursementDate: { [Op.ne]: "" } },
+      ],
+    };
     
-    // Filtrar por período se especificado (data de desembolso)
+    // Filtrar exclusivamente pelo campo real de desembolso do crédito.
     if (from && to) {
-      loanWhere.dateCreated = {
+      loanWhere[Op.and].push({ disbursementDate: {
         [Op.between]: [String(from), String(to)],
-      };
+      } });
     } else if (from) {
-      loanWhere.dateCreated = { [Op.gte]: String(from) };
+      loanWhere[Op.and].push({ disbursementDate: { [Op.gte]: String(from) } });
     } else if (to) {
-      loanWhere.dateCreated = { [Op.lte]: String(to) };
+      loanWhere[Op.and].push({ disbursementDate: { [Op.lte]: String(to) } });
     }
 
     const loans = await LoanModel.findAll({
@@ -95,6 +103,11 @@ const getBMReport = async (req: Request, res: Response) => {
       });
 
       const amortList = amortizations.map((a) => a.toJSON() as any);
+      const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
+      const calculatedAmortizations = installmentPanification(
+        amortList,
+        Number(company?.getDataValue("forfeit") || 0)
+      );
 
       // Buscar transações reais do crédito
       const transactions = await TranzactionModel.findAll({
@@ -113,15 +126,15 @@ const getBMReport = async (req: Request, res: Response) => {
 
       // Prestações em atraso (status = 0 e data vencida)
       const now = moment();
-      const overdueInstallments = amortList.filter((a: any) => {
-        if (Number(a.status) !== 0) return false;
+      const overdueInstallments = calculatedAmortizations.filter((a: any) => {
+        if (![0, -1].includes(Number(a.status))) return false;
         const dueDate = moment(a.dueDate);
         return dueDate.isBefore(now, "day");
       });
 
       // Crédito em Atraso (11): soma das prestações vencidas + juros de mora
       const overdueAmount = overdueInstallments.reduce(
-        (sum: number, a: any) => sum + (Number(a.installment) || 0) + (Number(a.latePaymentInterest) || 0),
+        (sum: number, a: any) => sum + Math.max(0, (Number(a.installment) || 0) - (Number(a.paidAmount) || 0)) + (Number(a.latePaymentInterest) || 0),
         0
       );
 
@@ -155,7 +168,7 @@ const getBMReport = async (req: Request, res: Response) => {
         // (2) Nome do Cliente
         customerName: customerData?.customerName || "-",
         // (3) Data Desembolso
-        disbursementDate: formatDateBR(loanData.dateCreated),
+        disbursementDate: formatDateBR(loanData.disbursementDate),
         // (4) Montante do Desembolso
         disbursementAmount: Number(loanData.amount) || 0,
         // (5) Finalidade do Crédito — usar borrowerInfo.finalidade se disponível, senão loanDescription

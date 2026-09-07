@@ -30,8 +30,16 @@ const findAllDebts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
 exports.findAllDebts = findAllDebts;
 const createDebt = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     let { loanId, amortisationId, accountNumber, updatedBy, companyId, debtAmount, dateInserted } = req.body;
+    const amortization = amortisationId
+        ? yield AmortizationLoanModel_1.AmorizationLoanModel.findByPk(amortisationId, { attributes: ["customerId"] })
+        : null;
+    const customerId = amortization === null || amortization === void 0 ? void 0 : amortization.getDataValue("customerId");
+    if (!customerId) {
+        return res.status(409).json({ success: false, message: "A dívida não está associada a um mutuário." });
+    }
     const newDebt = yield DebtModel_1.DebtModel.create({
         companyId,
+        customerId,
         loanId,
         amortisationId,
         accountNumber,
