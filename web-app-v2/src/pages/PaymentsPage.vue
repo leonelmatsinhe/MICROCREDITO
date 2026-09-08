@@ -217,7 +217,9 @@ const methodOptions = [
   { label: 'e-Mola', value: 8 }
 ]
 
-const pagination = ref({ page: 1, rowsPerPage: 25, rowsNumber: 0 })
+// Client-side: NÃO definir rowsNumber (ver LoanListPage) — senão o QTable
+// entra em modo server-side e deixa de fatiar/ordenar as linhas.
+const pagination = ref({ page: 1, rowsPerPage: 25 })
 
 // ─── Fetch ───
 async function fetchPayments() {
@@ -275,13 +277,12 @@ function passesFilters(p) {
 
 const filteredRows = computed(() => allPayments.value.filter(passesFilters))
 
-// Paginação: manter rowsNumber sincronizado com o conjunto filtrado (senão o
-// rodapé mostra "1-0 of 0") e voltar à 1ª página se o filtro reduzir as linhas.
+// Paginação: sem rowsNumber o QTable calcula o nº de páginas a partir das
+// linhas filtradas. Apenas voltar à última página válida se o filtro reduzir.
 watch(filteredRows, (rows) => {
   const n = rows.length
   const rpp = pagination.value.rowsPerPage || 25
   const maxPage = Math.max(1, Math.ceil(n / rpp))
-  pagination.value.rowsNumber = n
   if (pagination.value.page > maxPage) pagination.value.page = maxPage
 })
 

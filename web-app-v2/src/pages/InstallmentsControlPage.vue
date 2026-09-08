@@ -99,6 +99,18 @@
         <div class="row items-center">
           <q-icon name="table_chart" size="20px" color="primary" class="q-mr-sm" />
           <div class="text-subtitle1 text-weight-bold">Prestações</div>
+          <q-chip
+            v-if="usingDefaultWindow"
+            dense
+            outline
+            color="orange"
+            text-color="orange"
+            icon="event_upcoming"
+            class="q-ml-md"
+            style="font-size: 10px; margin-top: 2px"
+          >
+            Vencidas + próximos {{ DEFAULT_UPCOMING_DAYS }} dias
+          </q-chip>
           <q-space />
           <q-badge color="primary" rounded>{{ filteredInstallments.length }} registos</q-badge>
         </div>
@@ -271,7 +283,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
@@ -295,12 +307,32 @@ const messageCustomerName = ref('')
 const messageInitial = ref('')
 
 const filter = ref({ status: null, search: '', from: '', to: '' })
+// Janela de "prestes a vencer" por padrão (dias a partir de hoje). Vencidas são
+// sempre incluídas. O utilizador alarga/recua com os filtros De/Até.
+const DEFAULT_UPCOMING_DAYS = 30
+// Normaliza para YYYY-MM-DD — aceita ISO, dd/mm/yyyy e Date, para os filtros
+// De/Até funcionarem quer o input devolva "2026-09-08" quer "08/09/2026".
+function normDate(v) {
+  if (!v) return ''
+  const s = String(v).trim()
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return m[0]
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  const d = new Date(s)
+  return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : ''
+}
+function addDaysISO(days) {
+  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+function todayISO() { return addDaysISO(0) }
 const statusOptions = [
   { label: 'Pendente', value: 0 },
   { label: 'Pago', value: 1 },
   { label: 'Pago Parcial', value: -1 }
 ]
-const pagination = ref({ rowsPerPage: 10, sortBy: null, descending: false })
+const pagination = ref({ rowsPerPage: 15, sortBy: null, descending: false })
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
   { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', sortable: true },
@@ -318,6 +350,9 @@ const stats = computed(() => ({
   overdue: installments.value.filter(i => i.status !== 1 && i.daysOverdue > 0).length
 }))
 
+// Indica se está activa a janela padrão "prestes a vencer" (sem De/Até definidos)
+const usingDefaultWindow = computed(() => !filter.value.from && !filter.value.to)
+
 const filteredInstallments = computed(() => {
   let result = [...installments.value]
   // NOTA: linhas sem cliente correspondente NUNCA são escondidas — este ecrã é
@@ -332,19 +367,40 @@ const filteredInstallments = computed(() => {
     const s = filter.value.search.toLowerCase()
     result = result.filter(i => displayCustomerName(i).toLowerCase().includes(s) || i.accountNumber?.toString().includes(s))
   }
-  if (filter.value.from) result = result.filter(i => i.dueDate >= filter.value.from)
-  if (filter.value.to) result = result.filter(i => i.dueDate <= filter.value.to)
+  // Janela padrão "prestes a vencer": só quando o utilizador NÃO definiu De/Até.
+  // Mostra vencidas (e a vencer hoje) + as que vencem nos próximos N dias.
+  const usingDefault = !filter.value.from && !filter.value.to
+  if (usingDefault) {
+    const limit = addDaysISO(DEFAULT_UPCOMING_DAYS)
+    result = result.filter(i => i.dueDate && i.dueDate <= limit)
+  }
+  const from = normDate(filter.value.from)
+  const to = normDate(filter.value.to)
+  if (from) result = result.filter(i => i.dueDate && normDate(i.dueDate) >= from)
+  if (to) result = result.filter(i => i.dueDate && normDate(i.dueDate) <= to)
   return sortInstallments(result)
 })
 
+// Ordem: Vencidas → Prestes (a vencer) → Mais distantes, cronológica (mais
+// antiga/próxima primeiro) dentro de cada grupo.
 function sortInstallments(rows) {
-  return [...rows].sort((first, second) => {
-    const firstOverdue = first.status !== 1 && Number(first.daysOverdue) > 0
-    const secondOverdue = second.status !== 1 && Number(second.daysOverdue) > 0
-    if (firstOverdue !== secondOverdue) return firstOverdue ? -1 : 1
-    return new Date(second.dueDate) - new Date(first.dueDate)
+  const today = todayISO()
+  const groupRank = (row) => {
+    const d = normDate(row.dueDate)
+    if (!d) return 3
+    if (d < today) return 0   // vencidas
+    if (d === today) return 1 // vence hoje (tratada como "prestes")
+    return 2                  // futuras
+  }
+  return [...rows].sort((a, b) => {
+    const g = groupRank(a) - groupRank(b)
+    if (g !== 0) return g
+    return normDate(a.dueDate).localeCompare(normDate(b.dueDate))
   })
 }
+
+// Voltar à 1ª página quando o conjunto filtrado muda
+watch(filteredInstallments, () => { pagination.value.page = 1 })
 
 function clearFilter() { filter.value = { status: null, search: '', from: '', to: '' } }
 function formatMoney(val) { return formatMoneyValue(val) }

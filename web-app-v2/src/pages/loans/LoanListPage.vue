@@ -721,7 +721,10 @@ const managerFilter = ref(null)
 const managers = ref([])
 
 // ─── Paginação / exportação ───
-const pagination = ref({ sortBy: 'dateCreated', descending: true, page: 1, rowsPerPage: 15, rowsNumber: 0 })
+// Client-side: NÃO definir rowsNumber — com rowsNumber o QTable entra em modo
+// "server-side" e deixa de fatiar/ordenar as linhas (mostra todas as 20 com
+// rodapé "1-15 of 20" e as setas de página não fazem nada).
+const pagination = ref({ sortBy: 'dateCreated', descending: true, page: 1, rowsPerPage: 15 })
 
 // ─── Eliminar ───
 const showDeleteConfirm = ref(false)
@@ -954,13 +957,12 @@ const filteredRows = computed(() =>
     .filter(passesFilters)
 )
 
-// Paginação: manter rowsNumber sincronizado com o conjunto filtrado (senão o
-// rodapé mostra "1-0 of 0") e voltar à 1ª página se o filtro reduzir as linhas.
+// Paginação: sem rowsNumber o QTable calcula o nº de páginas a partir das
+// linhas filtradas. Apenas voltar à última página válida se o filtro reduzir.
 watch(filteredRows, (rows) => {
   const n = rows.length
   const rpp = pagination.value.rowsPerPage || 15
   const maxPage = Math.max(1, Math.ceil(n / rpp))
-  pagination.value.rowsNumber = n
   if (pagination.value.page > maxPage) pagination.value.page = maxPage
 })
 

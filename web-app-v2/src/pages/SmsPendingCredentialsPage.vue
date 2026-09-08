@@ -224,7 +224,9 @@ const search = ref('')
 const filterType = ref(null)
 const filterStatus = ref(null)
 
-const pagination = ref({ sortBy: 'createdAt', descending: true, page: 1, rowsPerPage: 15, rowsNumber: 0 })
+// Client-side: NÃO definir rowsNumber (ver LoanListPage) — senão o QTable
+// entra em modo server-side e deixa de fatiar/ordenar as linhas.
+const pagination = ref({ sortBy: 'createdAt', descending: true, page: 1, rowsPerPage: 15 })
 
 const companySmsEnabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) === 1)
 
@@ -267,13 +269,12 @@ const filteredRows = computed(() => {
   })
 })
 
-// Paginação: manter rowsNumber sincronizado com o conjunto filtrado (senão o
-// rodapé mostra "1-0 of 0") e voltar à última página válida se o filtro reduzir linhas.
+// Paginação: sem rowsNumber o QTable calcula o nº de páginas a partir das
+// linhas filtradas. Apenas voltar à última página válida se o filtro reduzir.
 watch(filteredRows, (rows) => {
   const n = rows.length
   const rpp = pagination.value.rowsPerPage || 15
   const maxPage = Math.max(1, Math.ceil(n / rpp))
-  pagination.value.rowsNumber = n
   if (pagination.value.page > maxPage) pagination.value.page = maxPage
 })
 
