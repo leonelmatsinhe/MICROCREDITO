@@ -162,7 +162,7 @@ import {
   deleteNotification,
 } from "./controllers/NotificationController";
 import { getDashboardOverview } from "./controllers/DashboardController";
-import { getBMReport } from "./controllers/BMReportController";
+import { getBMReport, getBMReportExcel } from "./controllers/BMReportController";
 
 
 const routes = express.Router();
@@ -408,6 +408,8 @@ routes.get("/api/dashboard/:companyId", getDashboardOverview);
 
 // Relatório Banco de Moçambique
 routes.get("/api/reports/banco-mocambique/:companyId", getBMReport);
+// Download do Excel com bordas/fontes reais (cópia fiel do modelo)
+routes.get("/api/reports/banco-mocambique/:companyId/excel", getBMReportExcel);
 
 
 

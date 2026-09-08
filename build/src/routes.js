@@ -258,3 +258,5 @@ routes.delete("/api/notifications/:id", NotificationController_1.deleteNotificat
 routes.get("/api/dashboard/:companyId", DashboardController_1.getDashboardOverview);
 // Relatório Banco de Moçambique
 routes.get("/api/reports/banco-mocambique/:companyId", BMReportController_1.getBMReport);
+// Download do Excel com bordas/fontes reais (cópia fiel do modelo)
+routes.get("/api/reports/banco-mocambique/:companyId/excel", BMReportController_1.getBMReportExcel);

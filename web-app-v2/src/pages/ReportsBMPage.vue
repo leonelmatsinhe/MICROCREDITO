@@ -10,17 +10,22 @@
           <div class="col-12 col-sm-2">
             <q-input v-model="filters.to" dense outlined label="Data Fim" type="date" input-style="font-size: 13px" />
           </div>
-          <div class="col-12 col-sm-2">
-            <q-btn unelevated color="primary" icon="search" label="Gerar Relatório" no-caps rounded class="full-width" @click="fetchData" :loading="loading" />
+          <div class="col-12 col-sm-auto">
+            <q-btn unelevated color="primary" icon="search" round @click="fetchData" :loading="loading">
+              <q-tooltip>Gerar Relatório</q-tooltip>
+            </q-btn>
           </div>
           <div class="col-auto">
-            <q-btn outline color="primary" icon="picture_as_pdf" label="Gerar PDF" no-caps rounded @click="generatePDF" :disable="reportData.length === 0" />
+            <q-btn outline color="primary" icon="picture_as_pdf" label="PDF" no-caps rounded @click="generatePDF" :disable="reportData.length === 0" />
           </div>
           <div class="col-auto">
-            <q-btn outline color="primary" icon="table_chart" label="Gerar Excel" no-caps rounded @click="generateExcel" :disable="reportData.length === 0" />
+            <q-btn outline color="primary" icon="table_chart" label="Excel" no-caps rounded @click="generateExcel" :disable="reportData.length === 0" />
           </div>
           <div class="col-auto">
-            <q-btn outline color="grey-8" icon="info" label="Notas" no-caps rounded @click="showNotes = true" />
+            <q-btn outline color="secondary" icon="business" label="Dados da Instituição" no-caps rounded @click="showInstitution = true" />
+          </div>
+          <div class="col-auto">
+            <q-btn outline color="grey-8" icon="info" label="Notas" no-caps rounded class="no-wrap" @click="showNotes = true" />
           </div>
         </div>
       </div>
@@ -130,6 +135,35 @@
         </q-card-section>
       </q-card>
     </q-dialog>
+
+    <!-- Dados complementares da identificação da instituição (cabeçalho do relatório BM) -->
+    <q-dialog v-model="showInstitution">
+      <q-card style="min-width: 420px; max-width: 560px">
+        <q-card-section class="row items-center">
+          <q-icon name="business" color="secondary" size="22px" class="q-mr-sm" />
+          <div class="text-subtitle1 text-weight-bold">Dados da Instituição</div>
+          <q-space />
+          <q-btn flat round dense icon="close" @click="showInstitution = false" />
+        </q-card-section>
+        <q-card-section class="q-gutter-sm">
+          <div class="text-caption text-grey-6">Campos do cabeçalho do relatório que não vêm do cadastro da empresa.</div>
+          <q-input v-model="manualData.neighborhood" dense outlined label="Bairro" />
+          <div class="row q-col-gutter-sm">
+            <div class="col-6"><q-input v-model="manualData.city" dense outlined label="Cidade" /></div>
+            <div class="col-6"><q-input v-model="manualData.state" dense outlined label="Estado" /></div>
+          </div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-6"><q-input v-model="manualData.mobile" dense outlined label="Telemóvel" /></div>
+            <div class="col-6"><q-input v-model="manualData.numberOfEmployees" dense outlined label="Nº de Trabalhadores" type="number" /></div>
+          </div>
+          <q-input v-model="manualData.activityStartDate" dense outlined label="Data de Início das Actividades" placeholder="DD/MM/AAAA" mask="##/##/####" />
+          <q-input v-model="manualData.represented" dense outlined label="Instituição(ões) Representada(s)" placeholder="Por defeito: responsável da gestão" />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat label="Fechar" no-caps color="primary" @click="showInstitution = false" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -145,6 +179,7 @@ const companyStore = useCompanyStore()
 
 const loading = ref(false)
 const showNotes = ref(false)
+const showInstitution = ref(false)
 
 function localDateString(date) {
   const year = date.getFullYear()
@@ -164,7 +199,12 @@ const filters = ref({
 const manualData = ref({
   numberOfEmployees: '',
   activityStartDate: '',
-  creditPurpose: 'Consumo'
+  creditPurpose: 'Consumo',
+  neighborhood: '',
+  city: '',
+  state: '',
+  mobile: '',
+  represented: ''
 })
 
 const purposeOptions = [
@@ -276,8 +316,8 @@ async function generatePDF() {
     const now = new Date()
     const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
 
-    // Header image
-    const headerImage = bmLogo ? [{ image: bmLogo, width: 60, margin: [0, 0, 20, 0] }] : []
+    // Header image — margem direita ampla para não ficar encostado ao texto
+    const headerImage = bmLogo ? [{ image: bmLogo, width: 60, margin: [0, 0, 0, 0] }] : []
 
     const docDefinition = {
       pageSize: 'A4',
@@ -288,6 +328,7 @@ async function generatePDF() {
         {
           columns: [
             ...headerImage,
+            { width: 30, text: '' }, // espaçamento considerável após o logotipo
             {
               width: '*',
               stack: [
@@ -335,11 +376,11 @@ async function generatePDF() {
 
         { text: '(Valores em Metical)', style: 'labelText', alignment: 'right', margin: [0, 0, 0, 5] },
 
-        // TABLE
+        // TABLE — larguras ajustadas para caber na largura útil da página (~802pt)
         {
           table: {
             headerRows: 1,
-            widths: [45, 80, 55, 65, 65, 60, 50, 55, 40, 65, 65, 35, 30],
+            widths: [38, 78, 50, 62, 60, 58, 48, 52, 38, 62, 62, 32, 28],
             body: [
               // Header
               [
@@ -445,6 +486,9 @@ function formatMoneyRaw(val) {
 }
 
 // ==================== GERAÇÃO EXCEL ====================
+// O Excel é gerado no BACKEND (exceljs) com bordas, fontes e preenchimentos
+// REAIS — cópia fiel do modelo Reporte_BM_Mensal_*.xlsx. Aqui apenas pedimos o
+// ficheiro (com o token de autenticação) e forçamos o download no browser.
 async function generateExcel() {
   if (reportData.value.length === 0) {
     $q.notify({ type: 'warning', message: 'Gere o relatório primeiro', position: 'top' })
@@ -452,104 +496,50 @@ async function generateExcel() {
   }
 
   try {
-    const XLSX = await import('xlsx')
+    $q.loading.show({ message: 'A gerar Excel...' })
+    const api = (await import('@/boot/axios')).default
+    const companyId = authStore.companyId
 
-    const comp = company.value
-    const now = new Date()
-    const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
+    const params = new URLSearchParams()
+    if (filters.value.from) params.append('from', filters.value.from)
+    if (filters.value.to) params.append('to', filters.value.to)
+    // Campos manuais do cabeçalho (identificação da instituição)
+    const man = manualData.value
+    if (man.neighborhood) params.append('neighborhood', man.neighborhood)
+    if (man.city) params.append('city', man.city)
+    if (man.state) params.append('state', man.state)
+    if (man.mobile) params.append('mobile', man.mobile)
+    if (man.numberOfEmployees) params.append('numberOfEmployees', man.numberOfEmployees)
+    if (man.activityStartDate) params.append('activityStartDate', man.activityStartDate)
+    if (man.represented) params.append('represented', man.represented)
 
-    // Build worksheet data
-    const wsData = [
-      // Header
-      ['BANCO DE MOÇAMBIQUE'],
-      ['ENTIDADE DE SUPERVISÃO PRUDENCIAL'],
-      ['MONITORIA DE INFORMAÇÕES DE MICROFINANÇAS'],
-      [],
-      ['PERÍODO DE REPORTE:'],
-      [`DATA: ${dateStr} (DDMMAAAA)`],
-      [],
-      ['1. IDENTIFICAÇÃO DA INSTITUIÇÃO'],
-      [`Denominação: ${comp.name || ''}`, `N° de Trabalhadores: ${manualData.value.numberOfEmployees || ''}`, `NUIT: ${comp.nuit || ''}`],
-      [`Endereço: ${comp.address || ''}`, `Data de Início: ${manualData.value.activityStartDate || ''}`, `Província: ${comp.province || ''}`],
-      [`Telefone: ${comp.phone || ''}`, `E-mail: ${comp.email || ''}`, `Responsável: ${comp.manager || ''}`],
-      [],
-      ['(Valores em Metical)'],
-      [],
-      // Table header
-      ['N° Operação (1)', 'Nome Cliente (2)', 'Data Desembolso (3)', 'Montante Desembolso (4)', 'Finalidade Crédito (5)', 'Valor Prestação (6)', 'Periodicidade (7)', 'Prazo Reembolso (8)', 'Taxa Juro (9)', 'Crédito Dívida (10)', 'Crédito Atraso (11)', 'Dias Atraso (12)', 'PPEs (13)'],
-      // Data rows
-      ...reportData.value.map(row => [
-        row.operationNumber,
-        row.customerName || '-',
-        row.disbursementDate || '-',
-        row.disbursementAmount,
-        row.creditPurpose || '-',
-        row.installmentValue,
-        row.paymentFrequency || 'Mensal',
-        row.repaymentDate || '-',
-        `${row.interestRate.toFixed(1)}%`,
-        row.creditInDebt,
-        row.creditOverdue,
-        row.daysOverdue,
-        row.ppe || 'Não'
-      ]),
-      // Total
-      ['TOTAL', '', '', totals.value.disbursementAmount, '', totals.value.installmentValue, '', '', '', totals.value.creditInDebt, totals.value.creditOverdue, '', ''],
-      [],
-      [],
-      ['Notas Explicativas'],
-      ['1- Número da operação de crédito'],
-      ['2- Nome do cliente'],
-      ['3- Data de desembolso inicial'],
-      ['4- Valor do crédito concedido'],
-      ['5- Finalidade de crédito desembolsado, designadamente para empresas, consumo ou habitação'],
-      ['6- Montante da prestação periódica para amortizar o crédito'],
-      ['7- Periodicidade dos pagamentos, indica se são diária, semanal, mensal ou anual'],
-      ['8- Data de vencimento do crédito desembolsado'],
-      ['9- Percentagem da taxa de juro aplicada ao crédito'],
-      ['10- Montante do crédito desembolsado que falta pagar, excluindo prestações em atraso'],
-      ['11- Montante das prestações em atraso incluindo capital e juros'],
-      ['12- Dias em atraso do pagamento das prestações'],
-      ['13- Crédito concedido pessoas politicamente expostas']
-    ]
+    const resp = await api.get(`/api/reports/banco-mocambique/${companyId}/excel?${params.toString()}`, {
+      responseType: 'blob'
+    })
 
-    const ws = XLSX.utils.aoa_to_sheet(wsData)
+    // Nome do ficheiro a partir do header Content-Disposition (fallback: período)
+    const cd = resp.headers?.['content-disposition'] || ''
+    const match = cd.match(/filename="?([^";]+)"?/)
+    const periodFrom = (filters.value.from || '').split('-').reverse().join('-')
+    const periodTo = (filters.value.to || '').split('-').reverse().join('-')
+    const fileName = match?.[1] || `Reporte_BM_Mensal_${periodFrom}_a_${periodTo}.xlsx`
 
-    // Column widths
-    ws['!cols'] = [
-      { wch: 12 }, // N° Operação
-      { wch: 25 }, // Nome Cliente
-      { wch: 14 }, // Data Desembolso
-      { wch: 18 }, // Montante
-      { wch: 15 }, // Finalidade
-      { wch: 16 }, // Valor Prestação
-      { wch: 14 }, // Periodicidade
-      { wch: 14 }, // Prazo Reembolso
-      { wch: 10 }, // Taxa Juro
-      { wch: 18 }, // Crédito Dívida
-      { wch: 18 }, // Crédito Atraso
-      { wch: 10 }, // Dias Atraso
-      { wch: 8 }   // PPEs
-    ]
-
-    // Merge header cells
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 2 } },
-      { s: { r: 7, c: 0 }, e: { r: 7, c: 2 } }
-    ]
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Relatório BM')
-
-    const fileName = `relatorio-bm-${filters.value.from}-${filters.value.to}.xlsx`
-    XLSX.writeFile(wb, fileName)
+    const blob = new Blob([resp.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
 
     $q.notify({ type: 'positive', message: 'Excel gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar Excel:', e)
     $q.notify({ type: 'negative', message: 'Erro ao gerar Excel', position: 'top' })
+  } finally {
+    $q.loading.hide()
   }
 }
 
