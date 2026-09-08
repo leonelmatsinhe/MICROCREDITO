@@ -2,31 +2,33 @@
   <div class="q-pa-md">
     <!-- Filtros + Acções -->
     <q-card flat bordered class="q-mb-md filter-card">
-      <q-card-section class="row q-col-gutter-xs items-center no-wrap">
-        <div class="col">
+      <q-card-section class="row q-col-gutter-sm items-center">
+        <div class="col-12 col-sm-6 col-md-2">
           <q-select v-model="filter.status" :options="statusOptions" label="Estado" dense outlined emit-value map-options clearable />
         </div>
-        <div class="col">
+        <div class="col-12 col-sm-6 col-md-3">
           <q-input v-model="filter.search" label="Pesquisar mutuário" dense outlined clearable>
             <template v-slot:prepend><q-icon name="search" size="16px" /></template>
           </q-input>
         </div>
-        <div class="col">
-          <q-input v-model="filter.from" dense outlined label="De" type="date" />
+        <div class="col-6 col-sm-4 col-md-2">
+          <q-input v-model="filter.from" dense outlined label="De" type="date" stack-label />
         </div>
-        <div class="col">
-          <q-input v-model="filter.to" dense outlined label="Até" type="date" />
+        <div class="col-6 col-sm-4 col-md-2">
+          <q-input v-model="filter.to" dense outlined label="Até" type="date" stack-label />
         </div>
-        <div class="col-auto row q-gutter-xs no-wrap">
-          <q-btn outline color="primary" icon="refresh" no-caps rounded dense @click="loadData" :loading="loading">
-            <q-tooltip>Sincronizar</q-tooltip>
-          </q-btn>
-          <q-btn outline color="primary" icon="clear_all" no-caps rounded dense @click="clearFilter">
-            <q-tooltip>Limpar filtros</q-tooltip>
-          </q-btn>
-          <q-btn outline color="primary" icon="picture_as_pdf" no-caps rounded dense @click="downloadPDF" :disable="filteredInstallments.length === 0">
-            <q-tooltip>Baixar PDF</q-tooltip>
-          </q-btn>
+        <div class="col-12 col-md-3">
+          <div class="row q-gutter-xs justify-end no-wrap">
+            <q-btn outline color="primary" icon="refresh" no-caps rounded dense @click="loadData" :loading="loading">
+              <q-tooltip>Sincronizar</q-tooltip>
+            </q-btn>
+            <q-btn outline color="primary" icon="clear_all" no-caps rounded dense @click="clearFilter">
+              <q-tooltip>Limpar filtros</q-tooltip>
+            </q-btn>
+            <q-btn outline color="primary" icon="picture_as_pdf" no-caps rounded dense @click="downloadPDF" :disable="filteredInstallments.length === 0">
+              <q-tooltip>Baixar PDF</q-tooltip>
+            </q-btn>
+          </div>
         </div>
       </q-card-section>
     </q-card>
@@ -96,23 +98,15 @@
     <!-- Tabela de Prestações -->
     <q-card v-else flat bordered>
       <q-card-section class="installments-header">
-        <div class="row items-center">
-          <q-icon name="table_chart" size="20px" color="primary" class="q-mr-sm" />
-          <div class="text-subtitle1 text-weight-bold">Prestações</div>
-          <q-chip
-            v-if="usingDefaultWindow"
-            dense
-            outline
-            color="orange"
-            text-color="orange"
-            icon="event_upcoming"
-            class="q-ml-md"
-            style="font-size: 10px; margin-top: 2px"
-          >
-            Vencidas + próximos {{ DEFAULT_UPCOMING_DAYS }} dias
-          </q-chip>
-          <q-space />
-          <q-badge color="primary" rounded>{{ filteredInstallments.length }} registos</q-badge>
+        <div class="row items-center q-col-gutter-sm full-width">
+          <q-icon name="table_chart" size="20px" color="primary" />
+          <div class="col">
+            <div class="text-subtitle1 text-weight-bold" style="line-height: 1.2">Prestações</div>
+            <div v-if="usingDefaultWindow" class="text-caption text-orange text-weight-medium" style="font-size: 10px; line-height: 1.2">
+              <q-icon name="event_upcoming" size="12px" class="q-mr-xs" style="vertical-align: -1px" />Vencidas + próximos {{ DEFAULT_UPCOMING_DAYS }} dias
+            </div>
+          </div>
+          <q-badge color="primary" rounded class="q-px-sm q-py-xs">{{ filteredInstallments.length }} registos</q-badge>
         </div>
       </q-card-section>
 
@@ -587,8 +581,8 @@ onMounted(() => {
 body.body--dark .text-dark { color: #fbbf24 !important; }
 .kpi-card { border-radius: 12px; transition: transform 0.2s; &:hover { transform: translateY(-2px); } }
 .filter-card { border-radius: 12px; }
-.installments-header { background-color: $grey-1; }
-.installments-table { th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #6B7280; } td { font-size: 12px; padding: 8px 12px; } }
+.installments-header { background-color: $grey-1; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
+.installments-table { th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #6B7280; letter-spacing: 0.4px; } td { font-size: 12px; padding: 8px 12px; } }
 body.body--dark .kpi-card { background-color: $dark-page; }
-body.body--dark .installments-header { background-color: #252d42; }
+body.body--dark .installments-header { background-color: #252d42; border-bottom-color: rgba(255, 255, 255, 0.08); }
 </style>
