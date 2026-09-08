@@ -85,10 +85,10 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             }
         }
         catch (_a) { }
-        // 3. Buscar créditos do período — apenas desembolsados (status 1)
+        // 3. Buscar créditos do período — desembolsados (status 1) e terminados (status 3)
         const loanWhere = {
             companyId: companyIdNum,
-            status: 1,
+            status: { [sequelize_1.Op.in]: [1, 3] },
             [sequelize_1.Op.and]: [
                 { disbursementDate: { [sequelize_1.Op.not]: null } },
                 { disbursementDate: { [sequelize_1.Op.ne]: "" } },

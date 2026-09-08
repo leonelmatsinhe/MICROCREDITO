@@ -5,6 +5,8 @@ export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     kpis: {
       totalCustomers: 0,
+      activeLoans: 0,
+      finishedLoans: 0,
       totalDisbursed: 0,
       pendingAmount: 0,
       rejectedAmount: 0,
@@ -54,7 +56,9 @@ export const useDashboardStore = defineStore('dashboard', {
           const financial = data.kpis?.financial || {}
 
           this.kpis = {
-            totalCustomers: loans.active || 0,
+            totalCustomers: (loans.active || 0) + (loans.liquidated || 0),
+            activeLoans: loans.active || 0,
+            finishedLoans: loans.liquidated || 0,
             totalDisbursed: financial.totalDisbursed || 0,
             pendingAmount: financial.pendingAmount || 0,
             rejectedAmount: financial.rejectedAmount || 0,
@@ -124,6 +128,8 @@ export const useDashboardStore = defineStore('dashboard', {
     clearData() {
       this.kpis = {
         totalCustomers: 0,
+        activeLoans: 0,
+        finishedLoans: 0,
         totalDisbursed: 0,
         pendingAmount: 0,
         rejectedAmount: 0,

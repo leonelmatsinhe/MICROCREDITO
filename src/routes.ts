@@ -112,7 +112,8 @@ import { auth } from "./middlewares/auth";
 import {
   getPastAmortizations,
   getUpcomingAmortizations,
-  createAmortizationLoan
+  createAmortizationLoan,
+  getInstallmentsControl
 } from "./controllers/AmortizationController";
 
 import {
@@ -379,6 +380,8 @@ routes.post("/api/tranzaction", addTranzaction);
 routes.get("/api/getpastInstallments/:id", getPastAmortizations);
 routes.get("/api/getUpcomingInstallments/:id", getUpcomingAmortizations);
 routes.post("/api/createInstallmentsLoan/", createAmortizationLoan);
+// Controle de Prestações consolidado (nomes resolvidos no servidor, sem N+1)
+routes.get("/api/installments/control/:companyId", getInstallmentsControl);
 
 // Amortization Routes
 routes.get("/api/provinces", findAllProvinces);

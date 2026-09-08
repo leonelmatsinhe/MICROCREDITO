@@ -5,7 +5,7 @@ import { CustomerModel } from "../database/models/CustomerModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { DebtModel } from "../database/models/DebtModel";
 import { CompanyModel } from "../database/models/CompanyModel";
-import { sendTsembaSms, isTsembaConfigured } from "./TsembaSmsProvider";
+import { sendTsembaSms, isTsembaConfigured, getTsembaWalletBalance } from "./TsembaSmsProvider";
 
 export type SmsQueueStatus = "queued" | "processing" | "sent" | "failed" | "cancelled";
 
@@ -355,7 +355,9 @@ const isTransientGatewayError = (error: string): boolean => {
     err.includes("carteira") ||
     err.includes("wallet") ||
     err.includes("quota") ||
-    err.includes("credit")
+    err.includes("credit") ||
+    err.includes("invalid_api_key") ||
+    err.includes("insufficient_balance")
   );
 };
 
@@ -380,11 +382,18 @@ export const processSmsQueue = async (params: { limit?: number } = {}) => {
     recovered: 0,
     disabled: 0,
     configured: true,
+    walletBalance: null as number | null,
   };
 
   if (!isTsembaConfigured()) {
     // Sem chave: manter tudo na fila até o utilizador colar a API key no .env
     return { ...results, configured: false };
+  }
+
+  // Consultar saldo da carteira para monitoramento
+  const walletResult = await getTsembaWalletBalance();
+  if (walletResult.success && walletResult.balance !== undefined) {
+    results.walletBalance = walletResult.balance;
   }
 
   // Empresas que autorizam SMS — mensagens de empresas desactivadas ficam em
@@ -450,14 +459,14 @@ export const processSmsQueue = async (params: { limit?: number } = {}) => {
     if (result.success) {
       await row.update({
         status: "sent",
-        gatewayMessageId: result.gatewayMessageId || null,
+        gatewayMessageId: result.gatewayMessageId || result.campaignId || null,
         errorMessage: null,
         retries: attempt,
         sentAt: new Date(),
         lastAttemptAt: new Date(),
       });
       results.sent += 1;
-    } else if (isTransientGatewayError(result.error || "")) {
+    } else if (isTransientGatewayError(result.errorCode || result.error || "")) {
       // Problema de conta (saldo/quota/chave): mantém em fila sem queimar
       // tentativas e pára o lote (backoff) para não sobrecarregar a API.
       await row.update({

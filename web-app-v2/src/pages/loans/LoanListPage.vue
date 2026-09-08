@@ -318,13 +318,14 @@
           <q-avatar icon="warning" color="negative" text-color="white" size="40px" />
           <div class="q-ml-md">
             <div class="text-h6">Eliminar Crédito</div>
-            <div class="text-caption text-grey-6">Esta acção não pode ser desfeita.</div>
+            <div class="text-caption text-grey-6">Eliminação permanente e irreversível.</div>
           </div>
         </q-card-section>
         <q-card-section>
           <div class="text-body2">
-            Tem certeza que deseja eliminar o crédito da conta
-            <strong>{{ deletingLoan?.accountNumber }}</strong>?
+            Esta acção elimina permanentemente o crédito da conta <strong>{{ deletingLoan?.accountNumber }}</strong>,
+            incluindo prestações, pagamentos, juros, descontos, dívidas e garantias associadas.
+            Os registos financeiros não poderão ser recuperados. Deseja continuar?
           </div>
         </q-card-section>
         <q-card-actions align="right" class="q-pa-md">

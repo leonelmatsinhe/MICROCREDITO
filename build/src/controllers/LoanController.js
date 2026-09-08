@@ -21,6 +21,9 @@ const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const sequelize_1 = require("sequelize");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const loanAmortization_1 = require("../utils/loanAmortization");
+const db_1 = require("../database/db");
+const DebtModel_1 = require("../database/models/DebtModel");
+const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
 const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -404,16 +407,37 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
 exports.updateLoan = updateLoan;
 const destroyLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
-    const deleteLoan = yield LoanModel_1.LoanModel.destroy({ where: { id: id } });
-    return deleteLoan != null
-        ? res.status(201).send(JSON.stringify({
+    const transaction = yield db_1.db.transaction();
+    try {
+        const loan = yield LoanModel_1.LoanModel.findByPk(id, { transaction });
+        if (!loan) {
+            yield transaction.rollback();
+            return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+        }
+        const installments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
+            where: { loanId: id },
+            attributes: ["id"],
+            transaction,
+        });
+        const installmentIds = installments.map((installment) => installment.id);
+        yield TranzactionModel_1.TranzactionModel.destroy({ where: { loanId: id }, transaction });
+        if (installmentIds.length > 0) {
+            yield DebtModel_1.DebtModel.destroy({ where: { amortisationId: { [sequelize_1.Op.in]: installmentIds } }, transaction });
+            yield AmortizationLoanModel_1.AmorizationLoanModel.destroy({ where: { loanId: id }, transaction });
+        }
+        yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.destroy({ where: { loanId: id }, transaction });
+        yield LoanModel_1.LoanModel.destroy({ where: { id }, transaction });
+        yield transaction.commit();
+        return res.status(200).json({
             success: true,
-            message: "Loan deleted successfully.",
-        }))
-        : res.status(204).send(JSON.stringify({
-            success: false,
-            message: "There was an error deleting the loan.",
-        }));
+            message: "Crédito e todos os registos associados foram eliminados.",
+        });
+    }
+    catch (error) {
+        yield transaction.rollback();
+        console.error("Erro ao eliminar crédito e dependências:", error);
+        return res.status(500).json({ success: false, message: "Não foi possível eliminar o crédito." });
+    }
 });
 exports.destroyLoan = destroyLoan;
 /**

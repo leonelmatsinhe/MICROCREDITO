@@ -116,7 +116,10 @@
       >
         <template v-slot:body-cell-customer="props">
           <q-td :props="props">
-            <div class="table-borrower-name" style="font-size: 12px">{{ props.row.customerName }}</div>
+            <div class="table-borrower-name" style="font-size: 12px">{{ displayCustomerName(props.row) }}</div>
+            <q-badge v-if="!props.row.hasCustomer" color="warning" text-color="dark" rounded class="q-mt-xs">
+              <q-icon name="person_off" size="10px" class="q-mr-xs" />Sem cadastro
+            </q-badge>
           </q-td>
         </template>
 
@@ -151,7 +154,7 @@
 
         <template v-slot:body-cell-lateFee="props">
           <q-td :props="props">
-            <span :class="props.row.lateFee > 0 ? 'text-negative text-weight-bold' : 'text-grey-5'" style="font-size: 12px">
+            <span :class="props.row.lateFee > 0 ? 'text-negative text-weight-bold' : ''" style="font-size: 12px">
               {{ formatMoney(props.row.lateFee) }}
             </span>
           </q-td>
@@ -203,8 +206,11 @@
         <q-card-section>
           <div class="q-mb-md">
             <div class="text-caption text-grey-5">Mutuário</div>
-            <div class="text-weight-bold">{{ selectedInstallment.customerName }}</div>
+            <div class="text-weight-bold">{{ displayCustomerName(selectedInstallment) }}</div>
             <div class="text-caption text-grey-6">Conta {{ selectedInstallment.accountNumber }}</div>
+            <q-badge v-if="!selectedInstallment.hasCustomer" color="warning" text-color="dark" rounded class="q-mt-xs">
+              <q-icon name="person_off" size="10px" class="q-mr-xs" />Sem cadastro
+            </q-badge>
           </div>
           <q-separator class="q-mb-md" />
           <div class="row q-col-gutter-sm q-mb-md">
@@ -314,10 +320,17 @@ const stats = computed(() => ({
 
 const filteredInstallments = computed(() => {
   let result = [...installments.value]
-  if (filter.value.status !== null) result = result.filter(i => i.status === filter.value.status)
+  // NOTA: linhas sem cliente correspondente NUNCA são escondidas — este ecrã é
+  // de controlo financeiro. Mostram-se com o selo "Sem cadastro" (ver template).
+  // Por padrão, excluir pagas (status=1) — só mostrar quando usuário seleciona no filtro
+  if (filter.value.status === null) {
+    result = result.filter(i => i.status !== 1)
+  } else {
+    result = result.filter(i => i.status === filter.value.status)
+  }
   if (filter.value.search) {
     const s = filter.value.search.toLowerCase()
-    result = result.filter(i => i.customerName?.toLowerCase().includes(s) || i.accountNumber?.toString().includes(s))
+    result = result.filter(i => displayCustomerName(i).toLowerCase().includes(s) || i.accountNumber?.toString().includes(s))
   }
   if (filter.value.from) result = result.filter(i => i.dueDate >= filter.value.from)
   if (filter.value.to) result = result.filter(i => i.dueDate <= filter.value.to)
@@ -335,6 +348,8 @@ function sortInstallments(rows) {
 
 function clearFilter() { filter.value = { status: null, search: '', from: '', to: '' } }
 function formatMoney(val) { return formatMoneyValue(val) }
+// Nome de apresentação: nome real ou placeholder identificável (nunca vazio)
+function displayCustomerName(row) { return row.customerName || `Conta ${row.accountNumber}` }
 function formatDate(dateStr) {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
@@ -351,7 +366,7 @@ function sendSMS(row) {
   messageChannel.value = 'sms'
   messagePhone.value = row.customerPhone || ''
   messageAccountNumber.value = row.accountNumber || ''
-  messageCustomerName.value = row.customerName || ''
+  messageCustomerName.value = displayCustomerName(row)
   messageInitial.value = buildDueAlertMessage(row)
   showMessageModal.value = true
 }
@@ -360,7 +375,7 @@ function sendWhatsApp(row) {
   messageChannel.value = 'whatsapp'
   messagePhone.value = row.customerPhone || ''
   messageAccountNumber.value = row.accountNumber || ''
-  messageCustomerName.value = row.customerName || ''
+  messageCustomerName.value = displayCustomerName(row)
   messageInitial.value = buildDueAlertMessage(row)
   showMessageModal.value = true
 }
@@ -371,7 +386,7 @@ function formatMoneyRaw(val) { return new Intl.NumberFormat('pt-MZ', { minimumFr
 // nome do mutuário + itens da prestação (nº, valor, vencimento) + empresa,
 // sem caracteres especiais e sempre <= 160 caracteres.
 function buildDueAlertMessage(row) {
-  const nome = row.customerName || 'Cliente'
+  const nome = displayCustomerName(row)
   const n = row.installmentOrder ? String(row.installmentOrder).replace(/[ºª]/g, '') : '?'
   // Intl usa espaço de não-quebra (U+00A0/U+202F) como separador de milhares — trocar por espaço normal
   const valor = formatMoneyRaw(Number(row.installment) || 0).replace(/[\u00A0\u202F]/g, ' ')
@@ -440,7 +455,7 @@ async function downloadPDF() {
     const tableRows = sorted.map(row => {
       let obs = row.status === 1 ? 'Liquidado' : row.daysOverdue > 0 ? `${row.daysOverdue} dias vencido` : row.daysUntilDue > 0 ? `${row.daysUntilDue} dias pra vencer` : 'Vence hoje'
       return [
-        { text: row.customerName || '-', style: 'cellText' },
+        { text: displayCustomerName(row), style: 'cellText' },
         { text: formatMoneyRaw(row.installment), style: 'cellRight' },
         { text: formatDate(row.dueDate), style: 'cellCenter' },
         { text: obs, style: 'cellText' },
@@ -496,35 +511,11 @@ async function loadData() {
   try {
     const companyId = authStore.companyId
     if (!companyId) return
-    const { data: customersData } = await api.get(`/api/customers/${companyId}`)
-    const customers = customersData?.result || []
-    const customerMap = {}
-    const customerPhoneMap = {}
-    customers.forEach(c => {
-      customerMap[String(c.accountNumber)] = c.customerName
-      customerPhoneMap[String(c.accountNumber)] = c.customerPhone || ''
-    })
-    const { data: loansData } = await api.get(`/api/loan/findAllLoans/all/${companyId}`)
-    const loans = loansData?.result || []
-    const allInstallments = []
-    for (const loan of loans) {
-      const loanStatus = Number(loan.status)
-      if (loanStatus !== 1 && loanStatus !== 3) continue
-      const customerName = customerMap[String(loan.accountNumber)] || `Conta ${loan.accountNumber}`
-      try {
-        const { data: amortData } = await api.get(`/api/loan/amortization/${loan.id}`)
-        const amortizations = amortData?.result || []
-        if (Array.isArray(amortizations)) {
-          amortizations.forEach(a => {
-            const daysOverdue = Number(a.lateDays || 0)
-            const daysUntilDue = Number(a.daysUntilDue || 0)
-            const lateFee = Number(a.latePaymentInterest || a.lateFee || 0)
-            allInstallments.push({ id: `${loan.id}-${a.id || a.installmentOrder}`, loanId: loan.id, customerName, accountNumber: loan.accountNumber, customerPhone: customerPhoneMap[String(loan.accountNumber)] || '', installmentOrder: a.installmentOrder ?? '', installment: Number(a.installment) || 0, paidAmount: Number(a.paidAmount) || 0, status: Number(a.status), dueDate: a.dueDate, daysOverdue, daysUntilDue, lateFee, totalToPay: Number(a.installment || 0) + lateFee, amortization: Number(a.amortization) || 0, rateAmount: Number(a.rateAmount) || 0 })
-          })
-        }
-      } catch (e) { console.warn(`Erro loan ${loan.id}:`, e.message) }
-    }
-    installments.value = allInstallments
+    // Endpoint consolidado: nomes de mutuários, mora e dias de atraso são
+    // resolvidos no servidor (lista completa de clientes, sem paginação, e sem
+    // o padrão N+1 de uma chamada /amortization por crédito).
+    const { data } = await api.get(`/api/installments/control/${companyId}`)
+    installments.value = Array.isArray(data?.result) ? data.result : []
   } catch (error) { console.error('Erro:', error); $q.notify({ type: 'negative', message: 'Erro ao carregar prestações', position: 'top' }) } finally { loading.value = false }
 }
 
@@ -536,7 +527,8 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.text-dark { color: #1f2937 !important; }
+.text-dark { color: #f59e0b !important; font-weight: 600; }
+body.body--dark .text-dark { color: #fbbf24 !important; }
 .kpi-card { border-radius: 12px; transition: transform 0.2s; &:hover { transform: translateY(-2px); } }
 .filter-card { border-radius: 12px; }
 .installments-header { background-color: $grey-1; }

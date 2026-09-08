@@ -5,6 +5,10 @@ import { Op } from "sequelize";
 import { simulator } from "../utils/loanAmortization";
 import { LoanModel } from "../database/models/LoanModel";
 import { DebtModel } from "../database/models/DebtModel";
+import { CustomerModel } from "../database/models/CustomerModel";
+import { CompanyModel } from "../database/models/CompanyModel";
+import { TranzactionModel } from "../database/models/TranzactionModel";
+import { installmentPanification } from "../utils/calculateLateAmount";
 import { enqueueDisbursementSms } from "../services/SmsGatewayService";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
@@ -221,4 +225,152 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
   }
 };
 
-export { getUpcomingAmortizations, getPastAmortizations, createAmortizationLoan };
+/**
+ * Controle de Prestações (admin) — endpoint consolidado.
+ *
+ * Resolve no servidor tudo o que a página precisa, numa só chamada:
+ *  - créditos activos (1) ou liquidados (3) da empresa;
+ *  - TODAS as prestações desses créditos (1 query, sem o padrão N+1 anterior);
+ *  - nome/telefone do mutuário via lista COMPLETA de clientes (sem paginação —
+ *    a paginação silenciosa de /api/customers/:id fazia desaparecer mutuários
+ *    fora da 1.ª página, que caíam no placeholder "Conta X" e eram escondidos);
+ *  - mora diária calculada com o forfeit da empresa (installmentPanification);
+ *  - mora REAL cobrada nas prestações pagas (transacções, com de-duplicação
+ *    por dia, como em getLoanAmortization / findAllPaymentsOverview);
+ *  - daysOverdue / daysUntilDue calculados no servidor (data única de referência).
+ *
+ * Linhas sem cliente correspondente são devolvidas com customerName=null e
+ * hasCustomer=false — cabe ao frontend MOSTRÁ-LAS com selo (nunca esconder
+ * dados financeiros).
+ */
+const getInstallmentsControl = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = req.params;
+    const companyIdNum = Number(companyId);
+    if (!Number.isFinite(companyIdNum) || companyIdNum <= 0) {
+      return res.status(400).json({ success: false, message: "companyId inválido." });
+    }
+
+    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["id", "forfeit"] });
+    if (!company) {
+      return res.status(404).json({ success: false, message: "Empresa não encontrada." });
+    }
+    const forfeit = Number(company.getDataValue("forfeit") || 0);
+
+    // 1. Créditos activos (1) ou liquidados (3)
+    const loans: any[] = await LoanModel.findAll({
+      where: { companyId: companyIdNum, status: { [Op.in]: [1, 3] } },
+      attributes: ["id", "accountNumber", "customerId", "status"],
+      order: [["id", "DESC"]],
+      raw: true,
+    });
+    if (loans.length === 0) {
+      return res.status(200).json({ success: true, result: [] });
+    }
+    const loanIds = loans.map((l: any) => Number(l.id));
+
+    // 2. Lista COMPLETA de mutuários da empresa (sem paginação), indexada por conta e por id
+    const customers: any[] = await CustomerModel.findAll({
+      where: { companyId: companyIdNum },
+      attributes: ["id", "accountNumber", "customerName", "customerPhone"],
+      raw: true,
+    });
+    const customerByAccount: Record<string, any> = {};
+    const customerById: Record<number, any> = {};
+    customers.forEach((c: any) => {
+      customerByAccount[String(c.accountNumber)] = c;
+      customerById[Number(c.id)] = c;
+    });
+
+    // 3. Todas as prestações desses créditos numa única query
+    const amortizations: any[] = await AmorizationLoanModel.findAll({
+      where: { loanId: { [Op.in]: loanIds } },
+      order: [["dueDate", "ASC"], ["id", "ASC"]],
+      raw: true,
+    });
+
+    // 4. Mora real cobrada nas prestações pagas (de-duplicada por dia de pagamento)
+    const paidAmortIds = amortizations
+      .filter((a: any) => Number(a.status) === 1)
+      .map((a: any) => Number(a.id));
+    const realLateByAmortId: Record<number, number> = {};
+    if (paidAmortIds.length > 0) {
+      const transactions: any[] = await TranzactionModel.findAll({
+        where: { amortizationLoanId: { [Op.in]: paidAmortIds } },
+        attributes: ["amortizationLoanId", "latePaymentInterest", "paymentDate"],
+        raw: true,
+      });
+      const maxLateByAmortAndDate: Record<string, number> = {};
+      transactions.forEach((tx: any) => {
+        const key = `${Number(tx.amortizationLoanId)}:${String(tx.paymentDate || "").slice(0, 10)}`;
+        maxLateByAmortAndDate[key] = Math.max(
+          maxLateByAmortAndDate[key] || 0,
+          Number(tx.latePaymentInterest) || 0
+        );
+      });
+      Object.entries(maxLateByAmortAndDate).forEach(([key, value]) => {
+        const amortId = Number(key.split(":")[0]);
+        realLateByAmortId[amortId] = Math.round(((realLateByAmortId[amortId] || 0) + value) * 100) / 100;
+      });
+    }
+
+    // 5. Panificação por crédito (mora diária e saldo são calculados por empréstimo)
+    const amortByLoan: Record<number, any[]> = {};
+    amortizations.forEach((a: any) => {
+      (amortByLoan[Number(a.loanId)] ||= []).push(a);
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const result: any[] = [];
+    for (const loan of loans) {
+      const plan = installmentPanification(amortByLoan[Number(loan.id)] || [], forfeit);
+      // Mesma ordem de resolução usada historicamente no frontend: conta → id
+      const customer =
+        customerByAccount[String(loan.accountNumber)] ||
+        customerById[Number(loan.customerId)] ||
+        null;
+      for (const a of plan) {
+        const due = a.dueDate ? new Date(`${String(a.dueDate).slice(0, 10)}T00:00:00`) : null;
+        const diffMs = due ? today.getTime() - due.getTime() : 0;
+        const daysOverdue = diffMs > 0 ? Math.floor(diffMs / 86400000) : 0;
+        const daysUntilDue = diffMs < 0 ? Math.ceil(-diffMs / 86400000) : 0;
+        const status = Number(a.status);
+        // Pagas: mora real cobrada; por pagar: mora calculada com o forfeit
+        const lateFee = status === 1
+          ? realLateByAmortId[Number(a.id)] || 0
+          : Number(a.latePaymentInterest) || 0;
+        result.push({
+          id: `${loan.id}-${a.id || a.installmentOrder}`,
+          loanId: Number(loan.id),
+          accountNumber: loan.accountNumber,
+          customerId: loan.customerId,
+          customerName: customer?.customerName || null,
+          customerPhone: customer?.customerPhone || "",
+          hasCustomer: !!customer,
+          installmentOrder: a.installmentOrder ?? "",
+          installment: Number(a.installment) || 0,
+          paidAmount: Number(a.paidAmount) || 0,
+          status,
+          dueDate: a.dueDate ? String(a.dueDate).slice(0, 10) : null,
+          daysOverdue,
+          daysUntilDue,
+          lateFee,
+          totalToPay: Math.round(((Number(a.installment) || 0) + lateFee) * 100) / 100,
+          amortization: Number(a.amortization) || 0,
+          rateAmount: Number(a.rateAmount) || 0,
+        });
+      }
+    }
+
+    return res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    console.error("Erro no controle de prestações:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Erro ao carregar o controle de prestações.",
+    });
+  }
+};
+
+export { getUpcomingAmortizations, getPastAmortizations, createAmortizationLoan, getInstallmentsControl };

@@ -132,6 +132,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
         "interestRate",
         "numberOfInstallments",
         "dateCreated",
+        "disbursementDate",
         "status",
       ],
       order: [["id", "DESC"]],
@@ -513,7 +514,7 @@ function generateChartData(loans: any[], transactions: any[]) {
   let earliestMonth = currentMonth; // default: current month
 
   loans.forEach((loan: any) => {
-    const date = new Date(loan.dateCreated);
+    const date = new Date(loan.disbursementDate || loan.dateCreated);
     if (date.getFullYear() === currentYear) {
       const m = date.getMonth();
       if (m < earliestMonth) earliestMonth = m;
@@ -534,9 +535,9 @@ function generateChartData(loans: any[], transactions: any[]) {
   const payments = new Array(monthCount).fill(0);
   const labels = months.slice(earliestMonth, currentMonth + 1);
 
-  // Aggregate disbursements by month
+  // Aggregate disbursements by month (using disbursement date)
   loans.forEach((loan: any) => {
-    const date = new Date(loan.dateCreated);
+    const date = new Date(loan.disbursementDate || loan.dateCreated);
     if (date.getFullYear() === currentYear) {
       const month = date.getMonth();
       if (month >= earliestMonth && month <= currentMonth) {

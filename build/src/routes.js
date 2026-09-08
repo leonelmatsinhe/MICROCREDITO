@@ -235,6 +235,8 @@ routes.post("/api/tranzaction", TranzactionController_1.addTranzaction);
 routes.get("/api/getpastInstallments/:id", AmortizationController_1.getPastAmortizations);
 routes.get("/api/getUpcomingInstallments/:id", AmortizationController_1.getUpcomingAmortizations);
 routes.post("/api/createInstallmentsLoan/", AmortizationController_1.createAmortizationLoan);
+// Controle de Prestações consolidado (nomes resolvidos no servidor, sem N+1)
+routes.get("/api/installments/control/:companyId", AmortizationController_1.getInstallmentsControl);
 // Amortization Routes
 routes.get("/api/provinces", ProvinceController_1.findAllProvinces);
 routes.get("/api/districts", ProvinceController_1.findAllDistricts);

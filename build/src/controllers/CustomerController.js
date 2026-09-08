@@ -640,15 +640,20 @@ const getAllCustomerNames = (req, res) => __awaiter(void 0, void 0, void 0, func
     const { id: companyId } = req.params;
     try {
         const customers = yield CustomerModel_1.CustomerModel.findAll({
-            attributes: ["accountNumber", "customerName"],
+            attributes: ["accountNumber", "customerName", "customerPhone"],
             where: { companyId },
             order: [["customerName", "ASC"]],
         });
         const nameMap = {};
+        const phoneMap = {};
         customers.forEach((c) => {
-            nameMap[c.getDataValue("accountNumber")] = c.getDataValue("customerName");
+            const account = String(c.getDataValue("accountNumber"));
+            nameMap[account] = c.getDataValue("customerName");
+            phoneMap[account] = c.getDataValue("customerPhone") || "";
         });
-        return res.status(200).json({ success: true, result: nameMap });
+        // `result` mantém o formato original (conta → nome) usado pela app antiga;
+        // `phones` é aditivo — consumidores antigos ignoram campos extra.
+        return res.status(200).json({ success: true, result: nameMap, phones: phoneMap });
     }
     catch (error) {
         return res.status(500).json({ success: false, message: error.message });

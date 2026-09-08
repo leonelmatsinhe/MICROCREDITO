@@ -1547,7 +1547,7 @@ function rejectLoan(loan) {
 function confirmDeleteLoan(loan) {
   $q.dialog({
     title: 'Eliminar Crédito',
-    message: `Tem certeza que deseja eliminar o crédito de ${formatMoney(loan.amount)}? Esta acção não pode ser desfeita.`,
+    message: `Esta acção elimina permanentemente o crédito de ${formatMoney(loan.amount)}, todas as prestações, pagamentos, juros, descontos, dívidas e garantias associadas. Os documentos e registos financeiros não poderão ser recuperados. Deseja continuar?`,
     cancel: 'Não',
     ok: { label: 'Sim, eliminar', color: 'negative' },
     persistent: true

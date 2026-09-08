@@ -52,10 +52,10 @@ const getBMReport = async (req: Request, res: Response) => {
       }
     } catch {}
 
-    // 3. Buscar créditos do período — apenas desembolsados (status 1)
+    // 3. Buscar créditos do período — desembolsados (status 1) e terminados (status 3)
     const loanWhere: any = {
       companyId: companyIdNum,
-      status: 1,
+      status: { [Op.in]: [1, 3] },
       [Op.and]: [
         { disbursementDate: { [Op.not]: null } },
         { disbursementDate: { [Op.ne]: "" } },

@@ -692,15 +692,20 @@ const getAllCustomerNames = async (req: Request, res: Response) => {
   const { id: companyId } = req.params;
   try {
     const customers = await CustomerModel.findAll({
-      attributes: ["accountNumber", "customerName"],
+      attributes: ["accountNumber", "customerName", "customerPhone"],
       where: { companyId },
       order: [["customerName", "ASC"]],
     });
     const nameMap: Record<string, string> = {};
+    const phoneMap: Record<string, string> = {};
     customers.forEach((c: any) => {
-      nameMap[c.getDataValue("accountNumber")] = c.getDataValue("customerName");
+      const account = String(c.getDataValue("accountNumber"));
+      nameMap[account] = c.getDataValue("customerName");
+      phoneMap[account] = c.getDataValue("customerPhone") || "";
     });
-    return res.status(200).json({ success: true, result: nameMap });
+    // `result` mantém o formato original (conta → nome) usado pela app antiga;
+    // `phones` é aditivo — consumidores antigos ignoram campos extra.
+    return res.status(200).json({ success: true, result: nameMap, phones: phoneMap });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }

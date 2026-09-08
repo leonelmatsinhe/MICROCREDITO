@@ -311,7 +311,9 @@ const isTransientGatewayError = (error) => {
         err.includes("carteira") ||
         err.includes("wallet") ||
         err.includes("quota") ||
-        err.includes("credit"));
+        err.includes("credit") ||
+        err.includes("invalid_api_key") ||
+        err.includes("insufficient_balance"));
 };
 /**
  * Processa a fila de SMS: envia as mensagens pendentes através da API da Tsemba
@@ -335,10 +337,16 @@ const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, funct
         recovered: 0,
         disabled: 0,
         configured: true,
+        walletBalance: null,
     };
     if (!(0, TsembaSmsProvider_1.isTsembaConfigured)()) {
         // Sem chave: manter tudo na fila até o utilizador colar a API key no .env
         return Object.assign(Object.assign({}, results), { configured: false });
+    }
+    // Consultar saldo da carteira para monitoramento
+    const walletResult = yield (0, TsembaSmsProvider_1.getTsembaWalletBalance)();
+    if (walletResult.success && walletResult.balance !== undefined) {
+        results.walletBalance = walletResult.balance;
     }
     // Empresas que autorizam SMS — mensagens de empresas desactivadas ficam em
     // fila (não são enviadas) até o Admin voltar a activar o serviço.
@@ -398,7 +406,7 @@ const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, funct
         if (result.success) {
             yield row.update({
                 status: "sent",
-                gatewayMessageId: result.gatewayMessageId || null,
+                gatewayMessageId: result.gatewayMessageId || result.campaignId || null,
                 errorMessage: null,
                 retries: attempt,
                 sentAt: new Date(),
@@ -406,7 +414,7 @@ const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, funct
             });
             results.sent += 1;
         }
-        else if (isTransientGatewayError(result.error || "")) {
+        else if (isTransientGatewayError(result.errorCode || result.error || "")) {
             // Problema de conta (saldo/quota/chave): mantém em fila sem queimar
             // tentativas e pára o lote (backoff) para não sobrecarregar a API.
             yield row.update({

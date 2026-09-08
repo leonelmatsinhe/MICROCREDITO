@@ -651,13 +651,10 @@ async function loadData() {
     const companyId = authStore.companyId
     if (!companyId) return
 
-    // 1. Buscar todos os clientes
-    const { data: customersData } = await api.get(`/api/customers/${companyId}`)
-    const customers = customersData?.result || []
-    const customerMap = {}
-    customers.forEach(c => {
-      customerMap[String(c.accountNumber)] = c.customerName
-    })
+    // 1. Mapa COMPLETO de nomes (endpoint sem paginação — a lista paginada de
+    // /api/customers/:id só devolve 15 por defeito e fazia desaparecer nomes)
+    const { data: customersData } = await api.get(`/api/customers/${companyId}/names`)
+    const customerMap = customersData?.result || {}
 
     // 2. Buscar todos os créditos da empresa
     const { data: loansData } = await api.get(`/api/loan/findAllLoans/all/${companyId}`)
@@ -677,51 +674,13 @@ async function loadData() {
         dateCreated: loan.dateCreated || ''
       }))
 
-    const allInstallments = []
-
-    // 3. Buscar prestações de cada crédito (status activo=1 ou liquidado=3)
-    for (const loan of loans) {
-      const loanStatus = Number(loan.status)
-      if (loanStatus !== 1 && loanStatus !== 3) continue
-
-      const customerName = customerMap[String(loan.accountNumber)] || `Conta ${loan.accountNumber}`
-
-      try {
-        const { data: amortData } = await api.get(`/api/loan/amortization/${loan.id}`)
-        console.log(`[Gestor] Loan ${loan.id}: success=${amortData?.success}, result count=${amortData?.result?.length}`)
-
-        const amortizations = amortData?.result || []
-
-        if (Array.isArray(amortizations)) {
-          amortizations.forEach(a => {
-            const daysOverdue = Number(a.lateDays || 0)
-            const daysUntilDue = Number(a.daysUntilDue || 0)
-
-            const lateFee = Number(a.latePaymentInterest || a.lateFee || 0)
-            const totalToPay = Number(a.installment || 0) + lateFee
-
-            allInstallments.push({
-              id: `${loan.id}-${a.id || a.installmentOrder}`,
-              loanId: loan.id,
-              customerName,
-              accountNumber: loan.accountNumber,
-              installment: Number(a.installment) || 0,
-              paidAmount: Number(a.paidAmount) || 0,
-              status: Number(a.status),
-              dueDate: a.dueDate,
-              daysOverdue,
-              daysUntilDue,
-              lateFee,
-              totalToPay,
-              amortization: Number(a.amortization) || 0,
-              rateAmount: Number(a.rateAmount) || 0
-            })
-          })
-        }
-      } catch (e) {
-        console.warn(`[Gestor] Erro ao buscar amortizações do loan ${loan.id}:`, e.message)
-      }
-    }
+    // 3. Prestações de todos os créditos — endpoint consolidado (sem N+1,
+    // nomes e mora resolvidos no servidor)
+    const { data: controlData } = await api.get(`/api/installments/control/${companyId}`)
+    const allInstallments = (controlData?.result || []).map(i => ({
+      ...i,
+      customerName: i.customerName || `Conta ${i.accountNumber}`
+    }))
 
     console.log('[Gestor] Total prestações carregadas:', allInstallments.length)
     installments.value = allInstallments

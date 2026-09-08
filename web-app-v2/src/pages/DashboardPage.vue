@@ -21,6 +21,7 @@
           icon="people"
           avatarColor="blue"
           valueColor="text-dark"
+          :secondary-text="`Activos: ${kpis.activeLoans || 0}  ·  Terminados: ${kpis.finishedLoans || 0}`"
         />
       </div>
       <div class="col-12 col-sm-6 col-md-4">

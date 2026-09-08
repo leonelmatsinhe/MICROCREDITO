@@ -10,6 +10,9 @@ import { TranzactionModel } from "../database/models/TranzactionModel";
 import { Op } from "sequelize";
 import { installmentPanification, totalsOfInstallments } from "../utils/calculateLateAmount";
 import { calculateFrenchAmortizationInstallment } from "../utils/loanAmortization";
+import { db } from "../database/db";
+import { DebtModel } from "../database/models/DebtModel";
+import { GuarateeAssessmentModel } from "../database/models/GuarateeAssessmentModel";
 
 const toNumber = (value: any) => {
   const parsed = Number(value);
@@ -457,22 +460,39 @@ const updateLoan = async (req: Request, res: Response) => {
 
 const destroyLoan = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const transaction = await db.transaction();
+  try {
+    const loan = await LoanModel.findByPk(id, { transaction });
+    if (!loan) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+    }
 
-  const deleteLoan = await LoanModel.destroy({ where: { id: id } });
+    const installments = await AmorizationLoanModel.findAll({
+      where: { loanId: id },
+      attributes: ["id"],
+      transaction,
+    });
+    const installmentIds = installments.map((installment: any) => installment.id);
 
-  return deleteLoan != null
-    ? res.status(201).send(
-      JSON.stringify({
-        success: true,
-        message: "Loan deleted successfully.",
-      })
-    )
-    : res.status(204).send(
-      JSON.stringify({
-        success: false,
-        message: "There was an error deleting the loan.",
-      })
-    );
+    await TranzactionModel.destroy({ where: { loanId: id }, transaction });
+    if (installmentIds.length > 0) {
+      await DebtModel.destroy({ where: { amortisationId: { [Op.in]: installmentIds } }, transaction });
+      await AmorizationLoanModel.destroy({ where: { loanId: id }, transaction });
+    }
+    await GuarateeAssessmentModel.destroy({ where: { loanId: id }, transaction });
+    await LoanModel.destroy({ where: { id }, transaction });
+    await transaction.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "Crédito e todos os registos associados foram eliminados.",
+    });
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error("Erro ao eliminar crédito e dependências:", error);
+    return res.status(500).json({ success: false, message: "Não foi possível eliminar o crédito." });
+  }
 };
 
 /**
