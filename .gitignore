@@ -6,4 +6,8 @@ node_modules/
 uploads/
 build/
 web-app-v2/node_modules/
-web-app-v2/dist/
+web-app-v2/dist/.env
+.env.local
+.env
+.env.backup
+public/v2/
