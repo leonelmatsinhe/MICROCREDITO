@@ -28,6 +28,9 @@
             <q-btn outline color="primary" icon="picture_as_pdf" no-caps rounded dense @click="downloadPDF" :disable="filteredInstallments.length === 0">
               <q-tooltip>Baixar PDF</q-tooltip>
             </q-btn>
+            <q-btn outline color="primary" icon="table_chart" no-caps rounded dense @click="downloadExcel" :disable="filteredInstallments.length === 0">
+              <q-tooltip>Baixar Excel</q-tooltip>
+            </q-btn>
           </div>
         </div>
       </q-card-section>
@@ -449,6 +452,38 @@ function buildDueAlertMessage(row) {
   if (base.length + suffix.length <= 160) return base + suffix
   if (base.length >= 160) return `${base.slice(0, 159)}.`
   return `${base} ${company.slice(0, 160 - base.length - 1)}`
+}
+
+// ==================== EXCEL ====================
+// Gerado no backend (exceljs) com bordas/fontes reais — mesmo padrão do relatório BM.
+async function downloadExcel() {
+  if (filteredInstallments.value.length === 0) return
+  try {
+    $q.loading.show({ message: 'A gerar Excel...' })
+    const { downloadExcelFromBackend } = await import('@/utils/excelDownload')
+    const rows = filteredInstallments.value.map(row => {
+      const obs = row.status === 1 ? 'Liquidado' : row.daysOverdue > 0 ? `${row.daysOverdue} dias vencido` : row.daysUntilDue > 0 ? `${row.daysUntilDue} dias pra vencer` : 'Vence hoje'
+      return {
+        customerName: displayCustomerName(row),
+        installment: Number(row.installment) || 0,
+        dueDate: formatDate(row.dueDate),
+        observations: obs,
+        lateFee: Number(row.lateFee) || 0,
+        totalToPay: Number(row.totalToPay) || 0
+      }
+    })
+    await downloadExcelFromBackend(
+      '/api/export/installments/excel',
+      { rows },
+      `prestacoes-${new Date().toISOString().slice(0, 10)}.xlsx`
+    )
+    $q.notify({ type: 'positive', message: 'Excel gerado com sucesso!', position: 'top' })
+  } catch (e) {
+    console.error('Erro ao gerar Excel:', e)
+    $q.notify({ type: 'negative', message: 'Erro ao gerar Excel', position: 'top' })
+  } finally {
+    $q.loading.hide()
+  }
 }
 
 // ==================== PDF ====================

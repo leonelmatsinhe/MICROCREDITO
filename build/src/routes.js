@@ -39,6 +39,7 @@ const OperatorLoanController_1 = require("./controllers/OperatorLoanController")
 const NotificationController_1 = require("./controllers/NotificationController");
 const DashboardController_1 = require("./controllers/DashboardController");
 const BMReportController_1 = require("./controllers/BMReportController");
+const ExcelExportController_1 = require("./controllers/ExcelExportController");
 const routes = express_1.default.Router();
 exports.routes = routes;
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
@@ -260,3 +261,8 @@ routes.get("/api/dashboard/:companyId", DashboardController_1.getDashboardOvervi
 routes.get("/api/reports/banco-mocambique/:companyId", BMReportController_1.getBMReport);
 // Download do Excel com bordas/fontes reais (cópia fiel do modelo)
 routes.get("/api/reports/banco-mocambique/:companyId/excel", BMReportController_1.getBMReportExcel);
+// Exportação de grelhas para Excel (estilos reais — mesmo padrão do relatório BM)
+routes.post("/api/export/customers/excel", ExcelExportController_1.exportCustomersExcel);
+routes.post("/api/export/loans/excel", ExcelExportController_1.exportLoansExcel);
+routes.post("/api/export/payments/excel", ExcelExportController_1.exportPaymentsExcel);
+routes.post("/api/export/installments/excel", ExcelExportController_1.exportInstallmentsExcel);

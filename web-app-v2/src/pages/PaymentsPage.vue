@@ -471,32 +471,19 @@ async function exportExcel() {
     return
   }
   try {
-    const XLSX = await import('xlsx')
-    const cfg = exportConfig()
-
-    const wsData = [
-      ['Pagamentos de Prestações'],
-      [`Gerado em ${new Date().toLocaleString('pt-MZ')}`],
-      [],
-      cfg.headers,
-      ...rows.map(row => cfg.keys.map((k, i) => (cfg.money[i] ? Number(row[k]) || 0 : String(row[k] ?? '')))),
-      [],
-      ['TOTAL', ...cfg.keys.slice(1).map((k, i) => {
-        if (!cfg.money[i + 1]) return ''
-        return rows.reduce((acc, r) => acc + (Number(r[k]) || 0), 0)
-      })]
-    ]
-
-    const ws = XLSX.utils.aoa_to_sheet(wsData)
-    ws['!cols'] = cfg.headers.map((h, i) => ({ wch: cfg.widths[i] ? Math.ceil(cfg.widths[i] / 6) : 20 }))
-
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, cfg.sheet)
-    XLSX.writeFile(wb, `pagamentos-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    $q.loading.show({ message: 'A gerar Excel...' })
+    const { downloadExcelFromBackend } = await import('@/utils/excelDownload')
+    await downloadExcelFromBackend(
+      '/api/export/payments/excel',
+      { rows },
+      `pagamentos-${new Date().toISOString().slice(0, 10)}.xlsx`
+    )
     $q.notify({ type: 'positive', message: 'Excel gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar Excel:', e)
     $q.notify({ type: 'negative', message: 'Erro ao gerar Excel', position: 'top' })
+  } finally {
+    $q.loading.hide()
   }
 }
 

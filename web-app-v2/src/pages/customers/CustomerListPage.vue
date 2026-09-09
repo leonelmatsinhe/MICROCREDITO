@@ -477,26 +477,23 @@ async function exportExcel() {
   }
 
   try {
-    const XLSX = await import('xlsx')
+    $q.loading.show({ message: 'A gerar Excel...' })
+    const { downloadExcelFromBackend } = await import('@/utils/excelDownload')
     const rows = customers.value.map(row => ({
-      'Mutuário': row.customerName || '-',
-      'Telefone': row.customerPhone || '-',
-      'Pessoa de Contacto': row.customerEmergencyPerson || '-',
-      'Emergência': row.customerEmergencyContact || '-',
-      'Bairro': row.customerBairro || '-',
-      'Estado': row.customerStatus === 1 ? 'Activo' : 'Inactivo'
+      customerName: row.customerName || '-',
+      customerPhone: row.customerPhone || '-',
+      customerEmergencyPerson: row.customerEmergencyPerson || '-',
+      customerEmergencyContact: row.customerEmergencyContact || '-',
+      customerBairro: row.customerBairro || '-',
+      status: row.customerStatus === 1 ? 'Activo' : 'Inactivo'
     }))
-    const worksheet = XLSX.utils.json_to_sheet(rows)
-    worksheet['!cols'] = [
-      { wch: 30 }, { wch: 16 }, { wch: 28 }, { wch: 18 }, { wch: 22 }, { wch: 12 }
-    ]
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Mutuários')
-    XLSX.writeFile(workbook, `mutuarios-${new Date().toISOString().slice(0, 10)}.xlsx`)
+    await downloadExcelFromBackend('/api/export/customers/excel', { rows }, `mutuarios-${new Date().toISOString().slice(0, 10)}.xlsx`)
     $q.notify({ type: 'positive', message: 'Excel exportado com sucesso!', position: 'top' })
   } catch (error) {
     console.error('Erro ao gerar Excel:', error)
     $q.notify({ type: 'negative', message: 'Erro ao gerar Excel', position: 'top' })
+  } finally {
+    $q.loading.hide()
   }
 }
 

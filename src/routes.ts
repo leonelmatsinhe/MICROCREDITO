@@ -163,6 +163,7 @@ import {
 } from "./controllers/NotificationController";
 import { getDashboardOverview } from "./controllers/DashboardController";
 import { getBMReport, getBMReportExcel } from "./controllers/BMReportController";
+import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
 
 
 const routes = express.Router();
@@ -410,6 +411,12 @@ routes.get("/api/dashboard/:companyId", getDashboardOverview);
 routes.get("/api/reports/banco-mocambique/:companyId", getBMReport);
 // Download do Excel com bordas/fontes reais (cópia fiel do modelo)
 routes.get("/api/reports/banco-mocambique/:companyId/excel", getBMReportExcel);
+
+// Exportação de grelhas para Excel (estilos reais — mesmo padrão do relatório BM)
+routes.post("/api/export/customers/excel", exportCustomersExcel);
+routes.post("/api/export/loans/excel", exportLoansExcel);
+routes.post("/api/export/payments/excel", exportPaymentsExcel);
+routes.post("/api/export/installments/excel", exportInstallmentsExcel);
 
 
 
