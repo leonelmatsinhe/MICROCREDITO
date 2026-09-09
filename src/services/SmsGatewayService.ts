@@ -5,7 +5,7 @@ import { CustomerModel } from "../database/models/CustomerModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { DebtModel } from "../database/models/DebtModel";
 import { CompanyModel } from "../database/models/CompanyModel";
-import { sendTsembaSms, isTsembaConfigured, getTsembaWalletBalance } from "./TsembaSmsProvider";
+import { sendBulkSms, isBulkSmsConfigured, getBulkSmsWalletBalance } from "./BulkSmsProvider";
 
 export type SmsQueueStatus = "queued" | "processing" | "sent" | "failed" | "cancelled";
 
@@ -342,11 +342,12 @@ const MAX_SMS_RETRIES = 5;
  * Erros de nível de conta/plataforma (saldo, quota, chave) — transitórios.
  * Nestes casos a mensagem NÃO queima tentativas nem é marcada como failed:
  * fica em fila e volta a tentar quando o problema for resolvido (ex.: depois
- * de comprar unidades na Tsemba).
+ * de comprar unidades no BulkSMM).
  */
 const isTransientGatewayError = (error: string): boolean => {
   const err = String(error || "").toLowerCase();
   return (
+    err.includes("bulksms_api_key") ||
     err.includes("tsemba_api_key") ||
     err.includes("saldo") ||
     err.includes("insuficiente") ||
@@ -362,7 +363,7 @@ const isTransientGatewayError = (error: string): boolean => {
 };
 
 /**
- * Processa a fila de SMS: envia as mensagens pendentes através da API da Tsemba
+ * Processa a fila de SMS: envia as mensagens pendentes através da API do BulkSMM
  * e actualiza o estado (sent / queued para nova tentativa / failed após retries).
  *
  * - Mensagens `failed` por motivos transitórios (ex.: saldo insuficiente) são
@@ -385,13 +386,13 @@ export const processSmsQueue = async (params: { limit?: number } = {}) => {
     walletBalance: null as number | null,
   };
 
-  if (!isTsembaConfigured()) {
+  if (!isBulkSmsConfigured()) {
     // Sem chave: manter tudo na fila até o utilizador colar a API key no .env
     return { ...results, configured: false };
   }
 
   // Consultar saldo da carteira para monitoramento
-  const walletResult = await getTsembaWalletBalance();
+  const walletResult = await getBulkSmsWalletBalance();
   if (walletResult.success && walletResult.balance !== undefined) {
     results.walletBalance = walletResult.balance;
   }
@@ -451,7 +452,7 @@ export const processSmsQueue = async (params: { limit?: number } = {}) => {
     }
 
     const attempt = Number(row.retries || 0) + 1;
-    const result = await sendTsembaSms({
+    const result = await sendBulkSms({
       to: row.phone,
       message: row.messageBody,
     });

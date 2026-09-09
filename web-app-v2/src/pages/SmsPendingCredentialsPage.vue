@@ -21,8 +21,6 @@
           <div class="row items-center no-wrap q-gutter-lg">
             <q-btn color="indigo" icon="picture_as_pdf" label="PDF" unelevated no-caps rounded size="sm" @click="exportPDF" />
             <q-btn color="green-7" icon="table_view" label="Excel" unelevated no-caps rounded size="sm" @click="exportExcel" />
-            <q-btn color="teal" icon="send" label="Processar fila" unelevated no-caps rounded size="sm" @click="flushQueue"
-              :disable="!companySmsEnabled" />
             <q-btn flat round dense icon="filter_alt_off" color="grey-7" @click="clearFilters">
               <q-tooltip>Limpar filtros</q-tooltip>
             </q-btn>
@@ -37,31 +35,8 @@
     <!-- Aviso SMS desactivado -->
     <q-banner v-if="!companySmsEnabled" class="bg-grey-3 text-grey-8 q-mb-md" rounded>
       <template v-slot:avatar><q-icon name="sms_failed" color="grey-7" /></template>
-      O envio de SMS está <strong>desactivado</strong> nas configurações da empresa. As mensagens ficam na fila e só saem quando o Administrador voltar a autorizar (Configurações → Dados da Empresa).
+      O envio de SMS está <strong>desactivado</strong> nas configurações da empresa. As mensagens não são enviadas até o Administrador voltar a autorizar (Configurações → Dados da Empresa).
     </q-banner>
-
-    <!-- Resumo (único KPI com todos os estados) -->
-    <div v-if="!loading && pendingList.length > 0" class="row q-mb-md">
-      <div class="col-12 col-sm-8 col-md-6">
-        <q-card flat bordered style="border-radius: 10px">
-          <q-card-section class="q-py-md">
-            <div class="row items-center justify-center">
-              <div class="text-center q-px-lg">
-                <div class="text-h4 text-weight-bold text-orange">{{ totalPending }}</div>
-                <div class="text-caption text-grey-6">Mensagens na fila / falhadas</div>
-              </div>
-              <q-separator vertical class="q-mx-md self-stretch" />
-              <div class="text-caption text-grey-7" style="line-height: 1.9">
-                <div><span class="text-blue text-weight-bold">{{ queuedCount }}</span> a aguardar envio</div>
-                <div><span class="text-cyan text-weight-bold">{{ processingCount }}</span> em envio</div>
-                <div><span class="text-negative text-weight-bold">{{ failedCount }}</span> falhadas</div>
-                <div><span class="text-positive text-weight-bold">{{ sentCount }}</span> enviadas</div>
-              </div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
 
     <!-- Loading -->
     <div v-if="loading" class="text-center q-pa-xl">
@@ -69,12 +44,12 @@
     </div>
 
     <!-- Empty state -->
-    <q-card v-else-if="pendingList.length === 0" flat bordered style="border-radius: 10px">
+    <q-card v-if="!loading && pendingList.length === 0" flat bordered style="border-radius: 10px">
       <q-card-section class="text-center q-pa-xl">
         <q-icon name="mark_email_read" size="56px" color="green-5" />
-        <div class="text-h6 q-mt-sm">Nenhuma mensagem na fila</div>
+        <div class="text-h6 q-mt-sm">Nenhuma mensagem</div>
         <div class="text-caption text-grey-6 q-mt-xs">
-          Todas as mensagens foram enviadas ou não há mensagens pendentes na fila.
+          Não há mensagens enviadas nem pendentes para mostrar.
         </div>
         <q-btn color="primary" flat no-caps icon="refresh" label="Verificar novamente" class="q-mt-md" @click="fetchPending" />
       </q-card-section>
@@ -82,7 +57,7 @@
 
     <!-- Tabela -->
     <q-table
-      v-else
+      v-else-if="!loading"
       :rows="filteredRows"
       :columns="columns"
       row-key="id"
@@ -155,7 +130,7 @@
               :disable="!companySmsEnabled || requeueingId === props.row.id"
               @click="requeue(props.row)"
             >
-              <q-tooltip>Reenviar agora (repor na fila)</q-tooltip>
+              <q-tooltip>Reenviar mensagem</q-tooltip>
             </q-btn>
             <q-btn flat round dense icon="delete" size="xs" color="negative" @click="deleteMessage(props.row)">
               <q-tooltip>Eliminar mensagem</q-tooltip>
@@ -215,7 +190,6 @@ const companyStore = useCompanyStore()
 
 const loading = ref(false)
 const pendingList = ref([])
-const smsSummary = ref({})
 const showMessageDialog = ref(false)
 const selectedRow = ref(null)
 const requeueingId = ref(null)
@@ -278,13 +252,6 @@ watch(filteredRows, (rows) => {
   if (pagination.value.page > maxPage) pagination.value.page = maxPage
 })
 
-// ==================== RESUMO (1 KPI) ====================
-const queuedCount = computed(() => pendingList.value.filter(r => r.status === 'queued').length)
-const processingCount = computed(() => pendingList.value.filter(r => r.status === 'processing').length)
-const failedCount = computed(() => pendingList.value.filter(r => r.status === 'failed').length)
-const totalPending = computed(() => queuedCount.value + processingCount.value + failedCount.value)
-const sentCount = computed(() => Number(smsSummary.value?.sent || 0))
-
 function customerName(row) {
   return row?.customer?.customerName || row?.customerName || '—'
 }
@@ -334,12 +301,8 @@ async function fetchPending() {
   loading.value = true
   try {
     const companyId = authStore.companyId
-    const [{ data: listData }, { data: summaryData }] = await Promise.all([
-      api.get('/api/sms-gateway/pending-credentials', { params: { companyId } }),
-      api.get('/api/sms-gateway/summary', { params: { companyId } })
-    ])
+    const { data: listData } = await api.get('/api/sms-gateway/pending-credentials', { params: { companyId } })
     pendingList.value = listData.result || []
-    smsSummary.value = summaryData?.result || {}
   } catch (error) {
     $q.notify({
       type: 'negative',
@@ -389,29 +352,6 @@ function deleteMessage(row) {
       })
     }
   })
-}
-
-async function flushQueue() {
-  try {
-    const companyId = authStore.companyId
-    const { data } = await api.post('/api/sms-gateway/process', { companyId })
-    const result = data?.result || {}
-    const sent = result.sent || result.sent_count || 0
-    const failed = result.failed || 0
-    const deferred = result.deferred || 0
-    $q.notify({
-      type: 'positive',
-      message: `Fila processada: ${sent} enviadas, ${deferred} aguardando saldo${failed ? `, ${failed} com erro` : ''}.`,
-      position: 'top'
-    })
-    await fetchPending()
-  } catch (error) {
-    $q.notify({
-      type: 'negative',
-      message: error.response?.data?.message || 'Erro ao processar a fila',
-      position: 'top'
-    })
-  }
 }
 
 // ==================== EXPORTAÇÃO ====================

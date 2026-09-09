@@ -3,7 +3,10 @@
     <!-- Filters -->
     <FiltersBar @filter="onFilter" @clear="onClear" @sync="onSync" />
 
-    <!-- SMS pendentes na fila (saldo Tsemba) -->
+    <!-- Saldo BulkSMM (aviso quando as unidades estão a acabar) -->
+    <SmsBalanceWidget />
+
+    <!-- SMS pendentes na fila (saldo BulkSMM) -->
     <SmsQueueIndicator />
 
     <!-- Loading -->
@@ -102,6 +105,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
 import KpiCard from '@/components/ui/KpiCard.vue'
 import SmsQueueIndicator from '@/components/ui/SmsQueueIndicator.vue'
+import SmsBalanceWidget from '@/components/ui/SmsBalanceWidget.vue'
 import FiltersBar from '@/components/ui/FiltersBar.vue'
 import BarChart from '@/components/charts/BarChart.vue'
 import UpcomingTable from '@/components/ui/UpcomingTable.vue'

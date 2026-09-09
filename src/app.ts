@@ -77,14 +77,14 @@ const bootstrap = async () => {
   app.listen(PORT, () => {
     console.log(`MBR Server is running on PORT ${PORT}`);
 
-    // Fila de SMS (Tsemba): processar mensagens pendentes a cada 60s.
-    // Sem TSEMBA_API_KEY no .env, a fila permanece intacta (sem efeitos).
+    // Fila de SMS (BulkSMM): processar mensagens pendentes a cada 60s.
+    // Sem BULKSMS_API_KEY no .env, a fila permanece intacta (sem efeitos).
     setInterval(() => {
       processSmsQueue({ limit: 100 }).catch((error: any) => {
         console.error("[SMS] Erro ao processar a fila:", error?.message || error);
       });
     }, 60000);
-    console.log("[SMS] Fila de SMS activa (Tsemba) — a cada 60s");
+    console.log("[SMS] Fila de SMS activa (BulkSMM) — a cada 60s");
 
     // Alertas automáticos: prestações a vencer (3 dias) + juros de mora em atraso,
     // para todas as empresas. Enfileira 30s após o arranque e depois de 6 em 6 horas.

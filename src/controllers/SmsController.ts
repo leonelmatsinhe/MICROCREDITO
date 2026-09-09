@@ -91,7 +91,7 @@ const sendSms = async (req: Request, res: Response) => {
             });
         }
 
-        // Enviar imediatamente via Tsemba (sem bloquear a resposta)
+        // Enviar imediatamente via BulkSMM (sem bloquear a resposta)
         flushSmsQueue();
 
         return res.status(200).send({

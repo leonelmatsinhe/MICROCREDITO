@@ -11,7 +11,7 @@
           outline
           color="primary"
           icon="picture_as_pdf"
-          label="Exportar PDF"
+          label="PDF"
           no-caps
           rounded
           size="sm"
@@ -22,7 +22,7 @@
           outline
           color="teal"
           icon="table_chart"
-          label="Exportar Excel"
+          label="Excel"
           no-caps
           rounded
           size="sm"

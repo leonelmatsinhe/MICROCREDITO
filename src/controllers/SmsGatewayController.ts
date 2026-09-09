@@ -4,6 +4,7 @@ import { Op } from "sequelize";
 import { SmsQueueModel } from "../database/models/SmsQueueModel";
 import { SmsGatewayInboxModel } from "../database/models/SmsGatewayInboxModel";
 import { CustomerModel } from "../database/models/CustomerModel";
+import { getBulkSmsWalletBalance, isBulkSmsConfigured } from "../services/BulkSmsProvider";
 import {
   enqueueSms,
   enqueueUpcomingInstallmentAlerts,
@@ -149,7 +150,7 @@ const enqueueSmsManually = async (req: Request, res: Response) => {
     });
   }
 
-  // Enviar imediatamente via Tsemba (sem bloquear a resposta)
+  // Enviar imediatamente via BulkSMM (sem bloquear a resposta)
   flushSmsQueue();
 
   return res.status(201).json({
@@ -236,7 +237,7 @@ const enqueueSmsAnnouncement = async (req: Request, res: Response) => {
     else skipped += 1;
   }
 
-  // Enviar o lote imediatamente via Tsemba (sem bloquear a resposta)
+  // Enviar o lote imediatamente via BulkSMM (sem bloquear a resposta)
   flushSmsQueue(200);
 
   return res.status(200).json({
@@ -311,7 +312,7 @@ const processSmsQueueHandler = async (req: Request, res: Response) => {
   if (!results.configured) {
     return res.status(503).json({
       success: false,
-      message: "TSEMBA_API_KEY não configurada no .env — a fila foi mantida intacta.",
+      message: "BULKSMS_API_KEY não configurada no .env — a fila foi mantida intacta.",
       result: results,
     });
   }
@@ -436,6 +437,36 @@ const getSmsQueueSummary = async (req: Request, res: Response) => {
 
     const smsEnabled = companyId ? await isCompanySmsEnabled(companyId) : true;
 
+    // Saldo de unidades BulkSMM (best-effort — não bloqueia o resumo se a API falhar)
+    let wallet: {
+      configured: boolean;
+      balance: number | null;
+      currency: string | null;
+      lowBalance: boolean;
+      error: string | null;
+    } = { configured: false, balance: null, currency: null, lowBalance: false, error: null };
+    if (isBulkSmsConfigured()) {
+      const walletResult = await getBulkSmsWalletBalance();
+      if (walletResult.success && walletResult.balance !== undefined) {
+        wallet = {
+          configured: true,
+          balance: walletResult.balance,
+          currency: walletResult.currency || "MZN",
+          // Aviso quando o saldo fica abaixo de 50 unidades (≈50 SMS)
+          lowBalance: walletResult.balance < 50,
+          error: null,
+        };
+      } else {
+        wallet = {
+          configured: true,
+          balance: null,
+          currency: null,
+          lowBalance: false,
+          error: walletResult.error || "Erro ao consultar saldo BulkSMM",
+        };
+      }
+    }
+
     return res.status(200).json({
       success: true,
       result: {
@@ -446,6 +477,7 @@ const getSmsQueueSummary = async (req: Request, res: Response) => {
         sent,
         pending: queued + processing + failed,
         pendingByType,
+        wallet,
       },
     });
   } catch (err: any) {

@@ -37,7 +37,7 @@
           </q-chip>
         </div>
         <div class="text-caption text-grey-6">
-          À espera de saldo Tsemba — enviadas automaticamente quando houver saldo.
+          À espera de saldo BulkSMM — enviadas automaticamente quando houver saldo.
         </div>
       </div>
       <q-btn

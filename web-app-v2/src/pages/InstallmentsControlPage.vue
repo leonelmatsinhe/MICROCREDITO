@@ -435,23 +435,55 @@ function sendWhatsApp(row) {
 function viewDetails(row) { selectedInstallment.value = row; showDetails.value = true }
 function formatMoneyRaw(val) { return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) }
 
-// Mensagem genérica de aviso/alerta de vencimento da prestação:
-// nome do mutuário + itens da prestação (nº, valor, vencimento) + empresa,
-// sem caracteres especiais e sempre <= 160 caracteres.
+// Mensagem automática de alerta de prestação — 2 templates distintos conforme
+// o texto de "Observações" (vencida vs. a vencer), cada um com as variáveis
+// obrigatórias do respectivo caso. Sempre <= 160 caracteres quando possível.
 function buildDueAlertMessage(row) {
-  const nome = displayCustomerName(row)
-  const n = row.installmentOrder ? String(row.installmentOrder).replace(/[ºª]/g, '') : '?'
+  // Texto de Observações tal como exibido na grelha (fonte da decisão do template)
+  const observacoes_dias_texto = row.status === 1
+    ? 'Liquidado'
+    : row.daysOverdue > 0
+      ? `${row.daysOverdue} dias vencido`
+      : row.daysUntilDue > 0
+        ? `${row.daysUntilDue} dias pra vencer`
+        : 'Vence hoje'
+
   // Intl usa espaço de não-quebra (U+00A0/U+202F) como separador de milhares — trocar por espaço normal
-  const valor = formatMoneyRaw(Number(row.installment) || 0).replace(/[\u00A0\u202F]/g, ' ')
-  const data = formatDate(row.dueDate)
-  const company = (companyStore.company?.companyName || 'MBR Microcredito').replace(/[^a-zA-Z0-9 .,&-]/g, '')
-  const base = row.daysOverdue > 0
-    ? `Caro/a ${nome}, prestacao N. ${n} de ${valor} MZN esta em atraso desde ${data}. Regularize para evitar juros.`
-    : `Caro/a ${nome}, prestacao N. ${n} de ${valor} MZN vence em ${data}. Pague para evitar juros de mora.`
+  const money = (v) => formatMoneyRaw(Number(v) || 0).replace(/[\u00A0\u202F]/g, ' ')
+
+  const mutuario_nome = displayCustomerName(row)
+  const prestacao_numero = row.installmentOrder ? String(row.installmentOrder).replace(/[ºª]/g, '') : '-'
+  const prestacao_valor = money(row.installment)
+  const vencimento_data = formatDate(row.dueDate)
+  const mora_valor = money(row.lateFee)
+  const total_a_pagar = money(row.totalToPay)
+  const company = (companyStore.company?.companyName || 'Clack Microcredito, EI').replace(/[^a-zA-Z0-9 .,&-]/g, '')
+
+  // Regex: decide o template pelo texto de Observações e extrai a quantidade de dias
+  const isVencida = /vencido/i.test(observacoes_dias_texto)
+  const isAVencer = /pra vencer/i.test(observacoes_dias_texto)
+  const diasMatch = observacoes_dias_texto.match(/(\d+)\s*dias/i)
+  const dias = diasMatch ? diasMatch[1] : String(isVencida ? (row.daysOverdue || 0) : (row.daysUntilDue || 0))
+
+  let base
+  if (isVencida) {
+    // (a) VENCIDA — obrigatório: nome, nº prestação, valor, vencimento, dias em atraso, mora, total. Tom firme/urgente.
+    base = `Ola ${mutuario_nome}, prestacao ${prestacao_numero} de ${prestacao_valor} MZN venceu em ${vencimento_data} (${dias}d atraso). Mora: ${mora_valor} MZN. Total a pagar: ${total_a_pagar} MZN. Regularize urgente.`
+  } else if (isAVencer) {
+    // (b) A VENCER — apenas: nome, valor, dias para vencer, vencimento. Sem mora/total. Tom amigável/preventivo.
+    base = `Ola ${mutuario_nome}, sua prestacao de ${prestacao_valor} MZN vence em ${dias} dia(s), no dia ${vencimento_data}. Fique atento para evitar mora.`
+  } else {
+    // Vence hoje — variante do lembrete preventivo (sem mora/total)
+    base = `Ola ${mutuario_nome}, sua prestacao de ${prestacao_valor} MZN vence hoje (${vencimento_data}). Pague ainda hoje para evitar mora.`
+  }
+
   const suffix = ` ${company}`
   if (base.length + suffix.length <= 160) return base + suffix
+  // Não coube com a assinatura completa — tenta a forma curta antes de cortar o texto
+  const shortSuffix = ' Clack Microcredito'
+  if (base.length + shortSuffix.length <= 160) return base + shortSuffix
   if (base.length >= 160) return `${base.slice(0, 159)}.`
-  return `${base} ${company.slice(0, 160 - base.length - 1)}`
+  return `${base}${shortSuffix.slice(0, 160 - base.length)}`
 }
 
 // ==================== EXCEL ====================

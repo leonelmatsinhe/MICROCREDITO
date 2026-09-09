@@ -95,7 +95,7 @@ const sendSms = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 reason: result.reason || "unknown",
             });
         }
-        // Enviar imediatamente via Tsemba (sem bloquear a resposta)
+        // Enviar imediatamente via BulkSMM (sem bloquear a resposta)
         (0, SmsGatewayService_1.flushSmsQueue)();
         return res.status(200).send({
             success: true,

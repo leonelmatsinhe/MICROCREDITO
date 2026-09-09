@@ -263,7 +263,7 @@ export const runMigrations = async (): Promise<MigrationResult> => {
     results
   );
 
-  // Fila de SMS (gateway Tsemba) — essencial para o serviço de SMS
+  // Fila de SMS (gateway BulkSMM) — essencial para o serviço de SMS
   await createTableIfMissing(
     "sms_queue",
     `CREATE TABLE IF NOT EXISTS sms_queue (

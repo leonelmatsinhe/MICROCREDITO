@@ -31,7 +31,7 @@
       </q-card-section>
     </q-card>
 
-    <!-- SMS pendentes na fila (saldo Tsemba) -->
+    <!-- SMS pendentes na fila (saldo BulkSMM) -->
     <SmsQueueIndicator />
 
     <!-- KPIs -->

@@ -20,7 +20,7 @@ const CustomerModel_1 = require("../database/models/CustomerModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const DebtModel_1 = require("../database/models/DebtModel");
 const CompanyModel_1 = require("../database/models/CompanyModel");
-const TsembaSmsProvider_1 = require("./TsembaSmsProvider");
+const BulkSmsProvider_1 = require("./BulkSmsProvider");
 const normalizePhoneForGateway = (phone) => {
     if (!phone)
         return null;
@@ -299,11 +299,12 @@ const MAX_SMS_RETRIES = 5;
  * Erros de nível de conta/plataforma (saldo, quota, chave) — transitórios.
  * Nestes casos a mensagem NÃO queima tentativas nem é marcada como failed:
  * fica em fila e volta a tentar quando o problema for resolvido (ex.: depois
- * de comprar unidades na Tsemba).
+ * de comprar unidades no BulkSMM).
  */
 const isTransientGatewayError = (error) => {
     const err = String(error || "").toLowerCase();
-    return (err.includes("tsemba_api_key") ||
+    return (err.includes("bulksms_api_key") ||
+        err.includes("tsemba_api_key") ||
         err.includes("saldo") ||
         err.includes("insuficiente") ||
         err.includes("insufficient") ||
@@ -316,7 +317,7 @@ const isTransientGatewayError = (error) => {
         err.includes("insufficient_balance"));
 };
 /**
- * Processa a fila de SMS: envia as mensagens pendentes através da API da Tsemba
+ * Processa a fila de SMS: envia as mensagens pendentes através da API do BulkSMM
  * e actualiza o estado (sent / queued para nova tentativa / failed após retries).
  *
  * - Mensagens `failed` por motivos transitórios (ex.: saldo insuficiente) são
@@ -339,12 +340,12 @@ const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, funct
         configured: true,
         walletBalance: null,
     };
-    if (!(0, TsembaSmsProvider_1.isTsembaConfigured)()) {
+    if (!(0, BulkSmsProvider_1.isBulkSmsConfigured)()) {
         // Sem chave: manter tudo na fila até o utilizador colar a API key no .env
         return Object.assign(Object.assign({}, results), { configured: false });
     }
     // Consultar saldo da carteira para monitoramento
-    const walletResult = yield (0, TsembaSmsProvider_1.getTsembaWalletBalance)();
+    const walletResult = yield (0, BulkSmsProvider_1.getBulkSmsWalletBalance)();
     if (walletResult.success && walletResult.balance !== undefined) {
         results.walletBalance = walletResult.balance;
     }
@@ -399,7 +400,7 @@ const processSmsQueue = (params = {}) => __awaiter(void 0, void 0, void 0, funct
             continue;
         }
         const attempt = Number(row.retries || 0) + 1;
-        const result = yield (0, TsembaSmsProvider_1.sendTsembaSms)({
+        const result = yield (0, BulkSmsProvider_1.sendBulkSms)({
             to: row.phone,
             message: row.messageBody,
         });
