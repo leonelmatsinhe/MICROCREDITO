@@ -1,5 +1,61 @@
 <template>
   <div class="q-pa-md">
+    <!-- KPIs -->
+    <div class="row q-col-gutter-md q-mb-md">
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="row items-center">
+            <q-avatar size="40px" color="primary" text-color="white" class="q-mr-sm">
+              <q-icon name="people" size="20px" />
+            </q-avatar>
+            <div>
+              <div class="text-h5 text-weight-bold">{{ stats.total }}</div>
+              <div class="text-caption text-grey-6">Total Mutuários</div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="row items-center">
+            <q-avatar size="40px" color="blue" text-color="white" class="q-mr-sm">
+              <q-icon name="apartment" size="20px" />
+            </q-avatar>
+            <div>
+              <div class="text-h5 text-weight-bold text-blue">{{ stats.empresas }}</div>
+              <div class="text-caption text-grey-6">Total Empresas</div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="row items-center">
+            <q-avatar size="40px" color="positive" text-color="white" class="q-mr-sm">
+              <q-icon name="check_circle" size="20px" />
+            </q-avatar>
+            <div>
+              <div class="text-h5 text-weight-bold text-positive">{{ stats.activos }}</div>
+              <div class="text-caption text-grey-6">Activos</div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="row items-center">
+            <q-avatar size="40px" color="grey-7" text-color="white" class="q-mr-sm">
+              <q-icon name="block" size="20px" />
+            </q-avatar>
+            <div>
+              <div class="text-h5 text-weight-bold text-grey-7">{{ stats.inactivos }}</div>
+              <div class="text-caption text-grey-6">Inactivos</div>
+            </div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
     <!-- Search and Filters -->
     <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
       <q-card-section class="q-py-sm">
@@ -9,7 +65,7 @@
               v-model="searchQuery"
               dense
               outlined
-              placeholder="Pesquisar por nome, telefone, NUIT ou conta..."
+              placeholder="Pesquisar por nome, telefone, NUIT, conta ou tipo..."
               clearable
               @clear="clearSearch"
               @keyup.enter="doSearch"
@@ -127,7 +183,8 @@
                 size="32px"
                 class="q-mr-sm"
               >
-                {{ getInitials(props.row.customerName) }}
+                <q-icon v-if="isCompany(props.row)" name="apartment" size="18px" />
+                <template v-else>{{ getInitials(props.row.customerName) }}</template>
               </q-avatar>
               <div>
                 <div class="row items-center no-wrap">
@@ -150,6 +207,23 @@
                 </div>
               </div>
             </div>
+          </q-td>
+        </template>
+
+        <!-- Tipo (PF / Empresa) -->
+        <template v-slot:body-cell-customerType="props">
+          <q-td :props="props">
+            <q-badge
+              v-if="isCompany(props.row)"
+              color="positive"
+              class="q-pa-xs q-px-sm"
+              rounded
+              style="font-size: 11px; font-weight: 600; letter-spacing: 0.5px"
+            >
+              <q-icon name="apartment" size="12px" class="q-mr-xs" />
+              EMPRESA
+            </q-badge>
+            <span v-else class="text-grey-5" style="font-size: 11px">PF</span>
           </q-td>
         </template>
 
@@ -284,12 +358,37 @@ const hasCustomers = computed(() => customerStore.hasCustomers)
 
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
+  { name: 'customerType', label: 'Tipo', field: 'customerType', align: 'center', sortable: true },
   { name: 'emergencyPerson', label: 'Pessoa de Contacto', field: 'customerEmergencyPerson', align: 'left', sortable: true },
   { name: 'emergencyContact', label: 'Emergência', field: 'customerEmergencyContact', align: 'left', sortable: true },
   { name: 'bairro', label: 'Bairro', field: 'customerBairro', align: 'left', sortable: true },
   { name: 'status', label: 'Estado', field: 'customerStatus', align: 'center', sortable: true },
   { name: 'actions', label: 'Accões', field: 'actions', align: 'center' }
 ]
+
+const stats = ref({ total: 0, empresas: 0, activos: 0, inactivos: 0 })
+
+function isCompany(row) {
+  return String(row?.customerType || 'PF').toUpperCase() === 'PJ'
+}
+
+async function loadStats() {
+  const companyId = authStore.companyId
+  if (!companyId) return
+  try {
+    const { data } = await api.get(`/api/customers/${companyId}/stats`)
+    if (data?.success && data.result) {
+      stats.value = {
+        total: Number(data.result.total) || 0,
+        empresas: Number(data.result.empresas) || 0,
+        activos: Number(data.result.activos) || 0,
+        inactivos: Number(data.result.inactivos) || 0
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao carregar estatísticas de mutuários:', e)
+  }
+}
 
 const tablePagination = computed(() => ({
   page: customerStore.pagination.currentPage,
@@ -370,6 +469,7 @@ async function deleteCustomerConfirmed() {
     logDeleteCustomer(name)
     $q.notify({ type: 'positive', message: 'Mutuário eliminado com sucesso', position: 'top' })
     loadCustomers(customerStore.pagination.currentPage)
+    loadStats()
   } catch (error) {
     errorMessage.value = error.response?.data?.message || 'Erro ao eliminar mutuário.'
     showErrorModal.value = true
@@ -380,6 +480,7 @@ function onCustomerSaved() {
   showCreateModal.value = false
   editingCustomer.value = null
   loadCustomers(customerStore.pagination.currentPage)
+  loadStats()
 }
 
 async function exportPdf() {
@@ -499,10 +600,20 @@ async function exportExcel() {
 
 onMounted(() => {
   loadCustomers()
+  loadStats()
 })
 </script>
 
 <style lang="scss" scoped>
+.kpi-card {
+  border-radius: 12px;
+  transition: transform 0.2s;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
 .action-gradient {
   color: #fff;
   border-radius: 8px;
@@ -564,6 +675,9 @@ onMounted(() => {
 }
 
 body.body--dark {
+  .kpi-card {
+    background-color: $dark-page;
+  }
   .customer-table {
     :deep(.q-table thead th) {
       background-color: $dark-page;

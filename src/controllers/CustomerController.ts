@@ -53,12 +53,27 @@ const findAllCustomers = async (req: Request, res: Response) => {
 
     // Se houver pesquisa, adicionar filtro por nome, telefone ou conta
     if (search.trim()) {
-      whereClause[Op.or] = [
-        { customerName: { [Op.like]: `%${search}%` } },
-        { customerPhone: { [Op.like]: `%${search}%` } },
-        { accountNumber: { [Op.like]: `%${search}%` } },
-        { customerNuit: { [Op.like]: `%${search}%` } },
+      const term = search.trim();
+      const typeTerm = term.toLowerCase();
+      // Pesquisa também funciona para o tipo: "empresa", "empresas" → PJ;
+      // "pf", "pessoa", "fisica" → PF
+      const typeFilter: any[] = [];
+      if ("empresa".startsWith(typeTerm) || "empresas".startsWith(typeTerm) || typeTerm === "pj") {
+        typeFilter.push({ customerType: "PJ" });
+      }
+      if ("pf".startsWith(typeTerm) && typeTerm.length > 0) {
+        typeFilter.push({ customerType: "PF" });
+      }
+      if ("pessoa fisica".includes(typeTerm) || "fisica".startsWith(typeTerm) && typeTerm.length >= 3) {
+        typeFilter.push({ customerType: "PF" });
+      }
+      const orFilters: any[] = [
+        { customerName: { [Op.like]: `%${term}%` } },
+        { customerPhone: { [Op.like]: `%${term}%` } },
+        { accountNumber: { [Op.like]: `%${term}%` } },
+        { customerNuit: { [Op.like]: `%${term}%` } },
       ];
+      whereClause[Op.or] = typeFilter.length > 0 ? [...orFilters, ...typeFilter] : orFilters;
     }
 
     const { count, rows } = await CustomerModel.findAndCountAll({
@@ -150,7 +165,17 @@ const createCustomer = async (req: Request, res: Response) => {
     customerEmergencyContact,
     customerStatus,
     interestRateId,
+    customerType,
+    companyLegalRepresentative,
+    companyRepresentativeIdNumber,
+    companyRepresentativeIdExpiry,
+    companyRepresentativeIdIssuer,
+    companyLicenseNumber,
+    companyMainActivity,
   } = req.body;
+
+  // Tipo de mutuário: PF (pessoa física, padrão) ou PJ (empresa)
+  const type = String(customerType || "PF").toUpperCase() === "PJ" ? "PJ" : "PF";
 
   const dateError = validateCustomerDates(customerDateOfBirth, issuedAt);
   if (dateError) return res.status(400).json({ success: false, message: dateError });
@@ -197,6 +222,13 @@ const createCustomer = async (req: Request, res: Response) => {
       customerEmergencyContact,
       customerStatus,
       interestRateId,
+      customerType: type,
+      companyLegalRepresentative,
+      companyRepresentativeIdNumber,
+      companyRepresentativeIdExpiry,
+      companyRepresentativeIdIssuer,
+      companyLicenseNumber,
+      companyMainActivity,
     });
 
 
@@ -735,6 +767,38 @@ const setCustomerPassword = async (req: Request, res: Response) => {
   }
 };
 
+// ============================================================
+// KPIs da grelha de mutuários: total, empresas (PJ), activos e
+// inactivos — contagens sobre TODA a carteira da empresa.
+// ============================================================
+const getCustomersStats = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const base = { companyId: id };
+    const [total, empresas, activos, inactivos] = await Promise.all([
+      CustomerModel.count({ where: base }),
+      CustomerModel.count({ where: { ...base, customerType: "PJ" } }),
+      CustomerModel.count({ where: { ...base, customerStatus: 1 } }),
+      CustomerModel.count({ where: { ...base, customerStatus: 0 } }),
+    ]);
+    return res.status(200).json({
+      success: true,
+      result: {
+        total: Number(total) || 0,
+        empresas: Number(empresas) || 0,
+        activos: Number(activos) || 0,
+        inactivos: Number(inactivos) || 0,
+      },
+    });
+  } catch (error: any) {
+    console.error("Erro ao calcular estatísticas de mutuários:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Erro interno ao calcular estatísticas.",
+    });
+  }
+};
+
 export {
   findAllCustomers,
   searchCustomers,
@@ -748,4 +812,5 @@ export {
   getAllCustomerNames,
   setCustomerPassword,
   registerCustomer,
+  getCustomersStats,
 };

@@ -26,9 +26,42 @@ exports.CustomerModel = db_1.db.define("customers", {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
     },
+    // Tipo de mutuário: PF = pessoa física, PJ = empresa
+    customerType: {
+        type: sequelize_1.DataTypes.ENUM("PF", "PJ"),
+        allowNull: false,
+        defaultValue: "PF",
+    },
     sex: {
         type: sequelize_1.DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
+    },
+    // Dados da empresa (só preenchidos quando customerType = 'PJ')
+    companyLegalRepresentative: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+    },
+    companyRepresentativeIdNumber: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+    },
+    companyRepresentativeIdExpiry: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+    },
+    companyRepresentativeIdIssuer: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+    },
+    companyLicenseNumber: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+        comment: "Nº do Alvará da empresa (PJ)",
+    },
+    companyMainActivity: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: true,
+        comment: "Actividade Principal da empresa (PJ)",
     },
     customerEmail: {
         type: sequelize_1.DataTypes.STRING,
@@ -80,7 +113,7 @@ exports.CustomerModel = db_1.db.define("customers", {
     },
     maritalStatus: {
         type: sequelize_1.DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
     },
     customerSpouseName: {
         type: sequelize_1.DataTypes.STRING,

@@ -41,6 +41,7 @@ import {
   getAllCustomerNames,
   setCustomerPassword,
   registerCustomer,
+  getCustomersStats,
 } from "./controllers/CustomerController";
 
 import {
@@ -351,6 +352,7 @@ routes.post("/api/rate", createRate);
 
 // Customer Routes
 routes.get("/api/customers/:id/names", getAllCustomerNames);
+routes.get("/api/customers/:id/stats", getCustomersStats);
 routes.get("/api/customers/:id", findAllCustomers);
 routes.get("/api/customer/:id", findOneCustomer);
 routes.get("/api/searchCustomers/:search", searchCustomers);

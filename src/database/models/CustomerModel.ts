@@ -24,9 +24,42 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  // Tipo de mutuário: PF = pessoa física, PJ = empresa
+  customerType: {
+    type: DataTypes.ENUM("PF", "PJ"),
+    allowNull: false,
+    defaultValue: "PF",
+  },
   sex: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
+  },
+  // Dados da empresa (só preenchidos quando customerType = 'PJ')
+  companyLegalRepresentative: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  companyRepresentativeIdNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  companyRepresentativeIdExpiry: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  companyRepresentativeIdIssuer: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  companyLicenseNumber: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Nº do Alvará da empresa (PJ)",
+  },
+  companyMainActivity: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Actividade Principal da empresa (PJ)",
   },
   customerEmail: {
     type: DataTypes.STRING,
@@ -78,7 +111,7 @@ export const CustomerModel = db.define("customers", {
   },
   maritalStatus: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   customerSpouseName: {
     type: DataTypes.STRING,

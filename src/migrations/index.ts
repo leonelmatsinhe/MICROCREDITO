@@ -241,6 +241,26 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // Conta criada pelo próprio mutuário no portal (selo "Auto-cadastro" nas grelhas)
   await addColumnIfMissing("customers", "isSelfRegistered", "INTEGER NOT NULL DEFAULT 0", results);
 
+  // ==================== MUTUÁRIOS PF/PJ ====================
+  // Tipo de mutuário: PF = pessoa física (padrão histórico), PJ = empresa.
+  // Registos antigos ficam como PF; os campos de pessoa física passam a ser
+  // opcionais porque as empresas não os têm.
+  await addColumnIfMissing("customers", "customerType", "ENUM('PF','PJ') NOT NULL DEFAULT 'PF'", results);
+
+  // Dados da empresa (só preenchidos quando customerType = 'PJ')
+  await addColumnIfMissing("customers", "companyLegalRepresentative", "VARCHAR(255)", results);
+  await addColumnIfMissing("customers", "companyRepresentativeIdNumber", "VARCHAR(255)", results);
+  await addColumnIfMissing("customers", "companyRepresentativeIdExpiry", "VARCHAR(255)", results);
+  await addColumnIfMissing("customers", "companyRepresentativeIdIssuer", "VARCHAR(255)", results);
+  await addColumnIfMissing("customers", "companyLicenseNumber", "VARCHAR(255)", results);
+  await addColumnIfMissing("customers", "companyMainActivity", "VARCHAR(255)", results);
+
+  // Género, estado civil e data de nascimento tornam-se opcionais para
+  // acomodar mutuários do tipo Empresa (PJ).
+  await modifyColumnType("customers", "sex", "VARCHAR(255) NULL DEFAULT NULL", results);
+  await modifyColumnType("customers", "maritalStatus", "VARCHAR(255) NULL DEFAULT NULL", results);
+  await modifyColumnType("customers", "customerDateOfBirth", "VARCHAR(255) NULL DEFAULT NULL", results);
+
   // ==================== TABELAS ====================
   // Mensagens de WhatsApp (password reset / notificações)
   await createTableIfMissing(

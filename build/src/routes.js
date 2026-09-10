@@ -209,6 +209,7 @@ routes.delete("/api/rate/:id", InterestRateController_1.destroyRate);
 routes.post("/api/rate", InterestRateController_1.createRate);
 // Customer Routes
 routes.get("/api/customers/:id/names", CustomerController_1.getAllCustomerNames);
+routes.get("/api/customers/:id/stats", CustomerController_1.getCustomersStats);
 routes.get("/api/customers/:id", CustomerController_1.findAllCustomers);
 routes.get("/api/customer/:id", CustomerController_1.findOneCustomer);
 routes.get("/api/searchCustomers/:search", CustomerController_1.searchCustomers);

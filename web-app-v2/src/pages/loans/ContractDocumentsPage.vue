@@ -450,8 +450,12 @@ async function generateContract() {
           text: { alignment: 'justify', fontSize: 8, text: `${c.companyName || ''}, uma instituição financeira licenciada pelo Banco de Moçambique, titular do NUIT ${c.companyNuit || ''}, com sede em ${c.companyAddress || ''}, doravante designada por Mutuante ou Credora` },
         },
         { text: '\n&\n\n', fontSize: 8 },
+        // Texto condicional: PF (pessoa física) vs PJ (empresa)
         {
-          text: { alignment: 'justify', fontSize: 8, text: `${cu.customerName || ''}, portador do B.I número ${cu.customerNationalId || ''}, residente no ${cu.customerAddress || ''}, de ora em diante denominado ${convertGender()}.` },
+          text: { alignment: 'justify', fontSize: 8, text: String(cu.customerType || 'PF') === 'PJ'
+            ? `${cu.customerName || ''}, titular do NUIT ${cu.customerNuit || ''}, com sede em ${cu.customerAddress || ''}, titular do Alvará nº ${cu.companyLicenseNumber || ''}, que exerce actividade de ${cu.companyMainActivity || ''}, neste acto representada pelo seu representante legal ${cu.companyLegalRepresentative || ''}, portador do BI nº ${cu.companyRepresentativeIdNumber || ''}, de ora em diante designada O MUTUÁRIO.`
+            : `${cu.customerName || ''}, portador do B.I número ${cu.customerNationalId || ''}, residente no ${cu.customerAddress || ''}, de ora em diante denominado ${convertGender()}.`
+          },
         },
         // CLÁUSULA PRIMEIRA
         { text: '\nCLÁUSULA PRIMEIRA', fontSize: 10, bold: true, alignment: 'center', margin: [0, 10, 0, 0] },
@@ -792,7 +796,10 @@ async function generateContract() {
           columns: [
             { text: `__________________________\n\n${c.companyManager || 'Gestor de Crédito'}\n\n(O MUTUANTE)`, alignment: 'center' },
             {},
-            { text: `__________________________\n\n${cu.customerName || ''}\n\n(${convertGender().trim()})`, alignment: 'center' },
+            // Assinatura condicional: PF vs PJ
+            String(cu.customerType || 'PF') === 'PJ'
+              ? { text: `__________________________\n\nPela MUTUÁRIA\n${cu.customerName || ''}\nRepresentada por: ${cu.companyLegalRepresentative || ''}\nBI: ${cu.companyRepresentativeIdNumber || ''}`, alignment: 'center' }
+              : { text: `__________________________\n\n${cu.customerName || ''}\n\n(${convertGender().trim()})`, alignment: 'center' },
           ],
         },
       ],
@@ -839,20 +846,38 @@ async function generateTerm() {
       },
       content: [
         ...headerElements,
-        {
-          text: [
-            { text: 'Pelo presente, eu ' },
-            { text: cu.customerName || '', bold: true, decoration: 'underline' },
-            { text: '\nCidadão(a) moçambicano(a) com o nº do BI ' },
-            { text: cu.customerNationalId || '', bold: true },
-            { text: ', ' },
-            { text: 'declaro que recebi', bold: true },
-            { text: ' na data de hoje, o valor de ' },
-            { text: `${formatMoney(amount)} (${numberToWords(amount)} meticais)`, bold: true },
-            { text: ', em:' },
-          ],
-          fontSize: 10, alignment: 'justify', lineHeight: 1.6,
-        },
+        // Texto condicional: PF vs PJ
+        String(cu.customerType || 'PF') === 'PJ'
+          ? {
+              text: [
+                { text: 'Pelo presente, nós ' },
+                { text: cu.customerName || '', bold: true, decoration: 'underline' },
+                { text: ', NUIT ' },
+                { text: cu.customerNuit || '', bold: true },
+                { text: ', representada por ' },
+                { text: cu.companyLegalRepresentative || '', bold: true },
+                { text: ', com BI nº ' },
+                { text: cu.companyRepresentativeIdNumber || '', bold: true },
+                { text: ', declaramos que recebemos na data de hoje o valor de ' },
+                { text: `${formatMoney(amount)} (${numberToWords(amount)} meticais)`, bold: true },
+                { text: ' da MBR Microcrédito.' },
+              ],
+              fontSize: 10, alignment: 'justify', lineHeight: 1.6,
+            }
+          : {
+              text: [
+                { text: 'Pelo presente, eu ' },
+                { text: cu.customerName || '', bold: true, decoration: 'underline' },
+                { text: '\nCidadão(a) moçambicano(a) com o nº do BI ' },
+                { text: cu.customerNationalId || '', bold: true },
+                { text: ', ' },
+                { text: 'declaro que recebi', bold: true },
+                { text: ' na data de hoje, o valor de ' },
+                { text: `${formatMoney(amount)} (${numberToWords(amount)} meticais)`, bold: true },
+                { text: ', em:' },
+              ],
+              fontSize: 10, alignment: 'justify', lineHeight: 1.6,
+            },
         { text: ' ' },
         { text: [{ text: 'Cheque (________)    Numerário (________)    Transferência (________)', fontSize: 10 }], alignment: 'left', margin: [0, 0, 0, 6] },
         { text: [{ text: ' da ' }, { text: c.companyName || 'Mais Mola', bold: true }, { text: '.' }], fontSize: 10, alignment: 'justify' },
@@ -862,7 +887,13 @@ async function generateTerm() {
         { text: `Mukhatine, ${formatDateShort(l.updatedAt || l.dateCreated)}`, fontSize: 10, alignment: 'center' },
         { text: '\n\n\n\n' },
         { text: '……………………………………………………………………………………', fontSize: 10, alignment: 'center' },
-        { text: `(${cu.customerName || ''})`, fontSize: 9, alignment: 'center', bold: true },
+        // Assinatura condicional: PF vs PJ
+        String(cu.customerType || 'PF') === 'PJ'
+          ? [
+              { text: `${cu.customerName || ''}`, fontSize: 9, alignment: 'center', bold: true },
+              { text: `Representada por: ${cu.companyLegalRepresentative || ''}`, fontSize: 8, alignment: 'center' },
+            ]
+          : { text: `(${cu.customerName || ''})`, fontSize: 9, alignment: 'center', bold: true },
       ],
     }
 
@@ -920,11 +951,22 @@ async function generateGuarantees() {
         { text: '\n' },
         { text: '1. Dados cliente', fontSize: 9, bold: true },
         { text: '\n' },
-        { text: `${convertGenderLabel().toUpperCase()}: ${(cu.customerName || '').toUpperCase()}`, fontSize: 8, bold: true },
-        { text: `Nº do cliente: ${cu.accountNumber || ''}`, fontSize: 8 },
-        { text: `Morada: ${cu.customerAddress || ''}`, fontSize: 8 },
-        { text: `Telemóvel: +${cu.customerPhone || ''}`, fontSize: 8 },
-        { text: `NUIT: ${cu.customerNuit || ''}`, fontSize: 8 },
+        // Dados condicionais: PF vs PJ
+        String(cu.customerType || 'PF') === 'PJ'
+          ? [
+              { text: `EMPRESA: ${(cu.customerName || '').toUpperCase()}`, fontSize: 8, bold: true },
+              { text: `NUIT: ${cu.customerNuit || ''}`, fontSize: 8 },
+              { text: `Alvará: ${cu.companyLicenseNumber || ''} | Actividade: ${cu.companyMainActivity || ''}`, fontSize: 8 },
+              { text: `Representante: ${cu.companyLegalRepresentative || ''}`, fontSize: 8 },
+              { text: `Sede: ${cu.customerAddress || ''} | Tel: ${cu.customerPhone || ''}`, fontSize: 8 },
+            ]
+          : [
+              { text: `${convertGenderLabel().toUpperCase()}: ${(cu.customerName || '').toUpperCase()}`, fontSize: 8, bold: true },
+              { text: `Nº do cliente: ${cu.accountNumber || ''}`, fontSize: 8 },
+              { text: `Morada: ${cu.customerAddress || ''}`, fontSize: 8 },
+              { text: `Telemóvel: +${cu.customerPhone || ''}`, fontSize: 8 },
+              { text: `NUIT: ${cu.customerNuit || ''}`, fontSize: 8 },
+            ],
         { text: '\n' },
         { text: '2. Bens de garantia', fontSize: 9, bold: true },
         {
@@ -953,7 +995,10 @@ async function generateGuarantees() {
           alignment: 'center', fontSize: 8,
           columns: [
             { text: `__________________________\n\n${authStore.userName || 'Gestor de Crédito'}\n\n(GESTOR DE CRÉDITO)` },
-            { text: `__________________________\n\n${cu.customerName || ''}\n\n(${convertGenderLabel().toUpperCase()} ${convertGender().toUpperCase()})` },
+            // Assinatura condicional: PF vs PJ
+            String(cu.customerType || 'PF') === 'PJ'
+              ? { text: `__________________________\n\n${cu.customerName || ''}\nRepresentada por: ${cu.companyLegalRepresentative || ''}` }
+              : { text: `__________________________\n\n${cu.customerName || ''}\n\n(${convertGender().trim()})` },
           ],
         },
       ],

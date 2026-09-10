@@ -10,10 +10,11 @@ import axios from "axios";
 //   GET  /messages      → mensagens enviadas recentemente
 // O campo sender é opcional — se omitido, é usado o sender por defeito da conta.
 // ============================================================
+// https://iiywyqfapgqkggvxyvfd.supabase.co/functions/v1/api
 
 const BULKSMS_API_BASE_URL =
   process.env.BULKSMS_API_URL ||
-  "https://iiywyqfapqkggvxyvfd.supabase.co/functions/v1/api";
+  "https://iiywyqfapgqkggvxyvfd.supabase.co/functions/v1/api";
 const BULKSMS_API_KEY = process.env.BULKSMS_API_KEY || "";
 const BULKSMS_SENDER_ID = process.env.BULKSMS_SENDER_ID || "";
 

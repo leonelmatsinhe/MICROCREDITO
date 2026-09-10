@@ -35,7 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerCustomer = exports.setCustomerPassword = exports.getAllCustomerNames = exports.changeCustomerPassword = exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.bulkCreateCustomers = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
+exports.getCustomersStats = exports.registerCustomer = exports.setCustomerPassword = exports.getAllCustomerNames = exports.changeCustomerPassword = exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.bulkCreateCustomers = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 const CustomerModel_1 = require("../database/models/CustomerModel");
@@ -87,12 +87,27 @@ const findAllCustomers = (req, res) => __awaiter(void 0, void 0, void 0, functio
         }
         // Se houver pesquisa, adicionar filtro por nome, telefone ou conta
         if (search.trim()) {
-            whereClause[sequelize_1.Op.or] = [
-                { customerName: { [sequelize_1.Op.like]: `%${search}%` } },
-                { customerPhone: { [sequelize_1.Op.like]: `%${search}%` } },
-                { accountNumber: { [sequelize_1.Op.like]: `%${search}%` } },
-                { customerNuit: { [sequelize_1.Op.like]: `%${search}%` } },
+            const term = search.trim();
+            const typeTerm = term.toLowerCase();
+            // Pesquisa também funciona para o tipo: "empresa", "empresas" → PJ;
+            // "pf", "pessoa", "fisica" → PF
+            const typeFilter = [];
+            if ("empresa".startsWith(typeTerm) || "empresas".startsWith(typeTerm) || typeTerm === "pj") {
+                typeFilter.push({ customerType: "PJ" });
+            }
+            if ("pf".startsWith(typeTerm) && typeTerm.length > 0) {
+                typeFilter.push({ customerType: "PF" });
+            }
+            if ("pessoa fisica".includes(typeTerm) || "fisica".startsWith(typeTerm) && typeTerm.length >= 3) {
+                typeFilter.push({ customerType: "PF" });
+            }
+            const orFilters = [
+                { customerName: { [sequelize_1.Op.like]: `%${term}%` } },
+                { customerPhone: { [sequelize_1.Op.like]: `%${term}%` } },
+                { accountNumber: { [sequelize_1.Op.like]: `%${term}%` } },
+                { customerNuit: { [sequelize_1.Op.like]: `%${term}%` } },
             ];
+            whereClause[sequelize_1.Op.or] = typeFilter.length > 0 ? [...orFilters, ...typeFilter] : orFilters;
         }
         const { count, rows } = yield CustomerModel_1.CustomerModel.findAndCountAll({
             where: whereClause,
@@ -155,7 +170,9 @@ const findOneCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function
 });
 exports.findOneCustomer = findOneCustomer;
 const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    let { customerName, sex, companyId, customerEmail, customerNuit, customerPhone, customerNationalId, issuedAt, localOfIssue, customerDateOfBirth, customerLocalOfBirth, customerProfession, customerMonthlySalary, customerLocalOfWork, customerAddress, customerBairro, maritalStatus, customerSpouseName, customerSpouseContact, customerEmergencyPerson, customerEmergencyContact, customerStatus, interestRateId, } = req.body;
+    let { customerName, sex, companyId, customerEmail, customerNuit, customerPhone, customerNationalId, issuedAt, localOfIssue, customerDateOfBirth, customerLocalOfBirth, customerProfession, customerMonthlySalary, customerLocalOfWork, customerAddress, customerBairro, maritalStatus, customerSpouseName, customerSpouseContact, customerEmergencyPerson, customerEmergencyContact, customerStatus, interestRateId, customerType, companyLegalRepresentative, companyRepresentativeIdNumber, companyRepresentativeIdExpiry, companyRepresentativeIdIssuer, companyLicenseNumber, companyMainActivity, } = req.body;
+    // Tipo de mutuário: PF (pessoa física, padrão) ou PJ (empresa)
+    const type = String(customerType || "PF").toUpperCase() === "PJ" ? "PJ" : "PF";
     const dateError = validateCustomerDates(customerDateOfBirth, issuedAt);
     if (dateError)
         return res.status(400).json({ success: false, message: dateError });
@@ -199,6 +216,13 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
             customerEmergencyContact,
             customerStatus,
             interestRateId,
+            customerType: type,
+            companyLegalRepresentative,
+            companyRepresentativeIdNumber,
+            companyRepresentativeIdExpiry,
+            companyRepresentativeIdIssuer,
+            companyLicenseNumber,
+            companyMainActivity,
         });
         return customer != null
             ? res
@@ -685,3 +709,36 @@ const setCustomerPassword = (req, res) => __awaiter(void 0, void 0, void 0, func
     }
 });
 exports.setCustomerPassword = setCustomerPassword;
+// ============================================================
+// KPIs da grelha de mutuários: total, empresas (PJ), activos e
+// inactivos — contagens sobre TODA a carteira da empresa.
+// ============================================================
+const getCustomersStats = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    try {
+        const base = { companyId: id };
+        const [total, empresas, activos, inactivos] = yield Promise.all([
+            CustomerModel_1.CustomerModel.count({ where: base }),
+            CustomerModel_1.CustomerModel.count({ where: Object.assign(Object.assign({}, base), { customerType: "PJ" }) }),
+            CustomerModel_1.CustomerModel.count({ where: Object.assign(Object.assign({}, base), { customerStatus: 1 }) }),
+            CustomerModel_1.CustomerModel.count({ where: Object.assign(Object.assign({}, base), { customerStatus: 0 }) }),
+        ]);
+        return res.status(200).json({
+            success: true,
+            result: {
+                total: Number(total) || 0,
+                empresas: Number(empresas) || 0,
+                activos: Number(activos) || 0,
+                inactivos: Number(inactivos) || 0,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Erro ao calcular estatísticas de mutuários:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Erro interno ao calcular estatísticas.",
+        });
+    }
+});
+exports.getCustomersStats = getCustomersStats;
