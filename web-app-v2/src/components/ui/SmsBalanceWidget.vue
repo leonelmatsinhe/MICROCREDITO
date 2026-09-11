@@ -14,9 +14,10 @@
       <div class="col q-ml-sm">
         <!-- Chave não configurada -->
         <template v-if="!wallet.configured">
-          <div class="text-subtitle2 text-weight-bold">Saldo BulkSMM não configurado</div>
+          <div class="text-subtitle2 text-weight-bold">Serviço SMS não configurado</div>
           <div class="text-caption text-grey-6">
-            Adicione a BULKSMS_API_KEY no .env para consultar e enviar SMS.
+            As credenciais de integração do serviço de SMS (BULKSMS_API_KEY e BULKSMS_SENDER_ID) não estão configuradas.
+            O envio de SMS encontra-se indisponível até o Administrador configurar as credenciais no ficheiro <strong>.env</strong> do servidor.
           </div>
         </template>
 

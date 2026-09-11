@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { GuarateeAssessmentModel } from "../database/models/GuarateeAssessmentModel";
+import { TranzactionModel } from "../database/models/TranzactionModel";
 
 const getAllLoanGuarantees = async (req: Request, res: Response) => {
     const { id } = req.params;
@@ -44,23 +45,47 @@ const createGuarantee = async (req: Request, res: Response) => {
 };
 
 const deleteGuarantee = async (req: Request, res: Response) => {
-    const { id } = req.params;
+    try {
+        const { id } = req.params;
 
-    const deleteGuarantee = await GuarateeAssessmentModel.destroy({ where: { id: id } });
+        const guarantee: any = await GuarateeAssessmentModel.findByPk(id);
+        if (!guarantee) {
+            return res.status(404).json({ success: false, message: "Garantia não encontrada." });
+        }
 
-    return deleteGuarantee != null
-        ? res.status(201).send(
-            JSON.stringify({
+        // Verificar se existe algum pagamento/transacção associado ao crédito
+        // ao qual esta garantia pertence.
+        const loanId = guarantee.getDataValue("loanId");
+        if (loanId) {
+            const transactionCount = await TranzactionModel.count({
+                where: { loanId },
+            });
+            if (transactionCount > 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Não é possível eliminar esta garantia porque o crédito associado tem ${transactionCount} pagamento(s)/transacção(ões). Remova primeiro os pagamentos.`,
+                });
+            }
+        }
+
+        const deleted = await GuarateeAssessmentModel.destroy({ where: { id: id } });
+
+        return deleted != null
+            ? res.status(200).json({
                 success: true,
-                message: "Guarantee deleted successfully.",
+                message: "Garantia eliminada com sucesso.",
             })
-        )
-        : res.status(500).send(
-            JSON.stringify({
+            : res.status(500).json({
                 success: false,
-                message: "There was an error deleting this guarantee.",
-            })
-        );
+                message: "Não foi possível eliminar a garantia.",
+            });
+    } catch (error: any) {
+        console.error("Erro ao eliminar garantia:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Erro ao eliminar a garantia.",
+        });
+    }
 };
 
 export {

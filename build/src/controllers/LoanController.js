@@ -414,13 +414,25 @@ const destroyLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             yield transaction.rollback();
             return res.status(404).json({ success: false, message: "Crédito não encontrado." });
         }
+        // Verificar se existem transações/pagamentos associados ao crédito.
+        // Se existir qualquer pagamento, NÃO permitir a eliminação.
+        const transactionCount = yield TranzactionModel_1.TranzactionModel.count({
+            where: { loanId: id },
+            transaction,
+        });
+        if (transactionCount > 0) {
+            yield transaction.rollback();
+            return res.status(409).json({
+                success: false,
+                message: `Não é possível eliminar este crédito porque existem ${transactionCount} pagamento(s)/transacção(ões) associada(s). Remova primeiro os pagamentos antes de eliminar o crédito.`,
+            });
+        }
         const installments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
             where: { loanId: id },
             attributes: ["id"],
             transaction,
         });
         const installmentIds = installments.map((installment) => installment.id);
-        yield TranzactionModel_1.TranzactionModel.destroy({ where: { loanId: id }, transaction });
         if (installmentIds.length > 0) {
             yield DebtModel_1.DebtModel.destroy({ where: { amortisationId: { [sequelize_1.Op.in]: installmentIds } }, transaction });
             yield AmortizationLoanModel_1.AmorizationLoanModel.destroy({ where: { loanId: id }, transaction });

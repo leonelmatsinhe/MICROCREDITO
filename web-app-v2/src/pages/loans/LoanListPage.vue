@@ -296,13 +296,24 @@
                 </q-btn>
               </template>
 
-              <!-- Desembolsados / Terminados: apenas o olho → painel do mutuário -->
+              <!-- Desembolsados / Terminados: painel do mutuário + eliminar (se sem pagamentos) -->
               <template v-else>
                 <q-btn
                   flat round dense icon="visibility" color="primary" size="xs"
                   @click.stop="goToCustomer(props.row.accountNumber)"
                 >
                   <q-tooltip>Abrir painel do mutuário</q-tooltip>
+                </q-btn>
+                <q-btn
+                  flat round dense icon="delete" size="xs"
+                  :color="Number(props.row.totalPaid) > 0 ? 'grey-5' : 'negative'"
+                  :disable="Number(props.row.totalPaid) > 0"
+                  @click.stop="confirmDelete(props.row)"
+                >
+                  <q-tooltip v-if="Number(props.row.totalPaid) > 0">
+                    Não é possível eliminar — existem pagamentos associados a este crédito
+                  </q-tooltip>
+                  <q-tooltip v-else>Eliminar crédito</q-tooltip>
                 </q-btn>
               </template>
             </div>
@@ -324,8 +335,16 @@
         <q-card-section>
           <div class="text-body2">
             Esta acção elimina permanentemente o crédito da conta <strong>{{ deletingLoan?.accountNumber }}</strong>,
-            incluindo prestações, pagamentos, juros, descontos, dívidas e garantias associadas.
-            Os registos financeiros não poderão ser recuperados. Deseja continuar?
+            incluindo prestações, dívidas e garantias associadas.
+            <template v-if="Number(deletingLoan?.totalPaid) > 0">
+              <div class="text-negative text-weight-medium q-mt-sm">
+                <q-icon name="warning" size="16px" class="q-mr-xs" />
+                Não é possível eliminar — existem {{ Number(deletingLoan?.totalPaid) > 0 ? 'pagamentos' : '' }} registados neste crédito.
+              </div>
+            </template>
+            <template v-else>
+              Os registos financeiros não poderão ser recuperados. Deseja continuar?
+            </template>
           </div>
         </q-card-section>
         <q-card-actions align="right" class="q-pa-md">
@@ -1074,7 +1093,8 @@ async function deleteLoanConfirmed() {
     showDeleteConfirm.value = false
     await fetchLoans()
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'Erro ao eliminar crédito', position: 'top' })
+    const msg = error.response?.data?.message || 'Erro ao eliminar crédito'
+    $q.notify({ type: 'negative', message: msg, position: 'top', timeout: 8000 })
   } finally {
     deleting.value = false
   }

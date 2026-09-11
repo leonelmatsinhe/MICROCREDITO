@@ -468,6 +468,20 @@ const destroyLoan = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Crédito não encontrado." });
     }
 
+    // Verificar se existem transações/pagamentos associados ao crédito.
+    // Se existir qualquer pagamento, NÃO permitir a eliminação.
+    const transactionCount = await TranzactionModel.count({
+      where: { loanId: id },
+      transaction,
+    });
+    if (transactionCount > 0) {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        message: `Não é possível eliminar este crédito porque existem ${transactionCount} pagamento(s)/transacção(ões) associada(s). Remova primeiro os pagamentos antes de eliminar o crédito.`,
+      });
+    }
+
     const installments = await AmorizationLoanModel.findAll({
       where: { loanId: id },
       attributes: ["id"],
@@ -475,7 +489,6 @@ const destroyLoan = async (req: Request, res: Response) => {
     });
     const installmentIds = installments.map((installment: any) => installment.id);
 
-    await TranzactionModel.destroy({ where: { loanId: id }, transaction });
     if (installmentIds.length > 0) {
       await DebtModel.destroy({ where: { amortisationId: { [Op.in]: installmentIds } }, transaction });
       await AmorizationLoanModel.destroy({ where: { loanId: id }, transaction });

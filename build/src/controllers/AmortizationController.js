@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getInstallmentsControl = exports.createAmortizationLoan = exports.getPastAmortizations = exports.getUpcomingAmortizations = void 0;
+exports.destroyInstallment = exports.getInstallmentsControl = exports.createAmortizationLoan = exports.getPastAmortizations = exports.getUpcomingAmortizations = void 0;
 const moment_1 = __importDefault(require("moment"));
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const sequelize_1 = require("sequelize");
@@ -314,6 +314,7 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
                     : Number(a.latePaymentInterest) || 0;
                 result.push({
                     id: `${loan.id}-${a.id || a.installmentOrder}`,
+                    amortizationId: Number(a.id) || null,
                     loanId: Number(loan.id),
                     accountNumber: loan.accountNumber,
                     customerId: loan.customerId,
@@ -345,3 +346,42 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
     }
 });
 exports.getInstallmentsControl = getInstallmentsControl;
+const destroyInstallment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const installmentId = Number(id);
+        if (!Number.isFinite(installmentId) || installmentId <= 0) {
+            return res.status(400).json({ success: false, message: "ID de prestação inválido." });
+        }
+        const installment = yield AmortizationLoanModel_1.AmorizationLoanModel.findByPk(installmentId);
+        if (!installment) {
+            return res.status(404).json({ success: false, message: "Prestação não encontrada." });
+        }
+        // Verificar se existem transações/pagamentos para esta prestação
+        const transactionCount = yield TranzactionModel_1.TranzactionModel.count({
+            where: { amortizationLoanId: installmentId },
+        });
+        if (transactionCount > 0) {
+            return res.status(409).json({
+                success: false,
+                message: `Não é possível eliminar esta prestação porque existem ${transactionCount} pagamento(s)/transacção(ões) associada(s). Remova primeiro os pagamentos antes de eliminar a prestação.`,
+            });
+        }
+        // Eliminar dívida associada, se existir
+        yield DebtModel_1.DebtModel.destroy({ where: { amortisationId: installmentId } });
+        // Eliminar a prestação
+        yield AmortizationLoanModel_1.AmorizationLoanModel.destroy({ where: { id: installmentId } });
+        return res.status(200).json({
+            success: true,
+            message: "Prestação eliminada com sucesso.",
+        });
+    }
+    catch (error) {
+        console.error("Erro ao eliminar prestação:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Erro ao eliminar a prestação.",
+        });
+    }
+});
+exports.destroyInstallment = destroyInstallment;

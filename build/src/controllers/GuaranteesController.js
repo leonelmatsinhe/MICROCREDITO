@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteGuarantee = exports.createGuarantee = exports.getAllLoanGuarantees = void 0;
 const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
+const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const getAllLoanGuarantees = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const guarantees = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.findAll({
@@ -47,16 +48,43 @@ const createGuarantee = (req, res) => __awaiter(void 0, void 0, void 0, function
 });
 exports.createGuarantee = createGuarantee;
 const deleteGuarantee = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { id } = req.params;
-    const deleteGuarantee = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.destroy({ where: { id: id } });
-    return deleteGuarantee != null
-        ? res.status(201).send(JSON.stringify({
-            success: true,
-            message: "Guarantee deleted successfully.",
-        }))
-        : res.status(500).send(JSON.stringify({
+    try {
+        const { id } = req.params;
+        const guarantee = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.findByPk(id);
+        if (!guarantee) {
+            return res.status(404).json({ success: false, message: "Garantia não encontrada." });
+        }
+        // Verificar se existe algum pagamento/transacção associado ao crédito
+        // ao qual esta garantia pertence.
+        const loanId = guarantee.getDataValue("loanId");
+        if (loanId) {
+            const transactionCount = yield TranzactionModel_1.TranzactionModel.count({
+                where: { loanId },
+            });
+            if (transactionCount > 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: `Não é possível eliminar esta garantia porque o crédito associado tem ${transactionCount} pagamento(s)/transacção(ões). Remova primeiro os pagamentos.`,
+                });
+            }
+        }
+        const deleted = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.destroy({ where: { id: id } });
+        return deleted != null
+            ? res.status(200).json({
+                success: true,
+                message: "Garantia eliminada com sucesso.",
+            })
+            : res.status(500).json({
+                success: false,
+                message: "Não foi possível eliminar a garantia.",
+            });
+    }
+    catch (error) {
+        console.error("Erro ao eliminar garantia:", error);
+        return res.status(500).json({
             success: false,
-            message: "There was an error deleting this guarantee.",
-        }));
+            message: error.message || "Erro ao eliminar a garantia.",
+        });
+    }
 });
 exports.deleteGuarantee = deleteGuarantee;
