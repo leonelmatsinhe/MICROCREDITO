@@ -58,6 +58,48 @@
           </template>
         </q-input>
 
+        <!-- ═══ TESOURARIA: método e conta de desembolso ═══ -->
+        <div class="row q-col-gutter-sm q-mb-md">
+          <div class="col-12 col-sm-5">
+            <q-select
+              v-model="paymentMethod"
+              :options="treasuryMethodOptions"
+              label="Forma de desembolso *"
+              dense
+              outlined
+              emit-value
+              map-options
+              :rules="[v => !!v || 'Seleccione a forma']"
+            >
+              <template v-slot:prepend>
+                <q-icon name="payments" size="18px" />
+              </template>
+            </q-select>
+          </div>
+          <div class="col-12 col-sm-7">
+            <q-select
+              v-if="paymentMethod !== 'CASH'"
+              v-model="bankAccountId"
+              :options="disbursementAccountOptions"
+              label="Conta de origem *"
+              dense
+              outlined
+              emit-value
+              map-options
+              :rules="[v => !!v || 'Seleccione a conta bancária']"
+            >
+              <template v-slot:prepend>
+                <q-icon name="account_balance" size="18px" />
+              </template>
+            </q-select>
+            <q-input v-else outlined dense disable label="Conta de origem" value="Caixa físico (gaveta)">
+              <template v-slot:prepend>
+                <q-icon name="inbox" size="18px" />
+              </template>
+            </q-input>
+          </div>
+        </div>
+
         <!-- Taxa de juro -->
         <q-select
           v-model="rateId"
@@ -198,6 +240,44 @@ const documentsCount = ref(null)
 // Data real de desembolso — base do plano; por defeito é hoje, mas pode ser corrigida
 const disbursementDate = ref(new Date().toISOString().split('T')[0])
 
+// ─── TESOURARIA: método/conta de desembolso (Caixa Central) ───
+const paymentMethod = ref('CASH')
+const bankAccountId = ref(null)
+const bankAccounts = ref([])
+
+const treasuryMethodOptions = [
+  { label: 'Dinheiro físico (CASH)', value: 'CASH' },
+  { label: 'Transferência bancária', value: 'BANK' },
+  { label: 'M-Pesa', value: 'MPESA' },
+  { label: 'e-Mola', value: 'EMOLA' }
+]
+
+// Contas activas de desembolso (DESEMBOLSO + MISTO) com saldo actual.
+const disbursementAccountOptions = computed(() =>
+  bankAccounts.value
+    .filter(acc => Number(acc.is_active) === 1 && ['DESEMBOLSO', 'MISTO'].includes(acc.purpose))
+    .map(acc => ({
+      label: `${acc.bank_name || 'Conta'} - ${acc.accountNumber} - Saldo: ${formatMoney(acc.balance)}`,
+      value: acc.id
+    }))
+)
+
+async function fetchBankAccounts() {
+  try {
+    const { data } = await api.get('/api/bank-accounts?is_active=1&purpose=DESEMBOLSO')
+    if (data.success) {
+      bankAccounts.value = data.result || []
+      // Pré-seleccionar a conta marcada como default de desembolso.
+      if (!bankAccountId.value) {
+        const def = bankAccounts.value.find(acc => Number(acc.is_default_desembolso) === 1)
+        bankAccountId.value = def ? def.id : null
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao carregar contas bancárias:', e)
+  }
+}
+
 const rateOptions = computed(() =>
   rateList.value.map(r => ({
     label: `${r.name || 'Plano'} — ${formatTaxPct(Number(r.tax))}% a.m.`,
@@ -290,6 +370,10 @@ watch(show, async (val) => {
     observation.value = ''
     documentsCount.value = null
     disbursementDate.value = new Date().toISOString().split('T')[0]
+    // Reset da tesouraria + carregar contas para o q-select
+    paymentMethod.value = 'CASH'
+    bankAccountId.value = null
+    fetchBankAccounts()
     if (rateList.value.length === 0) {
       await fetchRates()
     }
@@ -321,6 +405,11 @@ async function confirmApproval() {
     $q.notify({ type: 'warning', message: 'Indique a data de desembolso', position: 'top' })
     return
   }
+  // Tesouraria: desembolso electrónico exige conta bancária seleccionada.
+  if (paymentMethod.value !== 'CASH' && !bankAccountId.value) {
+    $q.notify({ type: 'warning', message: 'Seleccione a conta bancária de origem do desembolso', position: 'top' })
+    return
+  }
 
   submitting.value = true
   try {
@@ -342,7 +431,10 @@ async function confirmApproval() {
         numberOfInstallments: Number(loan.numberOfInstallments),
         amount: Number(loan.amount),
         dueDate,
-        status: 0
+        status: 0,
+        // ── TESOURARIA: método/conta do desembolso (movimento SAIDA/DESEMBOLSO) ──
+        payment_method: paymentMethod.value,
+        bank_account_id: paymentMethod.value !== 'CASH' ? bankAccountId.value : null
       })
     } catch (err2) {
       // Já existe plano de amortização (409): apenas activar o crédito (e a data de desembolso)

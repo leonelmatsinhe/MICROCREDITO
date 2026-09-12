@@ -573,6 +573,29 @@
               <div class="col-6">
                 <q-input v-model="paymentForm.paymentReference" dense outlined label="Referência" input-style="font-size: 13px" />
               </div>
+              <!-- TESOURARIA: caixa (cash/conta) do movimento -->
+              <div class="col-6">
+                <q-select v-model="treasuryMethod" dense outlined :options="[
+                  { label: 'Caixa físico (CASH)', value: 'CASH' },
+                  { label: 'Transferência bancária', value: 'BANK' },
+                  { label: 'M-Pesa', value: 'MPESA' },
+                  { label: 'e-Mola', value: 'EMOLA' }
+                ]" label="Caixa de entrada *" emit-value map-options input-style="font-size: 13px" />
+              </div>
+              <div class="col-6">
+                <q-select
+                  v-if="treasuryMethod !== 'CASH'"
+                  v-model="treasuryAccountId"
+                  dense
+                  outlined
+                  :options="treasuryAccountOptions"
+                  label="Conta de destino *"
+                  emit-value
+                  map-options
+                  input-style="font-size: 13px"
+                />
+                <q-input v-else dense outlined disable value="Dinheiro na gaveta" label="Conta de destino" input-style="font-size: 13px" />
+              </div>
               <div class="col-6">
                 <q-input v-model.number="paymentForm.amountReceived" dense outlined label="Valor a pagar" type="number" input-style="font-size: 13px" @update:model-value="markPaymentAmountAsManual" />
               </div>
@@ -673,6 +696,29 @@
               </div>
               <div class="col-6">
                 <q-input v-model="globalPaymentForm.paymentReference" dense outlined label="Referência" input-style="font-size: 13px" />
+              </div>
+              <!-- TESOURARIA: caixa (cash/conta) do movimento -->
+              <div class="col-6">
+                <q-select v-model="treasuryMethod" dense outlined :options="[
+                  { label: 'Caixa físico (CASH)', value: 'CASH' },
+                  { label: 'Transferência bancária', value: 'BANK' },
+                  { label: 'M-Pesa', value: 'MPESA' },
+                  { label: 'e-Mola', value: 'EMOLA' }
+                ]" label="Caixa de entrada *" emit-value map-options input-style="font-size: 13px" />
+              </div>
+              <div class="col-6">
+                <q-select
+                  v-if="treasuryMethod !== 'CASH'"
+                  v-model="treasuryAccountId"
+                  dense
+                  outlined
+                  :options="treasuryAccountOptions"
+                  label="Conta de destino *"
+                  emit-value
+                  map-options
+                  input-style="font-size: 13px"
+                />
+                <q-input v-else dense outlined disable value="Dinheiro na gaveta" label="Conta de destino" input-style="font-size: 13px" />
               </div>
               <div class="col-6">
                 <q-input v-model="globalPaymentForm.phoneNumber" dense outlined label="Telefone do cliente" input-style="font-size: 13px" />
@@ -972,6 +1018,45 @@ const globalPaymentForm = ref({
   discountType: 'percentage',
   discountPercentage: 10,
   discountFixed: 0
+})
+
+// ─── TESOURARIA: método/conta do pagamento (Caixa Central) ───
+// Método de caixa: CASH (gaveta), BANK, MPESA, EMOLA — vai para cash_movements
+// e, quando electrónico, para o saldo real da conta (bank_transactions).
+const treasuryMethod = ref('CASH')
+const treasuryAccountId = ref(null)
+const treasuryAccounts = ref([])
+
+async function fetchTreasuryAccounts() {
+  try {
+    const { data } = await api.get('/api/bank-accounts?is_active=1&purpose=REEMBOLSO')
+    if (data.success) {
+      treasuryAccounts.value = data.result || []
+      // Pré-seleccionar a conta default de reembolso.
+      if (!treasuryAccountId.value) {
+        const def = treasuryAccounts.value.find(acc => Number(acc.is_default_reembolso) === 1)
+        treasuryAccountId.value = def ? def.id : null
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao carregar contas de reembolso:', e)
+  }
+}
+
+// Opções do q-select de conta: só contas activas de reembolso, com saldo.
+const treasuryAccountOptions = computed(() =>
+  treasuryAccounts.value
+    .filter(acc => Number(acc.is_active) === 1)
+    .map(acc => ({
+      label: `${acc.bank_name || 'Conta'} - ${acc.accountNumber} - Saldo: ${formatMoney(acc.balance)}`,
+      value: acc.id
+    }))
+)
+
+// Payload comum de tesouraria para os 3 createPayment.
+const treasuryPayload = () => ({
+  payment_method: treasuryMethod.value,
+  bank_account_id: treasuryMethod.value !== 'CASH' ? treasuryAccountId.value : null
 })
 
 const discountOptions = [
@@ -1578,6 +1663,10 @@ function openPaymentModal(installment) {
     phoneNumber: customer.value?.customerPhone || '',
     staffName: authStore.userName || ''
   }
+  // Reset da tesouraria + carregar contas de reembolso para o q-select
+  treasuryMethod.value = 'CASH'
+  treasuryAccountId.value = null
+  fetchTreasuryAccounts()
   paymentAmountIsAutomatic.value = true
   showPaymentModal.value = true
 }
@@ -1756,6 +1845,11 @@ async function printCreditExtract() {
 
 async function submitPayment() {
   if (!currentPaymentInstallment.value || !amortLoan.value) return
+  // Tesouraria: movimento electrónico exige conta bancária seleccionada.
+  if (treasuryMethod.value !== 'CASH' && !treasuryAccountId.value) {
+    $q.notify({ type: 'negative', message: 'Seleccione a conta bancária de destino do pagamento.', position: 'top' })
+    return
+  }
   if (paymentExcessAmount.value > 0 && !nextPaymentInstallment.value) {
     $q.notify({ type: 'negative', message: 'Pagamento rejeitado: não existe prestação seguinte para receber o troco.', position: 'top' })
     return
@@ -1800,7 +1894,8 @@ async function submitPayment() {
       description: `Pagamento prestação ${currentPaymentInstallment.value.installmentOrder}`,
       receiptUrl,
       staffName: paymentForm.value.staffName || '',
-      paymentDate: paymentForm.value.paymentDate
+      paymentDate: paymentForm.value.paymentDate,
+      ...treasuryPayload()
     })
 
     const carryAmount = paymentExcessAmount.value
@@ -1821,7 +1916,8 @@ async function submitPayment() {
         description: `Troco aplicado na prestação ${next.installmentOrder}`,
         receiptUrl,
         staffName: paymentForm.value.staffName || '',
-        paymentDate: paymentForm.value.paymentDate
+        paymentDate: paymentForm.value.paymentDate,
+        ...treasuryPayload()
       })
     }
 
@@ -1853,6 +1949,11 @@ async function submitPayment() {
 
 async function submitGlobalPayment() {
   if (!amortLoan.value || pendingInstallments.value.length === 0) return
+  // Tesouraria: movimento electrónico exige conta bancária seleccionada.
+  if (treasuryMethod.value !== 'CASH' && !treasuryAccountId.value) {
+    $q.notify({ type: 'negative', message: 'Seleccione a conta bancária de destino do pagamento.', position: 'top' })
+    return
+  }
   globalPaymentSaving.value = true
   try {
     let receiptUrl = ''
@@ -1904,7 +2005,8 @@ async function submitGlobalPayment() {
         staffName: globalPaymentForm.value.staffName || '',
         paymentDate: globalPaymentForm.value.paymentDate,
         notes: globalPaymentForm.value.observation || null,
-        discountApplied: globalPaymentForm.value.applyDiscount || false
+        discountApplied: globalPaymentForm.value.applyDiscount || false,
+        ...treasuryPayload()
       })
     }
 

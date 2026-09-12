@@ -570,6 +570,45 @@ const addTranzaction = async (req: Request, res: Response) => {
       console.error("Erro ao enfileirar SMS de pagamento:", smsError);
     }
 
+    // ── CAIXA DIÁRIO: movimentos automáticos de ENTRADA ──
+    // REEMBOLSO (valor pago) + JUROS_MORA (se houver) + TAXA_ADMIN (se houver).
+    // Best-effort: falha NÃO desfaz o pagamento (apenas regista o erro).
+    try {
+      const { recordPayment } = await import("../services/cashRegisterService");
+      const openRegister = (req as any).cashRegister;
+      if (openRegister) {
+        const jwt = await import("jsonwebtoken");
+        const decoded: any = jwt.verify(
+          (req.headers.authorization || "").split(" ")[1] || "",
+          process.env.APP_SECRET + ""
+        );
+        // Juros de mora já vieram recalculados do início do handler
+        // (latePaymentInterest = mora do dia − mora já cobrada antes).
+        const effectiveLateInterest = Number(latePaymentInterest) > 0
+          ? Number(latePaymentInterest)
+          : 0;
+        await recordPayment({
+          companyId: Number(companyId),
+          userId: Number(decoded?.id) || undefined,
+          loanId: loanId ? Number(loanId) : Number(installment.loanId),
+          amortizationLoanId: amortizationLoanId ? Number(amortizationLoanId) : null,
+          tranzactionId: Number((tranzaction as any).id),
+          customerId: installment.getDataValue("customerId"),
+          amount: Number(amount),
+          lateInterest: effectiveLateInterest,
+          adminFee: 0, // taxa administrativa é cobrada na concessão, não no pagamento
+          accountNumber,
+          // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
+          paymentMethod: String((req.body as any)?.payment_method || "CASH"),
+          bankAccountId: (req.body as any)?.bank_account_id
+            ? Number((req.body as any).bank_account_id)
+            : null,
+        });
+      }
+    } catch (cashError: any) {
+      console.error("[CAIXA] Falha ao registar pagamento no caixa (pagamento mantido):", cashError?.message || cashError);
+    }
+
     return updateAmortizationLoan != null
       ? res
         .status(201)

@@ -58,8 +58,8 @@
         dense
         icon="refresh"
         color="grey-7"
-        :loading="refreshing"
-        @click="fetchBalance"
+        :loading="alertsStore.fetching"
+        @click="alertsStore.fetchAll()"
       >
         <q-tooltip>Actualizar saldo</q-tooltip>
       </q-btn>
@@ -68,21 +68,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { api } from '@/boot/axios'
+import { computed } from 'vue'
+import { useAlertsStore } from '@/stores/alerts'
 
-const authStore = useAuthStore()
+/**
+ * SALDO BulkSMM — widget de banner (dashboard).
+ * Dados vindos da store central de alertas (useAlertsStore): o mesmo estado
+ * alimenta o sino do navbar — uma única chamada à API por ciclo de polling.
+ */
+const alertsStore = useAlertsStore()
 
-const wallet = ref({
-  configured: false,
-  balance: null,
-  currency: null,
-  lowBalance: false,
-  error: null
-})
-const refreshing = ref(false)
-let timer = null
+const wallet = computed(() => alertsStore.smsWallet)
 
 const balanceLabel = computed(() => {
   const b = wallet.value.balance
@@ -125,32 +121,6 @@ const balanceTextClass = computed(() => {
 })
 
 const progressColor = computed(() => (wallet.value.lowBalance ? 'negative' : 'teal'))
-
-async function fetchBalance() {
-  refreshing.value = true
-  try {
-    const companyId = authStore.companyId
-    if (!companyId) return
-    const { data } = await api.get('/api/sms-gateway/summary', { params: { companyId } })
-    if (data?.success && data.result?.wallet) {
-      wallet.value = data.result.wallet
-    }
-  } catch (e) {
-    // silencioso — mantém o último estado conhecido
-  } finally {
-    refreshing.value = false
-  }
-}
-
-onMounted(() => {
-  fetchBalance()
-  // Refresca a cada 5 minutos
-  timer = setInterval(fetchBalance, 5 * 60 * 1000)
-})
-
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-})
 </script>
 
 <style lang="scss" scoped>

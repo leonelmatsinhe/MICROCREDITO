@@ -121,6 +121,29 @@ const addUniqueIndexIfMissing = async (
   }
 };
 
+// Índice simples (não único) — ex.: idx_company_purpose_active em accounts.
+const addIndexIfMissing = async (
+  table: string,
+  indexName: string,
+  columns: string[],
+  results: MigrationResult
+) => {
+  if (await hasIndex(table, indexName)) {
+    results.skipped += 1;
+    return;
+  }
+  try {
+    await db.query(
+      `ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (${columns.map((column) => `\`${column}\``).join(", ")})`
+    );
+    results.applied += 1;
+    console.log(`[Migration] Índice ${table}.${indexName} adicionado`);
+  } catch (error: any) {
+    results.errors.push(`INDEX ${table}.${indexName}: ${error?.message || error}`);
+    console.error(`[Migration] Erro no índice ${table}.${indexName}:`, error?.message || error);
+  }
+};
+
 const addColumnIfMissing = async (
   table: string,
   column: string,
@@ -400,6 +423,244 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   await addForeignKeyIfMissing("users", "fk_users_company", "companyId", "companies", "id", "RESTRICT", results);
   await addForeignKeyIfMissing("user_logs", "fk_user_logs_company", "companyId", "companies", "id", "RESTRICT", results);
   await addForeignKeyIfMissing("user_logs", "fk_user_logs_user", "userId", "users", "id", "RESTRICT", results);
+
+  // ==================== CAIXA DIÁRIO (módulo isolado) ====================
+  // Tabelas novas — não alteram nenhuma tabela existente. A tabela `accounts`
+  // continua a ser apenas a conta bancária dos contratos (bankAccount), sem
+  // ligação com o fluxo de caixa.
+  await createTableIfMissing(
+    "cash_registers",
+    `CREATE TABLE IF NOT EXISTS cash_registers (
+      id INTEGER PRIMARY KEY AUTO_INCREMENT,
+      companyId INTEGER NOT NULL,
+      userId INTEGER NOT NULL,
+      opening_date VARCHAR(10) NOT NULL,
+      opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0,
+      total_in DECIMAL(15,2) NOT NULL DEFAULT 0,
+      total_out DECIMAL(15,2) NOT NULL DEFAULT 0,
+      status ENUM('ABERTO','FECHADO') NOT NULL DEFAULT 'ABERTO',
+      closing_balance_informed DECIMAL(15,2) NULL,
+      closing_balance_calculated DECIMAL(15,2) NULL,
+      difference DECIMAL(15,2) NULL,
+      closed_at DATETIME NULL,
+      closedBy INTEGER NULL,
+      createdAt DATETIME,
+      updatedAt DATETIME,
+      INDEX idx_cash_registers_company_status (companyId, status)
+    )`,
+    results
+  );
+
+  await createTableIfMissing(
+    "cash_movements",
+    `CREATE TABLE IF NOT EXISTS cash_movements (
+      id INTEGER PRIMARY KEY AUTO_INCREMENT,
+      companyId INTEGER NOT NULL,
+      cashRegisterId INTEGER NOT NULL,
+      type ENUM('ENTRADA','SAIDA') NOT NULL,
+      category ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','REUNIAO','TRANSPORTE','OUTROS') NOT NULL,
+      amount DECIMAL(15,2) NOT NULL,
+      description VARCHAR(255) NOT NULL,
+      loanId INTEGER NULL,
+      amortizationLoanId INTEGER NULL,
+      tranzactionId INTEGER NULL,
+      customerId INTEGER NULL,
+      isAutomatic BOOLEAN NOT NULL DEFAULT 0,
+      createdBy INTEGER NULL,
+      createdAt DATETIME,
+      updatedAt DATETIME,
+      INDEX idx_cash_movements_register (cashRegisterId),
+      INDEX idx_cash_movements_tranzaction (tranzactionId)
+    )`,
+    results
+  );
+
+  // Regra de negócio: 1 caixa ABERTO por utilizador, por dia e por empresa.
+  // O índice único inclui o status para permitir histórico de vários dias
+  // (reabrir caixa noutro dia continua permitido).
+  await addUniqueIndexIfMissing(
+    "cash_registers",
+    "uq_cash_registers_user_day_company",
+    ["userId", "opening_date", "companyId", "status"],
+    results
+  );
+
+  // ==================== CAIXA CENTRAL / TESOURARIA ====================
+  // A tabela `accounts` passa a ser CARTEIRA REAL (saldo por banco) mantendo
+  // a sua função anterior nos contratos. Migration é ALTER (nunca DROP) —
+  // nenhum dado existente é apagado.
+
+  // --- accounts: novas colunas de carteira real ---
+  await addColumnIfMissing("accounts", "bank_name", "VARCHAR(100) NOT NULL DEFAULT '' AFTER accountDescription", results);
+  await addColumnIfMissing("accounts", "bank_code", "VARCHAR(20) NULL AFTER bank_name", results);
+  // Saldo real actual — gerido EXCLUSIVAMENTE pelo treasuryService.
+  await addColumnIfMissing("accounts", "balance", "DECIMAL(15,2) NOT NULL DEFAULT 0.00 AFTER bank_code", results);
+  await addColumnIfMissing("accounts", "initial_balance", "DECIMAL(15,2) NULL DEFAULT 0.00 AFTER balance", results);
+  await addColumnIfMissing("accounts", "purpose", "ENUM('REEMBOLSO','DESEMBOLSO','MISTO','TAXAS','RESERVA') NOT NULL DEFAULT 'MISTO' AFTER initial_balance", results);
+  await addColumnIfMissing("accounts", "type", "ENUM('BANCO','CAIXA_FISICO','MOBILE_MONEY','EWALLET') NOT NULL DEFAULT 'BANCO' AFTER purpose", results);
+  await addColumnIfMissing("accounts", "is_default_reembolso", "TINYINT(1) NOT NULL DEFAULT 0 AFTER type", results);
+  await addColumnIfMissing("accounts", "is_default_desembolso", "TINYINT(1) NOT NULL DEFAULT 0 AFTER is_default_reembolso", results);
+  await addColumnIfMissing("accounts", "is_active", "TINYINT(1) NOT NULL DEFAULT 1 AFTER is_default_desembolso", results);
+  await addColumnIfMissing("accounts", "currency", "VARCHAR(3) NOT NULL DEFAULT 'MZN' AFTER is_active", results);
+  await addIndexIfMissing("accounts", "idx_company_purpose_active", ["companyId", "purpose", "is_active"], results);
+
+  // Seed one-time do registo id=1 (FNB): corre apenas enquanto bank_name estiver
+  // vazio — restarts seguintes NUNCA reescrevem o saldo já movimentado.
+  try {
+    if (await hasColumn("accounts", "bank_name")) {
+      const [seeded]: any = await db.query(
+        "SELECT id FROM `accounts` WHERE id = 1 AND (bank_name IS NULL OR bank_name = '')"
+      );
+      if ((seeded as any[]).length > 0) {
+        await db.query(
+          "UPDATE `accounts` SET bank_name = 'FNB', purpose = 'MISTO', is_default_reembolso = 1, is_default_desembolso = 1, balance = 0, is_active = 1 WHERE id = 1"
+        );
+        results.applied += 1;
+        console.log("[Migration] accounts id=1 actualizado (FNB, MISTO, defaults)");
+      }
+    }
+  } catch (error: any) {
+    results.errors.push(`SEED accounts#1: ${error?.message || error}`);
+  }
+
+  // --- cash_registers: colunas do Caixa Central (CASH vs BANK) ---
+  await addColumnIfMissing("cash_registers", "opening_time", "DATETIME NULL", results);
+  await addColumnIfMissing("cash_registers", "closing_time", "DATETIME NULL", results);
+  await addColumnIfMissing("cash_registers", "total_cash_in", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
+  await addColumnIfMissing("cash_registers", "total_cash_out", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
+  await addColumnIfMissing("cash_registers", "total_bank_in", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
+  await addColumnIfMissing("cash_registers", "total_bank_out", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
+  await addColumnIfMissing("cash_registers", "notes", "TEXT NULL", results);
+
+  // --- cash_movements: método de pagamento + conta bancária + referência ---
+  await addColumnIfMissing("cash_movements", "bankAccountId", "INTEGER NULL", results);
+  await addColumnIfMissing("cash_movements", "paymentMethod", "ENUM('CASH','BANK','MPESA','EMOLA') NOT NULL DEFAULT 'CASH'", results);
+  await addColumnIfMissing("cash_movements", "referenceType", "VARCHAR(50) NULL", results);
+  await addColumnIfMissing("cash_movements", "referenceId", "INTEGER NULL", results);
+
+  // O ENUM de categorias passa a incluir movimentos bancários (superset —
+  // mantém todos os valores antigos para não quebrar dados existentes).
+  await modifyColumnType(
+    "cash_movements",
+    "category",
+    "ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL",
+    results
+  );
+
+  // --- bank_transactions: extrato real de cada conta bancária ---
+  await createTableIfMissing(
+    "bank_transactions",
+    `CREATE TABLE IF NOT EXISTS bank_transactions (
+      id INTEGER PRIMARY KEY AUTO_INCREMENT,
+      companyId INTEGER NOT NULL,
+      accountId INTEGER NOT NULL,
+      cashRegisterId INTEGER NULL,
+      type ENUM('ENTRADA','SAIDA') NOT NULL,
+      category ENUM('REEMBOLSO_BANCO','DESEMBOLSO_BANCO','DEPOSITO_CAIXA','LEVANTAMENTO_BANCO','TAXA_BANCARIA','ESTORNO','OUTROS') NOT NULL,
+      amount DECIMAL(15,2) NOT NULL,
+      balanceAfter DECIMAL(15,2) NOT NULL DEFAULT 0,
+      description VARCHAR(255) NOT NULL,
+      referenceType VARCHAR(50) NULL,
+      referenceId INTEGER NULL,
+      createdBy INTEGER NULL,
+      createdAt DATETIME,
+      updatedAt DATETIME,
+      INDEX idx_bank_transactions_account (accountId, createdAt),
+      INDEX idx_bank_transactions_register (cashRegisterId)
+    )`,
+    results
+  );
+
+  // ==================== CONTA DE COLECTA M-PESA (portal do mutuário) ====================
+  // Toda empresa precisa de uma conta MOBILE_MONEY para receber os pagamentos
+  // iniciados no portal do cliente. Se não tiver nenhuma, cria uma por defeito
+  // (número placeholder editável nas Configurações → Contas Bancárias).
+  try {
+    if (await hasColumn("accounts", "type")) {
+      const companies: any[] = (await db.query("SELECT id FROM companies"))[0] as any[];
+      for (const company of companies as any[]) {
+        const companyId = Number(company.id);
+        const [existing]: any = await db.query(
+          "SELECT id FROM `accounts` WHERE companyId = ? AND type = 'MOBILE_MONEY' LIMIT 1",
+          { replacements: [companyId] }
+        );
+        if ((existing as any[]).length > 0) continue;
+
+        // Nome da empresa para a descrição (best-effort)
+        let companyName = `Empresa ${companyId}`;
+        try {
+          const [cRows]: any = await db.query("SELECT companyName FROM companies WHERE id = ?", { replacements: [companyId] });
+          const cName = (cRows as any[])[0]?.companyName || (cRows as any[])[0]?.companyName1;
+          if (cName) companyName = String(cName);
+        } catch { /* usa o fallback */ }
+
+        await db.query(
+          `INSERT INTO accounts
+             (companyId, accountNumber, accountDescription, accountHolder, bank_name, bank_code,
+              balance, initial_balance, purpose, type, is_default_reembolso, is_default_desembolso,
+              is_active, currency, createdBy, updatedBy, createdAt, updatedAt)
+           VALUES
+             (?, '258840000000', 'Colecta M-Pesa (portal)', ?, 'M-Pesa', NULL,
+              0, 0, 'REEMBOLSO', 'MOBILE_MONEY', 1, 0,
+              1, 'MZN', 'sistema', 'sistema', NOW(), NOW())`,
+          { replacements: [companyId, companyName] }
+        );
+        results.applied += 1;
+        console.log(`[Migration] Conta de colecta M-Pesa criada para a empresa ${companyId} (${companyName})`);
+      }
+    }
+  } catch (error: any) {
+    results.errors.push(`SEED conta M-Pesa: ${error?.message || error}`);
+    console.error("[Migration] Erro ao criar conta de colecta M-Pesa:", error?.message || error);
+  }
+
+  // ==================== REPARAÇÃO: TOTAIS DOS CAIXAS (bug de persistência) ====================
+  // Bug histórico: recalculateRegisterTotals gravava chaves camelCase (totalIn,
+  // totalCashIn, ...) num modelo com colunas snake_case (total_in, total_cash_in,
+  // ...) — o update estático do Sequelize descartava as chaves desconhecidas e
+  // os totais NUNCA eram persistidos (ficavam a 0 mesmo com movimentos).
+  // Reparação one-time idempotente: recalcula os 6 totais de TODOS os caixas a
+  // partir de cash_movements (fonte de verdade) e corrige fechos concluídos.
+  try {
+    if (await hasTable("cash_registers") && (await hasColumn("cash_registers", "total_cash_in"))) {
+      const [fixed]: any = await db.query(
+        `UPDATE cash_registers cr
+         LEFT JOIN (
+           SELECT
+             cashRegisterId,
+             SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE 0 END) AS tin,
+             SUM(CASE WHEN type = 'SAIDA'  THEN amount ELSE 0 END) AS tout,
+             SUM(CASE WHEN type = 'ENTRADA' AND paymentMethod = 'CASH' THEN amount ELSE 0 END) AS cin,
+             SUM(CASE WHEN type = 'SAIDA'  AND paymentMethod = 'CASH' THEN amount ELSE 0 END) AS cout,
+             SUM(CASE WHEN type = 'ENTRADA' AND paymentMethod <> 'CASH' THEN amount ELSE 0 END) AS bin,
+             SUM(CASE WHEN type = 'SAIDA'  AND paymentMethod <> 'CASH' THEN amount ELSE 0 END) AS bout
+           FROM cash_movements
+           GROUP BY cashRegisterId
+         ) m ON m.cashRegisterId = cr.id
+         SET
+           cr.total_in      = ROUND(IFNULL(m.tin, 0), 2),
+           cr.total_out     = ROUND(IFNULL(m.tout, 0), 2),
+           cr.total_cash_in  = ROUND(IFNULL(m.cin, 0), 2),
+           cr.total_cash_out = ROUND(IFNULL(m.cout, 0), 2),
+           cr.total_bank_in  = ROUND(IFNULL(m.bin, 0), 2),
+           cr.total_bank_out = ROUND(IFNULL(m.bout, 0), 2),
+           cr.closing_balance_calculated = IF(cr.status = 'FECHADO',
+             ROUND(IFNULL(cr.opening_balance, 0) + IFNULL(m.cin, 0) - IFNULL(m.cout, 0), 2),
+             cr.closing_balance_calculated),
+           cr.difference = IF(cr.status = 'FECHADO' AND cr.closing_balance_informed IS NOT NULL,
+             ROUND(cr.closing_balance_informed - (IFNULL(cr.opening_balance, 0) + IFNULL(m.cin, 0) - IFNULL(m.cout, 0)), 2),
+             cr.difference)`
+      );
+      const affected = Number((fixed as any)?.affectedRows) || 0;
+      if (affected > 0) {
+        results.applied += 1;
+        console.log(`[Migration] Totais de ${affected} caixa(s) recalculados a partir de cash_movements (reparação do bug de persistência)`);
+      }
+    }
+  } catch (error: any) {
+    results.errors.push(`REPARAÇÃO totais caixa: ${error?.message || error}`);
+    console.error("[Migration] Erro ao reparar totais dos caixas:", error?.message || error);
+  }
 
   return results;
 };

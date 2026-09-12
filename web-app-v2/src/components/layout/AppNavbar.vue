@@ -37,6 +37,9 @@
           <q-tooltip>{{ isDark ? 'Modo Claro' : 'Modo Escuro' }}</q-tooltip>
         </q-btn>
 
+        <!-- ALERTAS DO SISTEMA — sino com badge vermelho + modal -->
+        <AlertBell />
+
         <!-- Notifications -->
         <q-btn flat round dense icon="notifications" text-color="white" size="sm">
           <q-badge color="negative" floating v-if="unreadCount > 0">
@@ -150,6 +153,7 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useCustomerStore } from '@/stores/customers'
+import AlertBell from './AlertBell.vue'
 import { getInitials, timeAgo } from '@/utils/formatters'
 
 const emit = defineEmits(['toggle-sidebar'])

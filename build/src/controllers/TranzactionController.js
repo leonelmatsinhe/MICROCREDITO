@@ -353,6 +353,7 @@ const getLoanLateInterest = (req, res) => __awaiter(void 0, void 0, void 0, func
 });
 exports.getLoanLateInterest = getLoanLateInterest;
 const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
     let { companyId, accountNumber, amortizationLoanId, amount, totalAmount, latePaymentInterest, interestRateAmount, phoneNumber, tranzactionReference, paymentMethod, description, receiptUrl, staffName, loanId, paymentDate, discountApplied, notes, } = req.body;
     const todayDate = new Date().toISOString().slice(0, 10);
     if (paymentDate && String(paymentDate).slice(0, 10) > todayDate) {
@@ -466,7 +467,7 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 const { DebtModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/DebtModel")));
                 yield DebtModel.destroy({ where: { amortisationId: amortizationLoanId } });
             }
-            catch (_a) { }
+            catch (_c) { }
         }
         // Notificar o cliente sobre o pagamento recebido
         try {
@@ -519,6 +520,42 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
         }
         catch (smsError) {
             console.error("Erro ao enfileirar SMS de pagamento:", smsError);
+        }
+        // ── CAIXA DIÁRIO: movimentos automáticos de ENTRADA ──
+        // REEMBOLSO (valor pago) + JUROS_MORA (se houver) + TAXA_ADMIN (se houver).
+        // Best-effort: falha NÃO desfaz o pagamento (apenas regista o erro).
+        try {
+            const { recordPayment } = yield Promise.resolve().then(() => __importStar(require("../services/cashRegisterService")));
+            const openRegister = req.cashRegister;
+            if (openRegister) {
+                const jwt = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
+                const decoded = jwt.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
+                // Juros de mora já vieram recalculados do início do handler
+                // (latePaymentInterest = mora do dia − mora já cobrada antes).
+                const effectiveLateInterest = Number(latePaymentInterest) > 0
+                    ? Number(latePaymentInterest)
+                    : 0;
+                yield recordPayment({
+                    companyId: Number(companyId),
+                    userId: Number(decoded === null || decoded === void 0 ? void 0 : decoded.id) || undefined,
+                    loanId: loanId ? Number(loanId) : Number(installment.loanId),
+                    amortizationLoanId: amortizationLoanId ? Number(amortizationLoanId) : null,
+                    tranzactionId: Number(tranzaction.id),
+                    customerId: installment.getDataValue("customerId"),
+                    amount: Number(amount),
+                    lateInterest: effectiveLateInterest,
+                    adminFee: 0,
+                    accountNumber,
+                    // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
+                    paymentMethod: String(((_a = req.body) === null || _a === void 0 ? void 0 : _a.payment_method) || "CASH"),
+                    bankAccountId: ((_b = req.body) === null || _b === void 0 ? void 0 : _b.bank_account_id)
+                        ? Number(req.body.bank_account_id)
+                        : null,
+                });
+            }
+        }
+        catch (cashError) {
+            console.error("[CAIXA] Falha ao registar pagamento no caixa (pagamento mantido):", (cashError === null || cashError === void 0 ? void 0 : cashError.message) || cashError);
         }
         return updateAmortizationLoan != null
             ? res

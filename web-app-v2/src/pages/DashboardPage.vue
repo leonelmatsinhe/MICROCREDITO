@@ -3,11 +3,8 @@
     <!-- Filters -->
     <FiltersBar @filter="onFilter" @clear="onClear" @sync="onSync" />
 
-    <!-- Saldo BulkSMM (aviso quando as unidades estão a acabar) -->
-    <SmsBalanceWidget />
-
-    <!-- SMS pendentes na fila (saldo BulkSMM) -->
-    <SmsQueueIndicator />
+    <!-- Alertas SMS (saldo/fila): agora vivem no sino do navbar (AlertBell),
+         visível em todas as páginas — banners removidos daqui. -->
 
     <!-- Loading -->
     <div v-if="loading" class="text-center q-pa-xl">
@@ -29,12 +26,13 @@
       </div>
       <div class="col-12 col-sm-6 col-md-4">
         <KpiCard
-          label="Total Desembolsado"
-          :value="kpis.totalDisbursed"
+          label="Total Desembolsado (mês — Caixa)"
+          :value="treasuryKpis.monthOut"
           icon="attach_money"
           avatarColor="positive"
           valueColor="text-positive"
           format="money"
+          :secondary-text="`Total histórico: ${formatMoney(kpis.totalDisbursed)}`"
         />
       </div>
       <div class="col-12 col-sm-6 col-md-4">
@@ -69,13 +67,25 @@
       </div>
       <div class="col-12 col-sm-6 col-md-4">
         <KpiCard
-          label="Total Reembolsado"
-          :value="kpis.totalReimbursed"
+          label="Total Reembolsado (mês — Caixa)"
+          :value="treasuryKpis.monthIn"
           icon="trending_up"
           avatarColor="green"
           valueColor="text-positive"
           format="money"
-          :secondary-text="`Mora paga: ${formatMoney(kpis.totalLateInterest)} · Descontos: ${formatMoney(dashboardStore.rawKpis?.financial?.totalDiscount || 0)}`"
+          :secondary-text="`Total histórico: ${formatMoney(kpis.totalReimbursed)}`"
+        />
+      </div>
+      <!-- CAIXA CENTRAL: saldo real consolidado da carteira -->
+      <div class="col-12 col-sm-6 col-md-4">
+        <KpiCard
+          label="Saldo em Bancos (real)"
+          :value="treasuryKpis.bankBalance"
+          icon="account_balance"
+          avatarColor="blue"
+          valueColor="text-primary"
+          format="money"
+          :secondary-text="`Mobile: ${formatMoney(treasuryKpis.mobileBalance)} · Cash: ${formatMoney(treasuryKpis.cashBalance)} · Total: ${formatMoney(treasuryKpis.totalBalance)}`"
         />
       </div>
     </div>
@@ -104,8 +114,6 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
 import KpiCard from '@/components/ui/KpiCard.vue'
-import SmsQueueIndicator from '@/components/ui/SmsQueueIndicator.vue'
-import SmsBalanceWidget from '@/components/ui/SmsBalanceWidget.vue'
 import FiltersBar from '@/components/ui/FiltersBar.vue'
 import BarChart from '@/components/charts/BarChart.vue'
 import UpcomingTable from '@/components/ui/UpcomingTable.vue'
@@ -119,6 +127,23 @@ const loading = computed(() => dashboardStore.loading)
 const kpis = computed(() => dashboardStore.kpis)
 const chartData = computed(() => dashboardStore.chartData)
 const upcomingInstallments = computed(() => dashboardStore.upcomingInstallments)
+
+// ─── CAIXA CENTRAL: dados da tesouraria vindos do dashboard (fallback a zeros) ───
+const treasuryKpis = computed(() => {
+  const t = dashboardStore.treasury || {}
+  return {
+    monthIn: t.monthIn || 0,
+    monthOut: t.monthOut || 0,
+    monthBankIn: t.monthBankIn || 0,
+    monthBankOut: t.monthBankOut || 0,
+    monthCashIn: t.monthCashIn || 0,
+    monthCashOut: t.monthCashOut || 0,
+    bankBalance: t.bankBalance || 0,
+    mobileBalance: t.mobileBalance || 0,
+    cashBalance: t.cashBalance || 0,
+    totalBalance: t.totalBalance || 0
+  }
+})
 
 async function loadDashboard(filters = {}) {
   const companyId = authStore.companyId

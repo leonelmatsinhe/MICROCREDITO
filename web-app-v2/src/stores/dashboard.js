@@ -28,7 +28,8 @@ export const useDashboardStore = defineStore('dashboard', {
     riskByManager: [],
     loading: false,
     error: null,
-    rawKpis: null
+    rawKpis: null,
+    treasury: null
   }),
 
   getters: {
@@ -50,6 +51,8 @@ export const useDashboardStore = defineStore('dashboard', {
         if (data && data.success) {
           // Store raw KPIs for reference
           this.rawKpis = data.kpis
+          // CAIXA CENTRAL: totais do mês + saldos reais da carteira
+          this.treasury = data.treasury || null
 
           // Map KPIs from API response structure
           const loans = data.kpis?.loans || {}
@@ -144,6 +147,7 @@ export const useDashboardStore = defineStore('dashboard', {
       this.upcomingInstallments = []
       this.riskByManager = []
       this.rawKpis = null
+      this.treasury = null
     }
   }
 })

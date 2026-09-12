@@ -10,7 +10,7 @@
       </q-card-section>
 
       <q-card-section class="q-pa-md">
-        <!-- Canal -->
+        <!-- Canal — WhatsApp inabilitado por enquanto (decisão de negócio) -->
         <div class="text-subtitle2 text-grey-6 q-mb-sm">Canal</div>
         <q-btn-toggle
           v-model="channel"
@@ -21,6 +21,12 @@
           class="q-mb-md full-width"
           toggle-color="primary"
         />
+        <q-banner class="bg-grey-3 text-grey-8 q-mb-md" rounded dense>
+          <template v-slot:avatar>
+            <q-icon name="lock" size="18px" color="grey-7" />
+          </template>
+          <span class="text-caption">Canal WhatsApp inabilitado temporariamente — apenas SMS disponível.</span>
+        </q-banner>
 
         <!-- SMS desactivado: mensagem genérica no modal, sem chamada ao servidor -->
         <q-banner v-if="smsBlocked" class="bg-negative text-white q-mb-md" rounded>
@@ -112,6 +118,7 @@ import { useQuasar } from 'quasar'
 import { api } from '@/boot/axios'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
+import { formatMznPlain } from '@/utils/formatters'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -149,10 +156,15 @@ const form = ref({
   message: '',
 })
 
-const channelOptions = [
+// Valor exemplo para o placeholder {valor} dos templates (o utilizador edita
+// a mensagem depois de aplicar). Formato final: "11.021,74".
+const placeholderAmount = ref(0)
+
+const channelOptions = computed(() => [
   { label: 'SMS', value: 'sms', icon: 'sms' },
-  { label: 'WhatsApp', value: 'whatsapp', icon: 'chat' }
-]
+  // WhatsApp inabilitado por enquanto — opção visível mas bloqueada.
+  { label: 'WhatsApp (indisponível)', value: 'whatsapp', icon: 'chat', disable: true }
+])
 
 const templates = {
   disbursement: {
@@ -227,12 +239,11 @@ watch(() => props.customerName, (val) => {
   }
 }, { immediate: true })
 
-// Aplicar canal, telefone e mensagem iniciais sempre que o modal é aberto
+// Aplicar canal, telefone e mensagem iniciais sempre que o modal é aberto.
+// WhatsApp está inabilitado: pedidos de canal whatsapp caem em SMS.
 watch(() => props.modelValue, (open) => {
   if (!open) return
-  if (props.channel === 'whatsapp' || props.channel === 'sms') {
-    channel.value = props.channel
-  }
+  channel.value = 'sms'
   if (props.phone) form.value.phone = props.phone
   if (props.initialMessage) {
     selectedTemplate.value = 'custom'
@@ -248,9 +259,10 @@ function applyTemplate(key) {
   const template = templates[key]
   let msg = channel.value === 'whatsapp' ? template.whatsapp : template.sms
 
-  // Substituir placeholders
+  // Substituir placeholders — {valor} no formato "11.021,74" (pt-MZ, sem NBSP)
   msg = msg.replace('{nome}', props.customerName || 'Cliente')
   msg = msg.replace('{telefone}', form.value.phone || '')
+  msg = msg.replace(/\{valor\}/g, formatMznPlain(placeholderAmount.value).replace(/ MZN$/, ''))
 
   form.value.message = msg
 }
@@ -263,6 +275,11 @@ function close() {
 
 async function send() {
   if (!form.value.phone || !form.value.message) return
+  // Canal WhatsApp bloqueado por decisão de negócio.
+  if (channel.value === 'whatsapp') {
+    $q.notify({ type: 'warning', message: 'Canal WhatsApp inabilitado temporariamente.', position: 'top' })
+    return
+  }
 
   // SMS desactivado: não envia nada para o servidor (a mensagem já está no modal)
   if (smsBlocked.value) {

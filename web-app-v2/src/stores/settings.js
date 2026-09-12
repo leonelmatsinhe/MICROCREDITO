@@ -187,10 +187,13 @@ export const useSettingsStore = defineStore('settings', {
     },
 
     // ========== ACCOUNTS ==========
+    // FONTE ÚNICA DE VERDADE: /api/bank-accounts — a MESMA API usada pelo
+    // Caixa Central (carteira real com saldo). A secção de Configurações e o
+    // Caixa Central leem/escrevem exactamente as mesmas contas.
     async fetchAccounts(companyId) {
       this.loadingAccounts = true
       try {
-        const { data } = await api.get(`/api/accounts/${companyId}`)
+        const { data } = await api.get('/api/bank-accounts')
         if (data.success) {
           this.accounts = Array.isArray(data.result) ? data.result : (data.result ? [data.result] : [])
         }
@@ -206,7 +209,7 @@ export const useSettingsStore = defineStore('settings', {
     async createAccount(accountData) {
       this.saving = true
       try {
-        const { data } = await api.post('/api/account', accountData)
+        const { data } = await api.post('/api/bank-accounts', accountData)
         return data
       } catch (error) {
         console.error('Erro ao criar conta:', error)
@@ -219,7 +222,7 @@ export const useSettingsStore = defineStore('settings', {
     async updateAccount(id, accountData) {
       this.saving = true
       try {
-        const { data } = await api.put(`/api/account/${id}`, accountData)
+        const { data } = await api.put(`/api/bank-accounts/${id}`, accountData)
         return data
       } catch (error) {
         console.error('Erro ao atualizar conta:', error)
@@ -232,7 +235,9 @@ export const useSettingsStore = defineStore('settings', {
     async deleteAccount(id) {
       this.saving = true
       try {
-        const { data } = await api.delete(`/api/account/${id}`)
+        // Soft delete — a API desactiva a conta (is_active=0) preservando o
+        // histórico financeiro da tesouraria.
+        const { data } = await api.delete(`/api/bank-accounts/${id}`)
         return data
       } catch (error) {
         console.error('Erro ao eliminar conta:', error)

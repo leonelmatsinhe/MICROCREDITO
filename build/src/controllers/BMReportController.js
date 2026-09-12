@@ -215,6 +215,81 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             creditInDebt: reportData.reduce((sum, r) => sum + r.creditInDebt, 0),
             creditOverdue: reportData.reduce((sum, r) => sum + r.creditOverdue, 0),
         };
+        // 6. PAGAMENTOS POR CANAL (portal vs presencial) — do caixa do período.
+        // Portal = Caixa do Sistema (userId 0) e/ou etiqueta "[Portal — fora de
+        // expediente]". Complementa a carteira de crédito com a origem das
+        // cobranças, separando M-Pesa/BANK/CASH por canal.
+        let treasuryPayments = null;
+        try {
+            const { CashRegisterModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/CashRegisterModel")));
+            const { CashMovementModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/CashMovementModel")));
+            const regWhere = { companyId: companyIdNum };
+            if (from && to)
+                regWhere.opening_date = { [sequelize_1.Op.between]: [String(from), String(to)] };
+            else if (from)
+                regWhere.opening_date = { [sequelize_1.Op.gte]: String(from) };
+            else if (to)
+                regWhere.opening_date = { [sequelize_1.Op.lte]: String(to) };
+            const registers = (yield CashRegisterModel.findAll({
+                where: regWhere,
+                attributes: ["id", "userId"],
+                raw: true,
+            }));
+            const registerIds = registers.map((r) => Number(r.id));
+            const systemIds = registers.filter((r) => Number(r.userId) === 0).map((r) => Number(r.id));
+            const emptyChannel = () => ({
+                MPESA: { in: 0, out: 0 },
+                BANK: { in: 0, out: 0 },
+                EMOLA: { in: 0, out: 0 },
+                CASH: { in: 0, out: 0 },
+                totalIn: 0,
+                totalOut: 0,
+            });
+            const portal = emptyChannel();
+            const inPerson = emptyChannel();
+            if (registerIds.length > 0) {
+                const movements = (yield CashMovementModel.findAll({
+                    where: { cashRegisterId: { [sequelize_1.Op.in]: registerIds } },
+                    attributes: ["cashRegisterId", "type", "amount", "paymentMethod", "description"],
+                    raw: true,
+                }));
+                const bump = (channel, method, type, amount) => {
+                    const key = ["MPESA", "BANK", "EMOLA", "CASH"].includes(method) ? method : "BANK";
+                    if (type === "ENTRADA") {
+                        channel[key].in += amount;
+                        channel.totalIn += amount;
+                    }
+                    else {
+                        channel[key].out += amount;
+                        channel.totalOut += amount;
+                    }
+                };
+                movements.forEach((m) => {
+                    const isPortal = systemIds.includes(Number(m.cashRegisterId)) ||
+                        String(m.description || "").includes("[Portal — fora de expediente]");
+                    bump(isPortal ? portal : inPerson, String(m.paymentMethod || "CASH"), String(m.type), Number(m.amount) || 0);
+                });
+            }
+            const r2 = (v) => Math.round(v * 100) / 100;
+            [portal, inPerson].forEach((channel) => {
+                Object.keys(channel).forEach((key) => {
+                    if (key === "totalIn" || key === "totalOut") {
+                        channel[key] = r2(channel[key]);
+                    }
+                    else {
+                        channel[key].in = r2(channel[key].in);
+                        channel[key].out = r2(channel[key].out);
+                    }
+                });
+            });
+            treasuryPayments = {
+                portal: Object.assign(Object.assign({}, portal), { registerCount: systemIds.length }),
+                inPerson: Object.assign(Object.assign({}, inPerson), { registerCount: registerIds.length - systemIds.length }),
+            };
+        }
+        catch (treasuryError) {
+            console.error("[BM] Pagamentos por canal indisponíveis:", (treasuryError === null || treasuryError === void 0 ? void 0 : treasuryError.message) || treasuryError);
+        }
         return res.status(200).json({
             success: true,
             company: {
@@ -228,6 +303,7 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             },
             reportData,
             totals,
+            treasuryPayments,
             period: {
                 from: from ? String(from) : null,
                 to: to ? String(to) : null,

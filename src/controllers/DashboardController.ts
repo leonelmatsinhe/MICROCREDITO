@@ -412,6 +412,46 @@ const getDashboardOverview = async (req: Request, res: Response) => {
         };
       });
 
+    // ── CAIXA CENTRAL: totais do mês corrente a partir do cash_registers ──
+    // Best-effort: se o módulo de tesouraria não tiver dados/falhar, o
+    // dashboard continua a funcionar (treasury fica null).
+    let treasury: any = null;
+    try {
+      const { CashRegisterModel } = await import("../database/models/CashRegisterModel");
+      const monthStart = moment().startOf("month").format("YYYY-MM-DD");
+      const monthRegisters: any[] = (await CashRegisterModel.findAll({
+        where: { companyId: companyIdNum, opening_date: { [Op.gte]: monthStart } },
+        attributes: [
+          [CashRegisterModel.sequelize!.fn("SUM", CashRegisterModel.sequelize!.col("total_in")), "monthIn"],
+          [CashRegisterModel.sequelize!.fn("SUM", CashRegisterModel.sequelize!.col("total_out")), "monthOut"],
+          [CashRegisterModel.sequelize!.fn("SUM", CashRegisterModel.sequelize!.col("total_bank_in")), "monthBankIn"],
+          [CashRegisterModel.sequelize!.fn("SUM", CashRegisterModel.sequelize!.col("total_bank_out")), "monthBankOut"],
+          [CashRegisterModel.sequelize!.fn("SUM", CashRegisterModel.sequelize!.col("total_cash_in")), "monthCashIn"],
+          [CashRegisterModel.sequelize!.fn("SUM", CashRegisterModel.sequelize!.col("total_cash_out")), "monthCashOut"],
+        ],
+        raw: true,
+      })) as any[];
+      const monthRow = monthRegisters[0] || {};
+
+      const { getWalletTotals } = await import("../services/treasuryService");
+      const wallet = await getWalletTotals(companyIdNum);
+
+      treasury = {
+        monthIn: Number(monthRow.monthIn) || 0,
+        monthOut: Number(monthRow.monthOut) || 0,
+        monthBankIn: Number(monthRow.monthBankIn) || 0,
+        monthBankOut: Number(monthRow.monthBankOut) || 0,
+        monthCashIn: Number(monthRow.monthCashIn) || 0,
+        monthCashOut: Number(monthRow.monthCashOut) || 0,
+        bankBalance: wallet.bank,
+        mobileBalance: wallet.mobile,
+        cashBalance: wallet.cash,
+        totalBalance: wallet.total,
+      };
+    } catch (treasuryError: any) {
+      console.error("[Dashboard] Tesouraria indisponível:", treasuryError?.message || treasuryError);
+    }
+
     return res.status(200).json({
       success: true,
       filters: {
@@ -421,6 +461,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
         creditManager: creditManager ? Number(creditManager) : null,
         status: status !== undefined && status !== "" ? Number(status) : null,
       },
+      treasury,
       kpis: {
         loans: {
           total: totalLoans,

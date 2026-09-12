@@ -544,6 +544,22 @@
             <div class="text-caption text-grey-6 q-mb-md">
               <q-icon name="phone_android" size="13px" class="q-mr-xs" />Pressione <strong>Pagar</strong> e aguarde <strong>10 segundos</strong> para digitar o seu PIN M-Pesa.
             </div>
+            <!-- Conta M-Pesa da empresa que recebe o pagamento -->
+            <q-card v-if="collectAccount" flat bordered class="q-mb-sm" style="border-radius: 8px; background: rgba(46, 125, 50, 0.06)">
+              <q-card-section class="q-py-sm row items-center no-wrap">
+                <q-icon name="storefront" size="20px" color="positive" class="q-mr-sm" />
+                <div class="col" style="min-width: 0">
+                  <div class="text-caption text-grey-5">Pagamento recebido na conta</div>
+                  <div class="text-weight-bold" style="font-size: 13px">
+                    {{ collectAccount.bank_name }} · {{ collectAccount.accountNumber }}
+                  </div>
+                  <div class="text-caption text-grey-6" v-if="collectAccount.accountHolder">{{ collectAccount.accountHolder }}</div>
+                </div>
+                <q-btn flat round dense icon="content_copy" size="sm" color="grey-6" @click="copyAccountNumber(collectAccount)">
+                  <q-tooltip>Copiar número</q-tooltip>
+                </q-btn>
+              </q-card-section>
+            </q-card>
           </template>
 
           <!-- Transferência bancária: apenas informativa (pagamento offline, sem registo na BD) -->
@@ -863,6 +879,9 @@ const paymentPhone = ref('')
 const paymentAmount = ref(0)
 const paymentMethod = ref('mpesa')
 const paying = ref(false)
+
+// Conta de colecta default da empresa (M-Pesa) — vem do dashboard do portal.
+const collectAccount = ref(null)
 
 // Contas bancárias da empresa (transferência — apenas informativo)
 const showAccountsModal = ref(false)
@@ -1201,7 +1220,8 @@ async function copyAccountNumber(account) {
 function openPaymentModal(installment) {
   selectedInstallment.value = installment
   paymentMethod.value = 'mpesa'
-  selectedAccount.value = null
+  // Transferência pré-selecciona a conta de colecta default (M-Pesa), se existir.
+  selectedAccount.value = collectAccount.value
   const remaining = Math.max(
     0,
     Math.round(((installment.installment || 0) - (installment.paidAmount || 0)) * 100) / 100
@@ -1283,6 +1303,9 @@ async function loadData() {
       summary.value = data.summary
       loans.value = data.loans || []
       allPayments.value = data.payments || []
+      // Conta de colecta da empresa (M-Pesa por defeito) — mostrada no
+      // pagamento M-Pesa e pré-seleccionada na transferência.
+      collectAccount.value = data.collectAccount || null
     }
   } catch (e) {
     console.error('Erro ao carregar dados:', e)

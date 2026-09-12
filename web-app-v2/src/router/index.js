@@ -19,6 +19,10 @@ const ContractDocumentsPage = () => import('@/pages/loans/ContractDocumentsPage.
 const ReportsBMPage = () => import('@/pages/ReportsBMPage.vue')
 const InstallmentsControlPage = () => import('@/pages/InstallmentsControlPage.vue')
 const PaymentsPage = () => import('@/pages/PaymentsPage.vue')
+const CaixaPage = () => import('@/pages/CaixaPage.vue')
+const CaixaCentralPage = () => import('@/pages/CaixaCentralPage.vue')
+const BankAccountsPage = () => import('@/pages/BankAccountsPage.vue')
+const CaixaHistoricoPage = () => import('@/pages/CaixaHistoricoPage.vue')
 const LogsPage = () => import('@/pages/LogsPage.vue')
 const SmsPendingCredentialsPage = () => import('@/pages/SmsPendingCredentialsPage.vue')
 
@@ -84,6 +88,32 @@ const routes = [
     path: '/pagamentos',
     name: 'Payments',
     component: PaymentsPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  {
+    path: '/caixa',
+    name: 'Caixa',
+    component: CaixaPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  // CAIXA CENTRAL — tesouraria com carteira real (cash + contas bancárias)
+  {
+    path: '/caixa-central',
+    name: 'CaixaCentral',
+    component: CaixaCentralPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  // CARTEIRA REAL — CRUD de contas bancárias com saldo
+  {
+    path: '/bank-accounts',
+    name: 'BankAccounts',
+    component: BankAccountsPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  {
+    path: '/caixa/historico',
+    name: 'CaixaHistorico',
+    component: CaixaHistoricoPage,
     meta: { requiresAuth: true, allowedRoles: [1] }
   },
   {

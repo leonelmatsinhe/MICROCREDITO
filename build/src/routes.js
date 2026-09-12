@@ -36,12 +36,21 @@ const WhatsAppController_1 = require("./controllers/WhatsAppController");
 const CustomerPortalController_1 = require("./controllers/CustomerPortalController");
 const PdfController_1 = require("./controllers/PdfController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
+// CAIXA DIÁRIO — rotas do módulo isolado de fluxo de caixa
+const cashRoutes_1 = require("./routes/cashRoutes");
+// CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
+const bankAccountRoutes_1 = require("./routes/bankAccountRoutes");
 const NotificationController_1 = require("./controllers/NotificationController");
 const DashboardController_1 = require("./controllers/DashboardController");
+const checkCashRegisterOpen_1 = require("./middlewares/checkCashRegisterOpen");
 const BMReportController_1 = require("./controllers/BMReportController");
 const ExcelExportController_1 = require("./controllers/ExcelExportController");
 const routes = express_1.default.Router();
 exports.routes = routes;
+// CAIXA DIÁRIO — sub-router isolado (tabelas cash_registers / cash_movements)
+routes.use(cashRoutes_1.cashRoutes);
+// CARTEIRA REAL — sub-router das contas bancárias (accounts + bank_transactions)
+routes.use(bankAccountRoutes_1.bankAccountRoutes);
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
 routes.get("/logo/:image", (req, res) => {
     // Suporta tanto "filename" como "/documents/filename"
@@ -232,12 +241,15 @@ routes.get("/api/monthllyTransactions/:id", TranzactionController_1.findTransact
 routes.get("/api/payments/:id/paginated", TranzactionController_1.findPaginatedTransactions);
 routes.get("/api/payments/:companyId/all", TranzactionController_1.findAllPaymentsOverview);
 routes.put("/api/tranzaction/:id", TranzactionController_1.updateTranzaction);
-routes.post("/api/tranzaction", TranzactionController_1.addTranzaction);
+// Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA
+// (REEMBOLSO / JUROS_MORA / TAXA_ADMIN) são criados no controller.
+routes.post("/api/tranzaction", checkCashRegisterOpen_1.checkCashRegisterOpen, TranzactionController_1.addTranzaction);
 // Installments Routes
+// POST createInstallmentsLoan = desembolso do crédito (cria plano + activa).
+// Exige caixa ABERTO hoje — o movimento SAIDA/DESEMBOLSO é criado no controller.
+routes.post("/api/createInstallmentsLoan/", checkCashRegisterOpen_1.checkCashRegisterOpen, AmortizationController_1.createAmortizationLoan);
 routes.get("/api/getpastInstallments/:id", AmortizationController_1.getPastAmortizations);
 routes.get("/api/getUpcomingInstallments/:id", AmortizationController_1.getUpcomingAmortizations);
-routes.post("/api/createInstallmentsLoan/", AmortizationController_1.createAmortizationLoan);
-routes.delete("/api/installment/:id", AmortizationController_1.destroyInstallment);
 // Controle de Prestações consolidado (nomes resolvidos no servidor, sem N+1)
 routes.get("/api/installments/control/:companyId", AmortizationController_1.getInstallmentsControl);
 // Amortization Routes

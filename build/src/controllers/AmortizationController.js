@@ -1,4 +1,27 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -12,7 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.destroyInstallment = exports.getInstallmentsControl = exports.createAmortizationLoan = exports.getPastAmortizations = exports.getUpcomingAmortizations = void 0;
+exports.getInstallmentsControl = exports.createAmortizationLoan = exports.getPastAmortizations = exports.getUpcomingAmortizations = void 0;
 const moment_1 = __importDefault(require("moment"));
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const sequelize_1 = require("sequelize");
@@ -96,7 +119,7 @@ const getPastAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.getPastAmortizations = getPastAmortizations;
 const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
+    var _a, _b, _c;
     try {
         const { companyId, loanId, accountNumber, interestRate, numberOfInstallments, amount, dueDate, status } = req.body;
         // Validações de entrada
@@ -186,6 +209,34 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         catch (smsError) {
             console.error("Erro ao enfileirar SMS de desembolso:", smsError);
         }
+        // ── CAIXA DIÁRIO: movimento automático SAIDA / DESEMBOLSO ──
+        // Best-effort: se falhar, NÃO impede o desembolso (apenas regista o erro).
+        // O caixa ABERTO já foi validado pelo middleware checkCashRegisterOpen e
+        // chega em req.cashRegister.
+        try {
+            const { recordDisbursement } = yield Promise.resolve().then(() => __importStar(require("../services/cashRegisterService")));
+            const openRegister = req.cashRegister;
+            if (openRegister) {
+                const jwt = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
+                const decoded = jwt.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
+                yield recordDisbursement({
+                    companyId: Number(companyId),
+                    userId: Number(decoded === null || decoded === void 0 ? void 0 : decoded.id) || undefined,
+                    loanId: Number(loanId),
+                    customerId: loan ? Number(loan.getDataValue("customerId")) : null,
+                    amount: Number(amount),
+                    accountNumber,
+                    // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
+                    paymentMethod: String(((_b = req.body) === null || _b === void 0 ? void 0 : _b.payment_method) || "CASH"),
+                    bankAccountId: ((_c = req.body) === null || _c === void 0 ? void 0 : _c.bank_account_id)
+                        ? Number(req.body.bank_account_id)
+                        : null,
+                });
+            }
+        }
+        catch (cashError) {
+            console.error("[CAIXA] Falha ao registar desembolso no caixa (desembolso mantido):", (cashError === null || cashError === void 0 ? void 0 : cashError.message) || cashError);
+        }
         return bulckInsert != null && bulckInsert.length > 0
             ? res.status(200).json({
                 success: true,
@@ -225,7 +276,7 @@ exports.createAmortizationLoan = createAmortizationLoan;
  * dados financeiros).
  */
 const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _b;
+    var _d;
     try {
         const { companyId } = req.params;
         const companyIdNum = Number(companyId);
@@ -314,14 +365,13 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
                     : Number(a.latePaymentInterest) || 0;
                 result.push({
                     id: `${loan.id}-${a.id || a.installmentOrder}`,
-                    amortizationId: Number(a.id) || null,
                     loanId: Number(loan.id),
                     accountNumber: loan.accountNumber,
                     customerId: loan.customerId,
                     customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || null,
                     customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "",
                     hasCustomer: !!customer,
-                    installmentOrder: (_b = a.installmentOrder) !== null && _b !== void 0 ? _b : "",
+                    installmentOrder: (_d = a.installmentOrder) !== null && _d !== void 0 ? _d : "",
                     installment: Number(a.installment) || 0,
                     paidAmount: Number(a.paidAmount) || 0,
                     status,
@@ -346,42 +396,3 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
     }
 });
 exports.getInstallmentsControl = getInstallmentsControl;
-const destroyInstallment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { id } = req.params;
-        const installmentId = Number(id);
-        if (!Number.isFinite(installmentId) || installmentId <= 0) {
-            return res.status(400).json({ success: false, message: "ID de prestação inválido." });
-        }
-        const installment = yield AmortizationLoanModel_1.AmorizationLoanModel.findByPk(installmentId);
-        if (!installment) {
-            return res.status(404).json({ success: false, message: "Prestação não encontrada." });
-        }
-        // Verificar se existem transações/pagamentos para esta prestação
-        const transactionCount = yield TranzactionModel_1.TranzactionModel.count({
-            where: { amortizationLoanId: installmentId },
-        });
-        if (transactionCount > 0) {
-            return res.status(409).json({
-                success: false,
-                message: `Não é possível eliminar esta prestação porque existem ${transactionCount} pagamento(s)/transacção(ões) associada(s). Remova primeiro os pagamentos antes de eliminar a prestação.`,
-            });
-        }
-        // Eliminar dívida associada, se existir
-        yield DebtModel_1.DebtModel.destroy({ where: { amortisationId: installmentId } });
-        // Eliminar a prestação
-        yield AmortizationLoanModel_1.AmorizationLoanModel.destroy({ where: { id: installmentId } });
-        return res.status(200).json({
-            success: true,
-            message: "Prestação eliminada com sucesso.",
-        });
-    }
-    catch (error) {
-        console.error("Erro ao eliminar prestação:", error);
-        return res.status(500).json({
-            success: false,
-            message: error.message || "Erro ao eliminar a prestação.",
-        });
-    }
-});
-exports.destroyInstallment = destroyInstallment;

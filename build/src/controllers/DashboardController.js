@@ -1,4 +1,27 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -361,6 +384,44 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 managerName: managerNameMap[managerId] || `Gestor #${managerId}`,
             };
         });
+        // ── CAIXA CENTRAL: totais do mês corrente a partir do cash_registers ──
+        // Best-effort: se o módulo de tesouraria não tiver dados/falhar, o
+        // dashboard continua a funcionar (treasury fica null).
+        let treasury = null;
+        try {
+            const { CashRegisterModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/CashRegisterModel")));
+            const monthStart = (0, moment_1.default)().startOf("month").format("YYYY-MM-DD");
+            const monthRegisters = (yield CashRegisterModel.findAll({
+                where: { companyId: companyIdNum, opening_date: { [sequelize_1.Op.gte]: monthStart } },
+                attributes: [
+                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_in")), "monthIn"],
+                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_out")), "monthOut"],
+                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_bank_in")), "monthBankIn"],
+                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_bank_out")), "monthBankOut"],
+                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_cash_in")), "monthCashIn"],
+                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_cash_out")), "monthCashOut"],
+                ],
+                raw: true,
+            }));
+            const monthRow = monthRegisters[0] || {};
+            const { getWalletTotals } = yield Promise.resolve().then(() => __importStar(require("../services/treasuryService")));
+            const wallet = yield getWalletTotals(companyIdNum);
+            treasury = {
+                monthIn: Number(monthRow.monthIn) || 0,
+                monthOut: Number(monthRow.monthOut) || 0,
+                monthBankIn: Number(monthRow.monthBankIn) || 0,
+                monthBankOut: Number(monthRow.monthBankOut) || 0,
+                monthCashIn: Number(monthRow.monthCashIn) || 0,
+                monthCashOut: Number(monthRow.monthCashOut) || 0,
+                bankBalance: wallet.bank,
+                mobileBalance: wallet.mobile,
+                cashBalance: wallet.cash,
+                totalBalance: wallet.total,
+            };
+        }
+        catch (treasuryError) {
+            console.error("[Dashboard] Tesouraria indisponível:", (treasuryError === null || treasuryError === void 0 ? void 0 : treasuryError.message) || treasuryError);
+        }
         return res.status(200).json({
             success: true,
             filters: {
@@ -370,6 +431,7 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 creditManager: creditManager ? Number(creditManager) : null,
                 status: status !== undefined && status !== "" ? Number(status) : null,
             },
+            treasury,
             kpis: {
                 loans: Object.assign({ total: totalLoans }, statusCount),
                 financial: {

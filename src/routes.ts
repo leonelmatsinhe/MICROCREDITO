@@ -151,6 +151,11 @@ import {
 import { customerContract } from "./controllers/PdfController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
+// CAIXA DIÁRIO — rotas do módulo isolado de fluxo de caixa
+import { cashRoutes } from "./routes/cashRoutes";
+// CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
+import { bankAccountRoutes } from "./routes/bankAccountRoutes";
+
 import {
   getNotifications,
   getUnreadCount,
@@ -163,11 +168,17 @@ import {
   deleteNotification,
 } from "./controllers/NotificationController";
 import { getDashboardOverview } from "./controllers/DashboardController";
+import { checkCashRegisterOpen } from "./middlewares/checkCashRegisterOpen";
 import { getBMReport, getBMReportExcel } from "./controllers/BMReportController";
 import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
 
 
 const routes = express.Router();
+
+// CAIXA DIÁRIO — sub-router isolado (tabelas cash_registers / cash_movements)
+routes.use(cashRoutes);
+// CARTEIRA REAL — sub-router das contas bancárias (accounts + bank_transactions)
+routes.use(bankAccountRoutes);
 const documentUpload = multer(multerConfig).single("file");
 
 routes.get("/logo/:image", (req: Request, res: Response) => {
@@ -377,12 +388,16 @@ routes.get("/api/monthllyTransactions/:id", findTransactionsByCompany);
 routes.get("/api/payments/:id/paginated", findPaginatedTransactions);
 routes.get("/api/payments/:companyId/all", findAllPaymentsOverview);
 routes.put("/api/tranzaction/:id", updateTranzaction);
-routes.post("/api/tranzaction", addTranzaction);
+// Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA
+// (REEMBOLSO / JUROS_MORA / TAXA_ADMIN) são criados no controller.
+routes.post("/api/tranzaction", checkCashRegisterOpen, addTranzaction);
 
 // Installments Routes
+// POST createInstallmentsLoan = desembolso do crédito (cria plano + activa).
+// Exige caixa ABERTO hoje — o movimento SAIDA/DESEMBOLSO é criado no controller.
+routes.post("/api/createInstallmentsLoan/", checkCashRegisterOpen, createAmortizationLoan);
 routes.get("/api/getpastInstallments/:id", getPastAmortizations);
 routes.get("/api/getUpcomingInstallments/:id", getUpcomingAmortizations);
-routes.post("/api/createInstallmentsLoan/", createAmortizationLoan);
 // Controle de Prestações consolidado (nomes resolvidos no servidor, sem N+1)
 routes.get("/api/installments/control/:companyId", getInstallmentsControl);
 

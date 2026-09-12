@@ -192,8 +192,25 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
     const activeLoansList = loanList.filter((l) => Number(l.status) === 1);
     const pendingLoansList = loanList.filter((l) => Number(l.status) === 0);
 
+    // Conta de colecta da empresa (M-Pesa por defeito) — para o portal mostrar
+    // onde o cliente deve enviar o pagamento.
+    let collectAccount: any = null;
+    try {
+      const { getDefaultCollectAccount } = await import("../services/bankAccountService");
+      collectAccount = await getDefaultCollectAccount(companyIdNum);
+    } catch { /* portal funciona sem conta configurada */ }
+
     return res.status(200).json({
       success: true,
+      collectAccount: collectAccount
+        ? {
+            id: collectAccount.id,
+            bank_name: collectAccount.bank_name,
+            accountNumber: collectAccount.accountNumber,
+            accountHolder: collectAccount.accountHolder || null,
+            type: collectAccount.type,
+          }
+        : null,
       customer: {
         id: customerData.id,
         name: customerData.customerName,
@@ -617,6 +634,41 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       await checkAndLiquidateLoan(loanIdNum, companyIdNum, customerData.accountNumber);
     } catch (err) {
       console.error("Erro ao verificar liquidação do crédito:", err);
+    }
+
+    // ── CAIXA CENTRAL: entrada automática na conta de colecta da empresa ──
+    // Pagamentos do portal entram por defeito na conta M-Pesa (MOBILE_MONEY)
+    // da empresa — ou na conta default de reembolso, para transferências.
+    // Best-effort: se falhar (ex.: sem caixa aberto), o pagamento mantém-se.
+    try {
+      const { getDefaultCollectAccount } = await import("../services/bankAccountService");
+      const collectAccount = await getDefaultCollectAccount(companyIdNum);
+      if (collectAccount) {
+        const { registerMovement } = await import("../services/treasuryService");
+        const paymentMethodTreasury = payMethod === "mpesa" ? "MPESA" : "BANK";
+        await registerMovement({
+          companyId: companyIdNum,
+          userId: null, // portal: sem utilizador interno; aceita qualquer caixa aberto da empresa
+          type: "ENTRADA",
+          category: "REEMBOLSO",
+          amount: paymentAmount,
+          paymentMethod: paymentMethodTreasury as any,
+          bankAccountId: collectAccount.id,
+          description: `Pagamento via portal do mutuário — conta ${customerData.accountNumber}${mpesaReceipt ? ` (recibo M-Pesa: ${mpesaReceipt})` : ""}`,
+          loanId: loanIdNum,
+          amortizationLoanId: installmentIdNum,
+          tranzactionId: Number((tranzaction as any).id) || null,
+          customerId: customerIdNum,
+          reference: { type: "customer_portal", id: Number((tranzaction as any).id) || null },
+          automatic: true,
+          // PAGAMENTOS DO PORTAL NUNCA SÃO REJEITADOS: se não houver caixa
+          // aberto (noite/fim-de-semana), caem no "Caixa do Sistema" do dia
+          // para reconciliação no próximo expediente.
+          allowWithoutOpenRegister: true,
+        });
+      }
+    } catch (cashError: any) {
+      console.error("[CAIXA] Falha ao registar pagamento do portal no caixa (pagamento mantido):", cashError?.message || cashError);
     }
 
     return res.status(201).json({

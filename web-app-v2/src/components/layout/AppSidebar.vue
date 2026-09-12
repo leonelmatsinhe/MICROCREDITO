@@ -195,6 +195,11 @@ const menuItems = computed(() => {
       loansItem,
       { to: '/admin/installments', icon: 'event', label: 'Controle Prestações' },
       { to: '/pagamentos', icon: 'payments', label: 'Pagamentos' },
+      // CAIXA CENTRAL — entre Pagamentos e Relatório BM
+      { to: '/caixa-central', icon: 'account_balance_wallet', label: 'Caixa Central' },
+      { to: '/bank-accounts', icon: 'account_balance', label: 'Contas Bancárias' },
+      { to: '/caixa', icon: 'point_of_sale', label: 'Caixa' },
+      { to: '/caixa/historico', icon: 'history', label: 'Histórico Caixa' },
       { to: '/reports/banco-mocambique', icon: 'description', label: 'Relatório BM' }
     )
   } else if (role === 3) {

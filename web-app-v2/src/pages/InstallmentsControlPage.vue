@@ -183,11 +183,13 @@
               <q-btn flat round dense icon="sms" size="sm" color="blue" @click="sendSMS(props.row)">
                 <q-tooltip>Enviar SMS</q-tooltip>
               </q-btn>
-              <q-btn flat round dense icon="chat" size="sm" color="positive" @click="sendWhatsApp(props.row)">
-                <q-tooltip>Enviar WhatsApp</q-tooltip>
+              <!-- WhatsApp inabilitado por enquanto (decisão de negócio) -->
+              <q-btn flat round dense icon="chat" size="sm" color="grey-5" disable>
+                <q-tooltip>WhatsApp indisponível por enquanto</q-tooltip>
               </q-btn>
-              <q-btn flat round dense icon="visibility" size="sm" color="grey-7" @click="viewDetails(props.row)">
-                <q-tooltip>Ver detalhes</q-tooltip>
+              <!-- Eye: abre a página do mutuário -->
+              <q-btn flat round dense icon="visibility" size="sm" color="grey-7" @click="openCustomerPage(props.row)">
+                <q-tooltip>Abrir página do cliente</q-tooltip>
               </q-btn>
             </div>
           </q-td>
@@ -261,7 +263,10 @@
           </div>
           <div class="row q-gutter-sm">
             <q-btn outline color="blue" icon="sms" label="SMS" no-caps rounded class="col" @click="sendSMS(selectedInstallment)" />
-            <q-btn outline color="positive" icon="chat" label="WhatsApp" no-caps rounded class="col" @click="sendWhatsApp(selectedInstallment)" />
+            <!-- WhatsApp inabilitado por enquanto -->
+            <q-btn outline color="grey-5" icon="chat" label="WhatsApp" no-caps rounded class="col" disable>
+              <q-tooltip>WhatsApp indisponível por enquanto</q-tooltip>
+            </q-btn>
           </div>
         </q-card-section>
       </q-card>
@@ -282,13 +287,15 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useQuasar } from 'quasar'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
-import { formatMoney as formatMoneyValue, formatPeriod, getInitials } from '@/utils/formatters'
+import { formatMoney as formatMoneyValue, formatMznPlain, formatPeriod, getInitials } from '@/utils/formatters'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
+const router = useRouter()
 const authStore = useAuthStore()
 const companyStore = useCompanyStore()
 
@@ -424,13 +431,16 @@ function sendSMS(row) {
   showMessageModal.value = true
 }
 
-function sendWhatsApp(row) {
-  messageChannel.value = 'whatsapp'
-  messagePhone.value = row.customerPhone || ''
-  messageAccountNumber.value = row.accountNumber || ''
-  messageCustomerName.value = displayCustomerName(row)
-  messageInitial.value = buildDueAlertMessage(row)
-  showMessageModal.value = true
+// WhatsApp inabilitado por decisão de negócio — canal bloqueado por enquanto.
+// function sendWhatsApp(row) { ... } (removido; o modal também bloqueia o canal)
+
+// Abre a página do mutuário (ícone eye da grelha) — navegação na mesma aba.
+function openCustomerPage(row) {
+  if (!row?.accountNumber) {
+    $q.notify({ type: 'warning', message: 'Esta prestação não tem conta de mutuário associada.', position: 'top' })
+    return
+  }
+  router.push(`/mutuarios/${row.accountNumber}`)
 }
 function viewDetails(row) { selectedInstallment.value = row; showDetails.value = true }
 function formatMoneyRaw(val) { return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) }
@@ -448,8 +458,11 @@ function buildDueAlertMessage(row) {
         ? `${row.daysUntilDue} dias pra vencer`
         : 'Vence hoje'
 
-  // Intl usa espaço de não-quebra (U+00A0/U+202F) como separador de milhares — trocar por espaço normal
-  const money = (v) => formatMoneyRaw(Number(v) || 0).replace(/[\u00A0\u202F]/g, ' ')
+  // Formato exigido para SMS: "11.021,74 MZN" — Intl pt-MZ usa espaço de
+  // não-quebra (U+00A0/U+202F) como separador de milhares; formatMznPlain
+  // troca-o por ponto normal, sem espaços estranhos na mensagem.
+  const money = (v) => formatMznPlain(Number(v) || 0).replace(/ MZN$/, '')
+  const moneyMzn = (v) => formatMznPlain(Number(v) || 0)
 
   const mutuario_nome = displayCustomerName(row)
   const prestacao_numero = row.installmentOrder ? String(row.installmentOrder).replace(/[ºª]/g, '') : '-'
@@ -457,6 +470,8 @@ function buildDueAlertMessage(row) {
   const vencimento_data = formatDate(row.dueDate)
   const mora_valor = money(row.lateFee)
   const total_a_pagar = money(row.totalToPay)
+  // moneyMzn inclui o sufixo " MZN" já no formato correcto (não usado nos
+  // templates abaixo porque estes escrevem "MZN" explicitamente).
   const company = (companyStore.company?.companyName || 'Clack Microcredito, EI').replace(/[^a-zA-Z0-9 .,&-]/g, '')
 
   // Regex: decide o template pelo texto de Observações e extrai a quantidade de dias

@@ -58,19 +58,23 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { useAuthStore } from '@/stores/auth'
-import { api } from '@/boot/axios'
+import { useAlertsStore } from '@/stores/alerts'
 
+/**
+ * FILA DE SMS — indicador de banner (dashboard/gestor).
+ * Estado partilhado com o sino do navbar via store central de alertas;
+ * o polling acontece uma única vez (na store), não aqui.
+ */
 const router = useRouter()
 const $q = useQuasar()
-const authStore = useAuthStore()
+const alertsStore = useAlertsStore()
 
-const summary = ref({ smsEnabled: true, queued: 0, processing: 0, failed: 0, sent: 0, pending: 0, pendingByType: {} })
 const processing = ref(false)
-let timer = null
+
+const summary = computed(() => alertsStore.smsQueue)
 
 const showIndicator = computed(() => {
   return !summary.value.smsEnabled || summary.value.pending > 0
@@ -80,44 +84,19 @@ function goToQueue() {
   router.push('/sms/pendentes')
 }
 
-async function fetchSummary() {
-  try {
-    const companyId = authStore.companyId
-    if (!companyId) return
-    const { data } = await api.get('/api/sms-gateway/summary', { params: { companyId } })
-    if (data?.success) {
-      summary.value = data.result
-    }
-  } catch (e) {
-    // silencioso — o indicador apenas não aparece em caso de erro
-  }
-}
-
 async function processNow() {
   processing.value = true
   try {
-    const companyId = authStore.companyId
-    const { data } = await api.post('/api/sms-gateway/process', { companyId })
-    const s = data?.result || data?.summary || {}
+    const s = await alertsStore.processQueue()
     $q.notify({
       type: 'positive',
       message: `Fila processada: ${s.sent || 0} enviada(s), ${s.deferred || 0} aguardando saldo.`,
       position: 'top'
     })
-    await fetchSummary()
   } catch (e) {
     $q.notify({ type: 'negative', message: e.response?.data?.message || 'Erro ao processar a fila', position: 'top' })
   } finally {
     processing.value = false
   }
 }
-
-onMounted(() => {
-  fetchSummary()
-  timer = setInterval(fetchSummary, 60000)
-})
-
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-})
 </script>

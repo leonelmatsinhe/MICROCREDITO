@@ -203,6 +203,90 @@ const getBMReport = async (req: Request, res: Response) => {
       creditOverdue: reportData.reduce((sum, r) => sum + r.creditOverdue, 0),
     };
 
+    // 6. PAGAMENTOS POR CANAL (portal vs presencial) — do caixa do período.
+    // Portal = Caixa do Sistema (userId 0) e/ou etiqueta "[Portal — fora de
+    // expediente]". Complementa a carteira de crédito com a origem das
+    // cobranças, separando M-Pesa/BANK/CASH por canal.
+    let treasuryPayments: any = null;
+    try {
+      const { CashRegisterModel } = await import("../database/models/CashRegisterModel");
+      const { CashMovementModel } = await import("../database/models/CashMovementModel");
+
+      const regWhere: any = { companyId: companyIdNum };
+      if (from && to) regWhere.opening_date = { [Op.between]: [String(from), String(to)] };
+      else if (from) regWhere.opening_date = { [Op.gte]: String(from) };
+      else if (to) regWhere.opening_date = { [Op.lte]: String(to) };
+
+      const registers: any[] = (await CashRegisterModel.findAll({
+        where: regWhere,
+        attributes: ["id", "userId"],
+        raw: true,
+      })) as any[];
+      const registerIds = registers.map((r) => Number(r.id));
+      const systemIds = registers.filter((r) => Number(r.userId) === 0).map((r) => Number(r.id));
+
+      const emptyChannel = () => ({
+        MPESA: { in: 0, out: 0 },
+        BANK: { in: 0, out: 0 },
+        EMOLA: { in: 0, out: 0 },
+        CASH: { in: 0, out: 0 },
+        totalIn: 0,
+        totalOut: 0,
+      });
+      const portal = emptyChannel();
+      const inPerson = emptyChannel();
+
+      if (registerIds.length > 0) {
+        const movements: any[] = (await CashMovementModel.findAll({
+          where: { cashRegisterId: { [Op.in]: registerIds } },
+          attributes: ["cashRegisterId", "type", "amount", "paymentMethod", "description"],
+          raw: true,
+        })) as any[];
+
+        const bump = (channel: any, method: string, type: string, amount: number) => {
+          const key = ["MPESA", "BANK", "EMOLA", "CASH"].includes(method) ? method : "BANK";
+          if (type === "ENTRADA") {
+            channel[key].in += amount;
+            channel.totalIn += amount;
+          } else {
+            channel[key].out += amount;
+            channel.totalOut += amount;
+          }
+        };
+
+        movements.forEach((m) => {
+          const isPortal =
+            systemIds.includes(Number(m.cashRegisterId)) ||
+            String(m.description || "").includes("[Portal — fora de expediente]");
+          bump(
+            isPortal ? portal : inPerson,
+            String(m.paymentMethod || "CASH"),
+            String(m.type),
+            Number(m.amount) || 0
+          );
+        });
+      }
+
+      const r2 = (v: number) => Math.round(v * 100) / 100;
+      [portal, inPerson].forEach((channel) => {
+        (Object.keys(channel) as Array<keyof typeof channel>).forEach((key) => {
+          if (key === "totalIn" || key === "totalOut") {
+            channel[key] = r2(channel[key]);
+          } else {
+            channel[key].in = r2(channel[key].in);
+            channel[key].out = r2(channel[key].out);
+          }
+        });
+      });
+
+      treasuryPayments = {
+        portal: { ...portal, registerCount: systemIds.length },
+        inPerson: { ...inPerson, registerCount: registerIds.length - systemIds.length },
+      };
+    } catch (treasuryError: any) {
+      console.error("[BM] Pagamentos por canal indisponíveis:", treasuryError?.message || treasuryError);
+    }
+
     return res.status(200).json({
       success: true,
       company: {
@@ -216,6 +300,7 @@ const getBMReport = async (req: Request, res: Response) => {
       },
       reportData,
       totals,
+      treasuryPayments,
       period: {
         from: from ? String(from) : null,
         to: to ? String(to) : null,

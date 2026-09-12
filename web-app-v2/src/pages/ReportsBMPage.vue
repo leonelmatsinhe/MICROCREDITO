@@ -107,6 +107,55 @@
           </q-card-section>
         </q-card>
 
+        <!-- PAGAMENTOS POR CANAL (Portal vs Balcão) — do caixa do período -->
+        <q-card v-if="treasuryPayments" flat bordered class="q-mb-md bm-surface-card">
+          <q-card-section class="bm-table-header">
+            <div class="row items-center">
+              <div class="bm-table-title">
+                <q-icon name="call_split" class="q-mr-sm" />
+                3. PAGAMENTOS POR CANAL — Portal vs Balcão (Valores em Metical)
+              </div>
+              <q-space />
+              <q-badge color="purple" rounded class="q-pa-sm">Portal · {{ treasuryPayments.portal?.registerCount || 0 }} caixa(s)</q-badge>
+              <q-badge color="primary" rounded class="q-pa-sm q-ml-sm">Balcão · {{ treasuryPayments.inPerson?.registerCount || 0 }} caixa(s)</q-badge>
+            </div>
+          </q-card-section>
+          <q-card-section>
+            <q-markup-table flat dense separator="cell" class="bm-report-table" style="font-size: 11px">
+              <thead>
+                <tr class="text-weight-bold">
+                  <th style="width: 22%">Canal</th>
+                  <th style="width: 16%">Método</th>
+                  <th class="text-right">Entradas</th>
+                  <th class="text-right">Saídas</th>
+                  <th class="text-right">Líquido</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="(row, idx) in paymentsRows" :key="idx">
+                  <tr>
+                    <td :class="row.channel === 'Portal (fora de expediente)' ? 'text-purple text-weight-medium' : 'text-primary text-weight-medium'" :style="row.isFirst ? '' : 'border-top: none'">{{ row.isFirst ? row.channel : '' }}</td>
+                    <td>{{ row.method }}</td>
+                    <td class="text-right text-positive text-weight-medium">{{ formatMoney(row.in) }}</td>
+                    <td class="text-right text-negative text-weight-medium">{{ formatMoney(row.out) }}</td>
+                    <td class="text-right text-weight-bold">{{ formatMoney(row.net) }}</td>
+                  </tr>
+                </template>
+                <tr class="text-weight-bold bm-total-row">
+                  <td>TOTAL</td>
+                  <td></td>
+                  <td class="text-right">{{ formatMoney(paymentsTotals.in) }}</td>
+                  <td class="text-right">{{ formatMoney(paymentsTotals.out) }}</td>
+                  <td class="text-right">{{ formatMoney(paymentsTotals.net) }}</td>
+                </tr>
+              </tbody>
+            </q-markup-table>
+            <div class="text-caption text-grey-6 q-mt-sm">
+              Portal = pagamentos recebidos automaticamente no portal do cliente fora do expediente (Caixa do Sistema). Balcão = cobranças presenciais registadas pelos operadores.
+            </div>
+          </q-card-section>
+        </q-card>
+
       </template>
     </div>
 
@@ -168,7 +217,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useQuasar } from 'quasar'
@@ -232,6 +281,48 @@ const totals = ref({
   creditInDebt: 0,
   creditOverdue: 0
 })
+// Pagamentos por canal (portal vs presencial) — vem de cash_movements do período
+const treasuryPayments = ref(null)
+const METHOD_LABELS = { MPESA: 'M-Pesa', BANK: 'Transferência bancária', EMOLA: 'e-Mola', CASH: 'Dinheiro físico' }
+
+// Linhas achatadas [canal, método, entradas, saídas, líquido] para o quadro
+const paymentsRows = computed(() => {
+  const tp = treasuryPayments.value
+  if (!tp) return []
+  const channels = [
+    { label: 'Portal (fora de expediente)', ch: tp.portal },
+    { label: 'Balcão (presencial)', ch: tp.inPerson }
+  ]
+  const rows = []
+  channels.forEach(({ label, ch }) => {
+    const methods = ['MPESA', 'BANK', 'EMOLA', 'CASH']
+    methods.forEach((m, i) => {
+      const cell = ch?.[m] || { in: 0, out: 0 }
+      rows.push({
+        channel: label,
+        isFirst: i === 0,
+        method: METHOD_LABELS[m],
+        in: cell.in,
+        out: cell.out,
+        net: Math.round(((cell.in || 0) - (cell.out || 0)) * 100) / 100
+      })
+    })
+  })
+  return rows
+})
+
+// Totais globais do quadro (portal + balcão)
+const paymentsTotals = computed(() => {
+  return paymentsRows.value.reduce(
+    (acc, r) => {
+      acc.in += Number(r.in) || 0
+      acc.out += Number(r.out) || 0
+      acc.net += Number(r.net) || 0
+      return acc
+    },
+    { in: 0, out: 0, net: 0 }
+  )
+})
 
 const tableColumns = [
   { name: 'operationNumber', label: 'N° Operação (1)', field: 'operationNumber', align: 'center', style: 'width: 70px' },
@@ -272,6 +363,7 @@ async function fetchData() {
         return new Date(second.disbursementDate || 0) - new Date(first.disbursementDate || 0)
       })
       totals.value = data.totals || {}
+      treasuryPayments.value = data.treasuryPayments || null
     } else {
       console.warn('BM Report: resposta inválida', data)
       $q.notify({ type: 'warning', message: 'Resposta inválida da API', position: 'top' })
@@ -435,6 +527,43 @@ async function generatePDF() {
           layout: 'grid',
           margin: [0, 0, 0, 15]
         },
+
+        // 3. PAGAMENTOS POR CANAL (Portal vs Balcão) — só quando há dados do caixa
+        ...(treasuryPayments.value ? [{
+          text: '3. PAGAMENTOS POR CANAL — Portal vs Balcão',
+          style: 'sectionTitle',
+          margin: [0, 10, 0, 5]
+        },
+        {
+          table: {
+            widths: ['30%', '28%', '14%', '14%', '14%'],
+            body: [
+              [
+                { text: 'Canal / Método', style: 'tableHeader' },
+                { text: '', style: 'tableHeader' },
+                { text: 'Entradas', style: 'tableHeader' },
+                { text: 'Saídas', style: 'tableHeader' },
+                { text: 'Líquido', style: 'tableHeader' }
+              ],
+              ...paymentsRows.value.map((r) => ([
+                { text: r.isFirst ? r.channel : '', style: 'cellText', bold: r.isFirst },
+                { text: r.method, style: 'cellText' },
+                { text: formatMoneyRaw(r.in), style: 'cellRight', color: '#2e7d32' },
+                { text: formatMoneyRaw(r.out), style: 'cellRight', color: '#c62828' },
+                { text: formatMoneyRaw(r.net), style: 'cellRight', bold: true }
+              ])),
+              [
+                { text: 'TOTAL', colSpan: 2, style: 'totalCell' },
+                { text: '', style: 'totalCell' },
+                { text: formatMoneyRaw(paymentsTotals.value.in), style: 'totalCellRight' },
+                { text: formatMoneyRaw(paymentsTotals.value.out), style: 'totalCellRight' },
+                { text: formatMoneyRaw(paymentsTotals.value.net), style: 'totalCellRight' }
+              ]
+            ]
+          },
+          layout: 'grid',
+          margin: [0, 0, 0, 10]
+        }] : []),
 
         // NOTAS
         { text: 'Notas Explicativas', style: 'sectionTitle', margin: [0, 10, 0, 5] },

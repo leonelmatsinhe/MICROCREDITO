@@ -16,6 +16,16 @@ export function formatMoneyValue(value) {
   }).format(value || 0)
 }
 
+/**
+ * Valor monetário para SMS/texto plano: "11.021,74 MZN".
+ * Igual ao formatMoney mas SEM espaços não-quebráveis (U+00A0/U+202F) que o
+ * Intl insere como separador de milhares — em SMS esses caracteres invisíveis
+ * geram confusão e contam como caracteres no segmento.
+ */
+export function formatMznPlain(value) {
+  return formatMoneyValue(value).replace(/[\u00A0\u202F]/g, '.') + ` ${CURRENCY_CODE}`
+}
+
 // Formatar prazo com singular/plural correcto.
 export function formatPeriod(value) {
   const months = Number(value) || 0

@@ -31,8 +31,7 @@
       </q-card-section>
     </q-card>
 
-    <!-- SMS pendentes na fila (saldo BulkSMM) -->
-    <SmsQueueIndicator />
+    <!-- Alertas SMS: agora vivem no sino do navbar (AlertBell) -->
 
     <!-- KPIs -->
     <div class="row q-col-gutter-md q-mb-md">
@@ -322,7 +321,6 @@ import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
-import SmsQueueIndicator from '@/components/ui/SmsQueueIndicator.vue'
 import { api } from '@/boot/axios'
 import { getInitials } from '@/utils/formatters'
 

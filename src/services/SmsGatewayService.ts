@@ -38,7 +38,14 @@ const normalizePhoneForGateway = (phone?: string | null): string | null => {
   return null;
 };
 
-const safeMoney = (value: any): string => Number(value || 0).toLocaleString("pt-MZ");
+// Valores monetários em SMS: "11.021,74" — 2 casas obrigatórias e separador
+// de milhares normal (Intl pt-MZ usa espaço não-quebrável; trocar por ponto
+// evita caracteres invisíveis na mensagem).
+const safeMoney = (value: any): string =>
+  Number(value || 0).toLocaleString("pt-MZ", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).replace(/[\u00A0\u202F]/g, ".");
 
 const parsePayload = (value: any): Record<string, any> | null => {
   if (!value) return null;

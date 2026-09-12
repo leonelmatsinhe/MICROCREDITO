@@ -206,6 +206,37 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       console.error("Erro ao enfileirar SMS de desembolso:", smsError);
     }
 
+    // ── CAIXA DIÁRIO: movimento automático SAIDA / DESEMBOLSO ──
+    // Best-effort: se falhar, NÃO impede o desembolso (apenas regista o erro).
+    // O caixa ABERTO já foi validado pelo middleware checkCashRegisterOpen e
+    // chega em req.cashRegister.
+    try {
+      const { recordDisbursement } = await import("../services/cashRegisterService");
+      const openRegister = (req as any).cashRegister;
+      if (openRegister) {
+        const jwt = await import("jsonwebtoken");
+        const decoded: any = jwt.verify(
+          (req.headers.authorization || "").split(" ")[1] || "",
+          process.env.APP_SECRET + ""
+        );
+        await recordDisbursement({
+          companyId: Number(companyId),
+          userId: Number(decoded?.id) || undefined,
+          loanId: Number(loanId),
+          customerId: loan ? Number(loan.getDataValue("customerId")) : null,
+          amount: Number(amount),
+          accountNumber,
+          // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
+          paymentMethod: String((req.body as any)?.payment_method || "CASH"),
+          bankAccountId: (req.body as any)?.bank_account_id
+            ? Number((req.body as any).bank_account_id)
+            : null,
+        });
+      }
+    } catch (cashError: any) {
+      console.error("[CAIXA] Falha ao registar desembolso no caixa (desembolso mantido):", cashError?.message || cashError);
+    }
+
     return bulckInsert != null && bulckInsert.length > 0
       ? res.status(200).json({
         success: true,
