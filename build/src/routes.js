@@ -36,6 +36,8 @@ const WhatsAppController_1 = require("./controllers/WhatsAppController");
 const CustomerPortalController_1 = require("./controllers/CustomerPortalController");
 const PdfController_1 = require("./controllers/PdfController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
+// FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
+const SuperAdminController_1 = require("./controllers/SuperAdminController");
 // CAIXA DIÁRIO — rotas do módulo isolado de fluxo de caixa
 const cashRoutes_1 = require("./routes/cashRoutes");
 // CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
@@ -148,8 +150,27 @@ routes.get("/api/document/file/:fileName", (req, res) => {
     const safeFileName = path_1.default.basename(req.params.fileName);
     return res.sendFile(path_1.default.join(projectRoot, "uploads", "documents", safeFileName));
 });
+// FLUXO DE SUBSCRIÇÃO — cadastro público (antes do middleware auth)
+routes.post("/api/companies/register", SuperAdminController_1.registerCompany);
+// Planos de subscrição — público (landing + registo de empresa)
+routes.get("/api/subscription-plans", SuperAdminController_1.listPlans);
+// TEMPORÁRIO: debug de empresas sem auth (remover em produção)
+routes.get("/api/debug/companies", SuperAdminController_1.debugCompanies);
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth_1.auth);
+// SUPER ADMIN — aprovação de empresas (apenas userRole = 0)
+routes.use("/api/super-admin", SuperAdminController_1.isSuperAdmin);
+routes.get("/api/super-admin/companies", SuperAdminController_1.listCompanies);
+routes.post("/api/super-admin/companies/:id/approve", SuperAdminController_1.approveCompany);
+routes.post("/api/super-admin/companies/:id/reject", SuperAdminController_1.rejectCompany);
+routes.post("/api/super-admin/companies/:id/suspend", SuperAdminController_1.suspendCompany);
+routes.get("/api/super-admin/users", SuperAdminController_1.listSuperAdmins);
+routes.post("/api/super-admin/users", SuperAdminController_1.createSuperAdmin);
+routes.delete("/api/super-admin/users/:id", SuperAdminController_1.deleteSuperAdmin);
+routes.get("/api/super-admin/plans", SuperAdminController_1.listPlans);
+routes.post("/api/super-admin/plans", SuperAdminController_1.createPlan);
+routes.put("/api/super-admin/plans/:id", SuperAdminController_1.updatePlan);
+routes.delete("/api/super-admin/plans/:id", SuperAdminController_1.deactivatePlan);
 routes.get("/api/sms-gateway/pending", SmsGatewayController_1.getPendingSmsGateway);
 routes.patch("/api/sms-gateway/:id/status", SmsGatewayController_1.updateGatewaySmsStatus);
 routes.post("/api/sms-gateway/enqueue", SmsGatewayController_1.enqueueSmsManually);

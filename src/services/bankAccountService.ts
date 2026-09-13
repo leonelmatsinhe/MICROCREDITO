@@ -1,4 +1,5 @@
 import { Op } from "sequelize";
+import { db } from "../database/db";
 import { AccountModel, ACCOUNT_PURPOSES, ACCOUNT_TYPES } from "../database/models/AccountModel";
 import { BankTransactionModel } from "../database/models/BankTransactionModel";
 
@@ -151,8 +152,72 @@ export const upsert = async (params: {
 };
 
 /**
- * Remoção lógica (is_active = 0) — contas com histórico nunca são apagadas.
+ * AJUSTE MANUAL DE SALDO — introduzir o saldo real de uma conta
+ * BANCO / MOBILE_MONEY / EWALLET (ex.: saldo do extrato do banco).
+ *
+ * Define `balance` para o valor informado e registra a DIFERENÇA em
+ * bank_transactions (categoria ESTORNO) para o extrato continuar a bater.
+ * Uso administrativo — sincroniza a carteira com a realidade bancária.
  */
+export const adjustBalance = async (params: {
+  companyId: number;
+  accountId: number;
+  newBalance: number;
+  userName?: string;
+  description?: string;
+}): Promise<any> => {
+  const account: any = await AccountModel.findOne({
+    where: { id: params.accountId, companyId: params.companyId },
+  });
+  if (!account) throw { code: "NOT_FOUND", message: "Conta não encontrada." };
+  const type = String(account.getDataValue("type") || "").toUpperCase();
+  if (type === "CAIXA_FISICO") {
+    throw { code: "INVALID_ACCOUNT", message: "O saldo do caixa físico gere-se pelo Caixa Diário, não por ajuste directo." };
+  }
+  if (!Number.isFinite(params.newBalance) || params.newBalance < 0) {
+    throw { code: "INVALID_AMOUNT", message: "Informe um saldo válido (>= 0)." };
+  }
+
+  const transaction = await db.transaction();
+  try {
+    const locked: any = await AccountModel.findOne({
+      where: { id: params.accountId },
+      transaction,
+      lock: transaction.LOCK ? transaction.LOCK.UPDATE : undefined,
+    });
+    const current = Number(locked.getDataValue("balance")) || 0;
+    const target = Math.round(params.newBalance * 100) / 100;
+    const delta = Math.round((target - current) * 100) / 100;
+
+    await locked.update({ balance: target }, { transaction });
+
+    // Diferença registrada no extrato (ESTORNO) — zero quando igual.
+    if (delta !== 0) {
+      await BankTransactionModel.create(
+        {
+          companyId: params.companyId,
+          accountId: params.accountId,
+          cashRegisterId: null,
+          type: delta > 0 ? "ENTRADA" : "SAIDA",
+          category: "ESTORNO",
+          amount: Math.abs(delta),
+          balanceAfter: target,
+          description: params.description?.trim() || `Ajuste manual de saldo (${current.toFixed(2)} → ${target.toFixed(2)} MZN)`,
+          referenceType: "accounts",
+          referenceId: params.accountId,
+          createdBy: params.userName ?? null,
+        },
+        { transaction }
+      );
+    }
+
+    await transaction.commit();
+    return accountPlain(locked);
+  } catch (error: any) {
+    await transaction.rollback();
+    throw error;
+  }
+};
 export const deactivate = async (companyId: number, id: number): Promise<any> => {
   const account: any = await AccountModel.findOne({ where: { id, companyId } });
   if (!account) throw { code: "NOT_FOUND", message: "Conta não encontrada." };

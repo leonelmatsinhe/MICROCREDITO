@@ -151,6 +151,24 @@ import {
 import { customerContract } from "./controllers/PdfController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
+// FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
+import {
+  registerCompany,
+  listCompanies,
+  approveCompany,
+  rejectCompany,
+  suspendCompany,
+  isSuperAdmin,
+  debugCompanies,
+  listSuperAdmins,
+  createSuperAdmin,
+  deleteSuperAdmin,
+  listPlans,
+  createPlan,
+  updatePlan,
+  deactivatePlan,
+} from "./controllers/SuperAdminController";
+
 // CAIXA DIÁRIO — rotas do módulo isolado de fluxo de caixa
 import { cashRoutes } from "./routes/cashRoutes";
 // CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
@@ -289,8 +307,29 @@ routes.get("/api/document/file/:fileName", (req: Request, res: Response) => {
   return res.sendFile(path.join(projectRoot, "uploads", "documents", safeFileName));
 });
 
+// FLUXO DE SUBSCRIÇÃO — cadastro público (antes do middleware auth)
+routes.post("/api/companies/register", registerCompany);
+// Planos de subscrição — público (landing + registo de empresa)
+routes.get("/api/subscription-plans", listPlans);
+// TEMPORÁRIO: debug de empresas sem auth (remover em produção)
+routes.get("/api/debug/companies", debugCompanies);
+
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth);
+
+// SUPER ADMIN — aprovação de empresas (apenas userRole = 0)
+routes.use("/api/super-admin", isSuperAdmin);
+routes.get("/api/super-admin/companies", listCompanies);
+routes.post("/api/super-admin/companies/:id/approve", approveCompany);
+routes.post("/api/super-admin/companies/:id/reject", rejectCompany);
+routes.post("/api/super-admin/companies/:id/suspend", suspendCompany);
+routes.get("/api/super-admin/users", listSuperAdmins);
+routes.post("/api/super-admin/users", createSuperAdmin);
+routes.delete("/api/super-admin/users/:id", deleteSuperAdmin);
+routes.get("/api/super-admin/plans", listPlans);
+routes.post("/api/super-admin/plans", createPlan);
+routes.put("/api/super-admin/plans/:id", updatePlan);
+routes.delete("/api/super-admin/plans/:id", deactivatePlan);
 routes.get("/api/sms-gateway/pending", getPendingSmsGateway);
 routes.patch("/api/sms-gateway/:id/status", updateGatewaySmsStatus);
 routes.post("/api/sms-gateway/enqueue", enqueueSmsManually);

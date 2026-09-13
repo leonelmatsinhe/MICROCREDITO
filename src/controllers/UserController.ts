@@ -3,6 +3,7 @@ import { UserModel } from "../database/models/UserModel";
 import bcryptjs from "bcryptjs";
 import * as jwt from "jsonwebtoken";
 import { hashPasswordIfNeeded } from "../utils/password";
+import { db } from "../database/db";
 
 // Remove o hash da senha antes de devolver o utilizador ao frontend — a BD é a
 // única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
@@ -182,6 +183,34 @@ const loginUser = async (req: Request, res: Response) => {
         .send(JSON.stringify({ success: false, message: "Senha incorreta." }));
     }
 
+    // is_active = 0 significa conta criada por cadastro público ainda não aprovada
+    const userAny: any = user;
+    if (userAny.getDataValue("is_active") === 0) {
+      return res.status(200).json({
+        success: false,
+        message: "Sua empresa está aguardando aprovação do Super Admin. Contacto: +258 870740202",
+      });
+    }
+
+    // Verificar estado de aprovação da empresa (Super Admin tem companyId NULL)
+    let companyStatus: string | null = null;
+    const companyId = user.getDataValue("companyId");
+    if (companyId) {
+      try {
+        const [rows]: any = await db.query(
+          "SELECT approval_status FROM companies WHERE id = ?",
+          { replacements: [companyId] }
+        );
+        companyStatus = (rows as any[])[0]?.approval_status || null;
+      } catch { /* coluna pode não existir ainda */ }
+      if (companyStatus && companyStatus !== "APROVADA") {
+        return res.status(200).json({
+          success: false,
+          message: "Sua empresa está aguardando aprovação do Super Admin. Contacto: +258 870740202",
+        });
+      }
+    }
+
     // Token com expiração longa (24h) - a expiração por inactividade é controlada pelo frontend
     const token = jwt.sign(
       { id: user.getDataValue("id") },
@@ -201,6 +230,8 @@ const loginUser = async (req: Request, res: Response) => {
         userRole: user.getDataValue("userRole"),
         updatedPassword: user.getDataValue("updatedPassword"),
         status: user.getDataValue("status"),
+        is_active: user.getDataValue("is_active"),
+        companyStatus: companyStatus,
         token: token,
         createdAt: user.getDataValue("createdAt"),
         updatedAt: user.getDataValue("updatedAt"),

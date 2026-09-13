@@ -2,10 +2,13 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 // Lazy load das páginas
+const LandingPage = () => import('@/pages/LandingPage.vue')
 const LoginPage = () => import('@/pages/auth/LoginPage.vue')
+const RegisterCompanyPage = () => import('@/pages/RegisterCompanyPage.vue')
 const DashboardPage = () => import('@/pages/DashboardPage.vue')
 const GestorPage = () => import('@/pages/GestorPage.vue')
 const CompanyPage = () => import('@/pages/CompanyPage.vue')
+const SuperAdminSettingsPage = () => import('@/pages/SuperAdminSettingsPage.vue')
 const CustomerListPage = () => import('@/pages/customers/CustomerListPage.vue')
 const CustomerDetailPage = () => import('@/pages/customers/CustomerDetailPage.vue')
 const LoanListPage = () => import('@/pages/loans/LoanListPage.vue')
@@ -27,11 +30,31 @@ const LogsPage = () => import('@/pages/LogsPage.vue')
 const SmsPendingCredentialsPage = () => import('@/pages/SmsPendingCredentialsPage.vue')
 
 const routes = [
+  // WEBSITE OFICIAL — landing de vendas (pública, entrada principal)
   {
     path: '/',
+    name: 'Landing',
+    component: LandingPage,
+    meta: { requiresAuth: false }
+  },
+  // LOGIN — página original do sistema
+  {
+    path: '/login',
     name: 'Login',
     component: LoginPage,
     meta: { requiresAuth: false }
+  },
+  // CADASTRO PÚBLICO DE EMPRESA — fluxo de subscrição (landing → aprovação Super Admin)
+  {
+    path: '/registar-empresa',
+    name: 'RegisterCompany',
+    component: RegisterCompanyPage,
+    meta: { requiresAuth: false }
+  },
+  // PORTAL DO MUTUÁRIO — desabilitado temporariamente (redireciona para a landing)
+  {
+    path: '/portal-mutuario',
+    redirect: '/'
   },
   {
     path: '/dashboard',
@@ -50,6 +73,13 @@ const routes = [
     path: '/company',
     name: 'Company',
     component: CompanyPage,
+    meta: { requiresAuth: true, allowedRoles: [0] }
+  },
+  // CONFIGURAÇÕES SUPER ADMIN — Super Admins + Planos de Subscrição
+  {
+    path: '/configuracoes',
+    name: 'SuperAdminSettings',
+    component: SuperAdminSettingsPage,
     meta: { requiresAuth: true, allowedRoles: [0] }
   },
   {
@@ -152,11 +182,10 @@ const routes = [
     component: NotificationsPage,
     meta: { requiresAuth: true }
   },
+  // Portal do mutuário — desabilitado temporariamente (redirect landing)
   {
     path: '/portal',
-    name: 'CustomerPortal',
-    component: CustomerPortalPage,
-    meta: { requiresAuth: true }
+    redirect: '/'
   },
   {
     path: '/:pathMatch(.*)*',
@@ -219,11 +248,13 @@ router.beforeEach((to, from, next) => {
     }
   }
   
-  // Está logado e tenta aceder ao login
+  // Está logado e tenta aceder ao login — volta ao sistema
   if (to.name === 'Login' && isLoggedIn) {
     next(authStore.defaultRoute)
     return
   }
+
+  // Logado pode ver a landing (/' ) sem redirect — só não pode ser expulso dela
   
   // Reset counter em navigations normais
   redirectCount = 0

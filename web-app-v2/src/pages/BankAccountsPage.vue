@@ -14,7 +14,8 @@
           Total em bancos: <strong class="text-primary">{{ formatMZN(totalBank) }}</strong>
           <span class="q-ml-sm">Mobile: <strong>{{ formatMZN(totalMobile) }}</strong></span>
         </div>
-        <q-btn color="primary" unelevated no-caps icon="add" label="Nova Conta" @click="openFormDialog()" />
+        <q-btn color="primary" unelevated no-caps icon="add" label="Nova Conta" @click="openFormDialog()" class="q-mr-sm" />
+        <q-btn outline color="primary" unelevated no-caps icon="swap_horiz" label="Transferir" @click="openTransferDialog()" />
       </q-card-section>
     </q-card>
 
@@ -69,6 +70,14 @@
             </q-btn>
             <q-btn flat round dense size="sm" icon="edit" color="primary" @click="openFormDialog(props.row)">
               <q-tooltip>Editar</q-tooltip>
+            </q-btn>
+            <!-- Ajuste de saldo: contas BANCO/MOBILE_MONEY/EWALLET activas -->
+            <q-btn
+              v-if="Number(props.row.is_active) === 1 && props.row.type !== 'CAIXA_FISICO'"
+              flat round dense size="sm" icon="savings" color="deep-purple"
+              @click="openAdjustDialog(props.row)"
+            >
+              <q-tooltip>Introduzir saldo real da conta</q-tooltip>
             </q-btn>
             <q-toggle
               :model-value="Number(props.row.is_active) === 1"
@@ -142,6 +151,81 @@
         <q-card-actions align="right">
           <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
           <q-btn unelevated no-caps color="primary" :label="form.id ? 'Guardar' : 'Criar Conta'" :loading="saving" @click="submitForm" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- ═══════════ DIALOG: AJUSTE DE SALDO REAL ═══════════ -->
+    <q-dialog v-model="adjustDialog" persistent>
+      <q-card style="min-width: 440px; max-width: 95vw; border-radius: 12px">
+        <q-card-section class="text-h6">Introduzir Saldo Real</q-card-section>
+        <q-card-section class="q-gutter-y-md q-pt-none">
+          <div class="text-caption">
+            {{ adjustAccount?.bank_name }} · {{ adjustAccount?.accountNumber }}
+          </div>
+          <q-banner dense rounded class="bg-blue-1 text-blue-10">
+            Use o valor do <b>extrato bancário</b> (ou do aplicativo M-Pesa). A diferença
+            para o saldo actual fica registrada no extrato da conta como ajuste.
+          </q-banner>
+          <div class="text-caption">
+            Saldo actual no sistema: <strong>{{ formatMZN(adjustAccount?.balance) }}</strong>
+          </div>
+          <q-input
+            v-model.number="adjustForm.new_balance"
+            type="number"
+            outlined
+            dense
+            prefix="MZN"
+            label="Saldo real da conta *"
+            :rules="[v => (v !== null && v !== undefined && v >= 0) || 'Informe o saldo real (>= 0)']"
+          />
+          <q-input v-model="adjustForm.description" outlined dense label="Motivo / observação (opcional)" />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
+          <q-btn unelevated no-caps color="deep-purple" label="Confirmar Saldo" :loading="saving" @click="submitAdjust" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- ═══════════ DIALOG: TRANSFERÊNCIA ENTRE CONTAS ═══════════ -->
+    <q-dialog v-model="transferDialog" persistent>
+      <q-card style="min-width: 480px; max-width: 95vw; border-radius: 12px">
+        <q-card-section class="text-h6">Transferir entre Contas</q-card-section>
+        <q-card-section class="q-gutter-y-md q-pt-none">
+          <q-select
+            v-model="transferForm.from_account_id"
+            :options="transferAccountOptions"
+            outlined dense emit-value map-options
+            label="Conta de origem *"
+            hint="Contas activas Banco / Mobile Money / e-Wallet"
+            :rules="[v => !!v || 'Seleccione a origem']"
+          />
+          <q-select
+            v-model="transferForm.to_account_id"
+            :options="transferAccountOptions.filter(o => o.value !== transferForm.from_account_id)"
+            outlined dense emit-value map-options
+            label="Conta de destino *"
+            :rules="[v => !!v || 'Seleccione o destino']"
+          />
+          <div v-if="transferForm.from_account_id" class="text-caption">
+            Saldo na origem: <strong>{{ formatMZN(selectedFromBalance) }}</strong>
+            <span v-if="transferAmountInsuficiente" class="text-negative q-ml-sm">
+              ⚠ Valor excede o saldo disponível
+            </span>
+          </div>
+          <q-input
+            v-model.number="transferForm.amount"
+            type="number"
+            outlined dense prefix="MZN"
+            label="Valor *"
+            :rules="[v => (v > 0) || 'Valor deve ser maior que zero']"
+          />
+          <q-input v-model="transferForm.description" outlined dense label="Descrição (opcional)" />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Cancelar" :disable="transferring" v-close-popup />
+          <q-btn unelevated no-caps color="primary" label="Transferir" :loading="transferring" @click="submitTransfer" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -380,6 +464,93 @@ async function openStatement(account) {
     if (data.success) statementRows.value = data.result?.transactions || []
   } catch (error) {
     $q.notify({ type: 'negative', message: 'Erro ao carregar extrato', position: 'top' })
+  }
+}
+
+// ─── Ajuste de saldo real ───
+const adjustDialog = ref(false)
+const adjustAccount = ref(null)
+const adjustForm = ref({ new_balance: null, description: '' })
+
+function openAdjustDialog(account) {
+  adjustAccount.value = account
+  adjustForm.value = { new_balance: Number(account.balance) || 0, description: '' }
+  adjustDialog.value = true
+}
+
+async function submitAdjust() {
+  const v = adjustForm.value.new_balance
+  if (v === null || v === undefined || v < 0) {
+    $q.notify({ type: 'warning', message: 'Informe o saldo real (>= 0)', position: 'top' })
+    return
+  }
+  saving.value = true
+  try {
+    await api.post(`/api/bank-accounts/${adjustAccount.value.id}/adjust-balance`, {
+      new_balance: v,
+      description: adjustForm.value.description
+    })
+    $q.notify({ type: 'positive', message: 'Saldo actualizado com sucesso!', position: 'top' })
+    adjustDialog.value = false
+    await fetchAccounts()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao ajustar saldo', position: 'top' })
+  } finally {
+    saving.value = false
+  }
+}
+
+// ─── Transferência entre contas ───
+const transferDialog = ref(false)
+const transferring = ref(false)
+const transferForm = ref({ from_account_id: null, to_account_id: null, amount: null, description: '' })
+
+// Só contas activas com saldo (BANCO / MOBILE_MONEY / EWALLET) entram na transferência.
+const transferAccountOptions = computed(() =>
+  accounts.value
+    .filter(a => Number(a.is_active) === 1 && a.type !== 'CAIXA_FISICO')
+    .map(a => ({ label: `${a.bank_name || 'Conta'} - ${a.accountNumber} - Saldo: ${formatMZN(a.balance)}`, value: a.id }))
+)
+
+const selectedFromBalance = computed(() => {
+  const acc = accounts.value.find(a => a.id === transferForm.value.from_account_id)
+  return acc ? Number(acc.balance) || 0 : 0
+})
+const transferAmountInsuficiente = computed(() =>
+  transferForm.value.from_account_id && Number(transferForm.value.amount) > 0 &&
+  Number(transferForm.value.amount) > selectedFromBalance.value
+)
+
+function openTransferDialog() {
+  transferForm.value = { from_account_id: null, to_account_id: null, amount: null, description: '' }
+  transferDialog.value = true
+}
+
+async function submitTransfer() {
+  const t = transferForm.value
+  if (!t.from_account_id || !t.to_account_id || !t.amount || Number(t.amount) <= 0) {
+    $q.notify({ type: 'warning', message: 'Preencha origem, destino e valor', position: 'top' })
+    return
+  }
+  if (transferAmountInsuficiente.value) {
+    $q.notify({ type: 'negative', message: 'Saldo insuficiente na conta de origem', position: 'top' })
+    return
+  }
+  transferring.value = true
+  try {
+    await api.post('/api/bank-accounts/transfer', {
+      from_account_id: t.from_account_id,
+      to_account_id: t.to_account_id,
+      amount: Number(t.amount),
+      description: t.description || undefined
+    })
+    $q.notify({ type: 'positive', message: 'Transferência registada com sucesso!', position: 'top' })
+    transferDialog.value = false
+    await fetchAccounts()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro na transferência', position: 'top' })
+  } finally {
+    transferring.value = false
   }
 }
 

@@ -1,6 +1,6 @@
 <template>
-  <!-- Sino de alertas operacionais (navbar) — dropdown como o menu de notificações -->
-  <q-btn flat round dense size="sm" text-color="white" :icon="bellIcon">
+  <!-- Sino de alertas operacionais — APENAS para Admin (userRole 1) -->
+  <q-btn v-if="authStore.isAdmin" flat round dense size="sm" text-color="white" :icon="bellIcon">
     <q-badge v-if="alertsStore.totalAlerts > 0" color="negative" floating dot :class="{ 'pulse-badge': alertsStore.hasCritical }" />
     <q-badge
       v-if="alertsStore.totalAlerts > 0"
@@ -100,6 +100,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAlertsStore } from '@/stores/alerts'
+import { useAuthStore } from '@/stores/auth'
 import { format } from 'date-fns'
 
 /**
@@ -112,6 +113,7 @@ import { format } from 'date-fns'
 const router = useRouter()
 const $q = useQuasar()
 const alertsStore = useAlertsStore()
+const authStore = useAuthStore()
 
 const processing = ref(false)
 
@@ -212,6 +214,8 @@ async function runAction(key) {
 }
 
 onMounted(() => {
+  // Só o Admin tem o sino — os outros perfis nem consultam os alertas.
+  if (!authStore.isAdmin) return
   // Sino respeita o polling central da store (60 s), evitando chamadas duplicadas.
   alertsStore.startPolling()
 })
@@ -236,5 +240,29 @@ onBeforeUnmount(() => {
 /* Mensagem com quebra de linha normal (captions truncam por defeito no q-item) */
 .alert-item .q-item__label--caption {
   white-space: normal;
+}
+
+/* ═══════════ MODO ESCURO ═══════════
+   Os fundos claros (bg-orange-1, bg-red-1, bg-purple-1) ofuscavam no tema
+   escuro — aqui passam a tons escuros translúcidos com texto claro. */
+.body--dark {
+  .q-menu {
+    background: #1d1d2b;
+  }
+  .alert-item {
+    &.bg-orange-1 { background: rgba(251, 146, 60, 0.12) !important; }
+    &.bg-red-1 { background: rgba(239, 68, 68, 0.14) !important; }
+    &.bg-purple-1 { background: rgba(168, 85, 247, 0.14) !important; }
+  }
+  // Título e caption dos itens ganham contraste
+  .q-item__label {
+    color: #e2e8f0;
+  }
+  .q-item__label--caption {
+    color: #94a3b8 !important;
+  }
+  header.q-item-label {
+    color: #e2e8f0;
+  }
 }
 </style>

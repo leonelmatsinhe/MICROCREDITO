@@ -164,6 +164,21 @@ const addColumnIfMissing = async (
   }
 };
 
+const columnType = async (table: string, column: string): Promise<string | null> => {
+  try {
+    const [rows] = await db.query(`SHOW COLUMNS FROM \`${table}\` LIKE '${column}'`);
+    return ((rows as any[])[0]?.Type as string) || null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * MODIFY COLUMN apenas quando o tipo actual difere do desejado.
+ * Antes isto corria em TODOS os arranques — cada MODIFY reconstrói a tabela
+ * inteira (customer_loans pode ser grande) e várias instâncias arrancando em
+ * paralelo enfileiravam ALTERs durante horas, bloqueando o servidor.
+ */
 const modifyColumnType = async (
   table: string,
   column: string,
@@ -171,6 +186,13 @@ const modifyColumnType = async (
   results: MigrationResult
 ) => {
   try {
+    const current = (await columnType(table, column)) || "";
+    const wantedType = definition.split(" ")[0].toUpperCase(); // ex.: DECIMAL(15,2)
+    const currentUpper = current.toUpperCase();
+    if (currentUpper.startsWith(wantedType)) {
+      results.skipped += 1;
+      return;
+    }
     await db.query(`ALTER TABLE \`${table}\` MODIFY COLUMN \`${column}\` ${definition}`);
     results.applied += 1;
     console.log(`[Migration] Tipo ${table}.${column} ajustado para ${definition}`);
@@ -254,6 +276,77 @@ export const runMigrations = async (): Promise<MigrationResult> => {
 
   // Autorização de envio de SMS (só o Admin altera)
   await addColumnIfMissing("companies", "smsEnabled", "INTEGER NOT NULL DEFAULT 1", results);
+
+  // ==================== FLUXO DE SUBSCRIÇÃO (cadastro público de empresas) ====================
+  // companies: ciclo de aprovação pelo Super Admin + dados do cadastro da landing.
+  await addColumnIfMissing(
+    "companies",
+    "approval_status",
+    "ENUM('PENDENTE','APROVADA','REJEITADA','SUSPENSA') NOT NULL DEFAULT 'PENDENTE'",
+    results
+  );
+  await addColumnIfMissing("companies", "nuit", "VARCHAR(20) NULL", results);
+  await addColumnIfMissing("companies", "phone", "VARCHAR(20) NULL", results);
+  await addColumnIfMissing("companies", "email", "VARCHAR(100) NULL", results);
+  await addColumnIfMissing("companies", "license_number", "VARCHAR(100) NULL", results);
+  await addColumnIfMissing(
+    "companies",
+    "plan",
+    "ENUM('STARTER','CRESCIMENTO','PROFISSIONAL') NOT NULL DEFAULT 'CRESCIMENTO'",
+    results
+  );
+  await addColumnIfMissing("companies", "requested_at", "DATETIME NULL DEFAULT CURRENT_TIMESTAMP", results);
+  await addColumnIfMissing("companies", "approved_at", "DATETIME NULL", results);
+  await addColumnIfMissing("companies", "approved_by", "INTEGER NULL", results);
+  await addColumnIfMissing("companies", "rejection_reason", "TEXT NULL", results);
+  // Empresas já existentes na plataforma são consideradas aprovadas.
+  try {
+    await db.query(
+      "UPDATE companies SET approval_status = 'APROVADA', approved_at = COALESCE(approved_at, NOW()) WHERE approval_status IS NULL OR approval_status = 'PENDENTE' AND created_at < NOW() - INTERVAL 1 DAY"
+    );
+  } catch { /* coluna created_at pode não existir — ignora */ }
+
+  // users: is_active (conta de admin da empresa criada inactiva até aprovação)
+  await addColumnIfMissing("users", "is_active", "TINYINT(1) NOT NULL DEFAULT 1", results);
+
+  // Chave para o plano de subscrição escolhido (FK lógica subscription_plans)
+  await addColumnIfMissing("companies", "plan_id", "INTEGER NULL", results);
+
+  // ==================== TABELA: PLANOS DE SUBSCRIÇÃO ====================
+  await createTableIfMissing(
+    "subscription_plans",
+    `CREATE TABLE IF NOT EXISTS subscription_plans (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(50) NOT NULL,
+      slug VARCHAR(50) UNIQUE,
+      price_mzn DECIMAL(10,2) NOT NULL,
+      max_clients INT NOT NULL,
+      features JSON,
+      is_popular BOOLEAN DEFAULT FALSE,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at DATETIME DEFAULT NOW()
+    )`,
+    results
+  );
+
+  // Seed one-time dos 3 planos base (só insere quando a tabela está vazia)
+  try {
+    const [planCount]: any = await db.query("SELECT COUNT(*) AS total FROM subscription_plans");
+    if (Number((planCount as any[])[0]?.total) === 0) {
+      await db.query(
+        `INSERT INTO subscription_plans (name, slug, price_mzn, max_clients, features, is_popular, is_active, created_at) VALUES
+         ('Starter', 'starter', 2500, 100, '["Até 100 clientes","Relatórios BM","Suporte WhatsApp"]', 0, 1, NOW()),
+         ('Crescimento', 'crescimento', 4500, 500, '["Até 500 clientes","Tudo do Starter","Caixa Multi-contas","Alertas SMS"]', 1, 1, NOW()),
+         ('Profissional', 'profissional', 8500, 999999, '["Clientes ilimitados","Tudo do Crescimento","API Completa","Suporte Prioritário"]', 0, 1, NOW())`
+      );
+      results.applied += 1;
+      console.log("[Migration] Planos de subscrição base criados (Starter, Crescimento, Profissional)");
+    } else {
+      results.skipped += 1;
+    }
+  } catch (error: any) {
+    results.errors.push(`SEED subscription_plans: ${error?.message || error}`);
+  }
 
   // Ocultar cláusula de seguro (VIGÉSIMA PRIMEIRA) no contrato de concessão
   await addColumnIfMissing("companies", "contractHideInsuranceClause", "INTEGER NOT NULL DEFAULT 0", results);

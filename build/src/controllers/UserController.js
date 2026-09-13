@@ -51,6 +51,7 @@ const UserModel_1 = require("../database/models/UserModel");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 const password_1 = require("../utils/password");
+const db_1 = require("../database/db");
 // Remove o hash da senha antes de devolver o utilizador ao frontend — a BD é a
 // única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
 const stripPassword = (user) => {
@@ -188,6 +189,7 @@ const destroy = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
 });
 exports.destroy = destroy;
 const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _b;
     try {
         const { email, password } = req.body;
         if (!email || !password) {
@@ -212,6 +214,30 @@ const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 .status(200)
                 .send(JSON.stringify({ success: false, message: "Senha incorreta." }));
         }
+        // is_active = 0 significa conta criada por cadastro público ainda não aprovada
+        const userAny = user;
+        if (userAny.getDataValue("is_active") === 0) {
+            return res.status(200).json({
+                success: false,
+                message: "Sua empresa está aguardando aprovação do Super Admin. Contacto: +258 870740202",
+            });
+        }
+        // Verificar estado de aprovação da empresa (Super Admin tem companyId NULL)
+        let companyStatus = null;
+        const companyId = user.getDataValue("companyId");
+        if (companyId) {
+            try {
+                const [rows] = yield db_1.db.query("SELECT approval_status FROM companies WHERE id = ?", { replacements: [companyId] });
+                companyStatus = ((_b = rows[0]) === null || _b === void 0 ? void 0 : _b.approval_status) || null;
+            }
+            catch ( /* coluna pode não existir ainda */_c) { /* coluna pode não existir ainda */ }
+            if (companyStatus && companyStatus !== "APROVADA") {
+                return res.status(200).json({
+                    success: false,
+                    message: "Sua empresa está aguardando aprovação do Super Admin. Contacto: +258 870740202",
+                });
+            }
+        }
         // Token com expiração longa (24h) - a expiração por inactividade é controlada pelo frontend
         const token = jwt.sign({ id: user.getDataValue("id") }, process.env.APP_SECRET + "", {
             expiresIn: "24h",
@@ -226,6 +252,8 @@ const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 userRole: user.getDataValue("userRole"),
                 updatedPassword: user.getDataValue("updatedPassword"),
                 status: user.getDataValue("status"),
+                is_active: user.getDataValue("is_active"),
+                companyStatus: companyStatus,
                 token: token,
                 createdAt: user.getDataValue("createdAt"),
                 updatedAt: user.getDataValue("updatedAt"),

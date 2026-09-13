@@ -7,6 +7,7 @@ import {
   getStatement,
   upsert,
   deactivate,
+  adjustBalance,
 } from "../services/bankAccountService";
 import {
   transferBetweenAccounts,
@@ -213,6 +214,36 @@ export const remove = async (req: Request, res: Response) => {
     return res.status(200).json({ success: true, result: account });
   } catch (error: any) {
     return sendError(res, error, "Erro ao desactivar a conta bancária.");
+  }
+};
+
+/**
+ * POST /api/bank-accounts/:id/adjust-balance
+ * Body: { new_balance, description? } — introduzir o saldo real da conta
+ * (BANCO / MOBILE_MONEY / EWALLET). A diferença fica registrada como ESTORNO
+ * no extrato. Uso administrativo.
+ */
+export const adjustBalanceEndpoint = async (req: Request, res: Response) => {
+  try {
+    const { companyId, userName } = await resolveIdentity(req);
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const id = parseInt(String(req.params.id), 10);
+    const newBalance = Number((req.body as any)?.new_balance);
+    if (Number.isNaN(id) || !Number.isFinite(newBalance)) {
+      return res.status(400).json({ success: false, message: "Informe id e new_balance válidos." });
+    }
+    const account = await adjustBalance({
+      companyId: Number(companyId),
+      accountId: id,
+      newBalance,
+      userName,
+      description: (req.body as any)?.description,
+    });
+    return res.status(200).json({ success: true, result: account });
+  } catch (error: any) {
+    return sendError(res, error, "Erro ao ajustar o saldo da conta.");
   }
 };
 

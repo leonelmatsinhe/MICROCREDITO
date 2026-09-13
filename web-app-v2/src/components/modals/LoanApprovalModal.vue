@@ -173,6 +173,20 @@
                 <q-checkbox v-model="adminFeeExempt" label="Isento de taxa administrativa" color="negative" dense />
               </div>
             </div>
+            <!-- TESOURARIA: conta de entrada da taxa (obrigatória quando cobrada) -->
+            <q-select
+              v-if="!adminFeeExempt && adminFeeValue > 0"
+              v-model="adminFeeAccountId"
+              :options="adminFeeAccountOptions"
+              outlined
+              dense
+              emit-value
+              map-options
+              label="Conta de entrada da taxa *"
+              hint="O valor da taxa TEM de entrar numa conta (banco, mobile money ou caixa)"
+              class="q-mt-sm"
+              :rules="[v => !!v || 'Indique onde a taxa vai entrar']"
+            />
           </q-card-section>
         </q-card>
 
@@ -244,6 +258,29 @@ const disbursementDate = ref(new Date().toISOString().split('T')[0])
 const paymentMethod = ref('CASH')
 const bankAccountId = ref(null)
 const bankAccounts = ref([])
+
+// ─── TESOURARIA: conta de entrada da taxa administrativa ───
+const adminFeeAccountId = ref(null)
+const allAccounts = ref([])
+
+// Contas activas de qualquer tipo (banco, mobile money, caixa) para a taxa entrar.
+const adminFeeAccountOptions = computed(() =>
+  allAccounts.value
+    .filter(acc => Number(acc.is_active) === 1)
+    .map(acc => ({
+      label: `${acc.bank_name || 'Conta'} - ${acc.accountNumber}${acc.type === 'CAIXA_FISICO' ? ' (Caixa físico)' : ''} - Saldo: ${formatMoney(acc.balance)}`,
+      value: acc.id
+    }))
+)
+
+async function fetchAllAccounts() {
+  try {
+    const { data } = await api.get('/api/bank-accounts?is_active=1')
+    if (data.success) allAccounts.value = data.result || []
+  } catch (e) {
+    console.error('Erro ao carregar contas para a taxa:', e)
+  }
+}
 
 const treasuryMethodOptions = [
   { label: 'Dinheiro físico (CASH)', value: 'CASH' },
@@ -373,7 +410,9 @@ watch(show, async (val) => {
     // Reset da tesouraria + carregar contas para o q-select
     paymentMethod.value = 'CASH'
     bankAccountId.value = null
+    adminFeeAccountId.value = null
     fetchBankAccounts()
+    fetchAllAccounts()
     if (rateList.value.length === 0) {
       await fetchRates()
     }
@@ -410,6 +449,11 @@ async function confirmApproval() {
     $q.notify({ type: 'warning', message: 'Seleccione a conta bancária de origem do desembolso', position: 'top' })
     return
   }
+  // Taxa administrativa cobrada TEM de ter conta de entrada definida.
+  if (!adminFeeExempt.value && adminFeeValue.value > 0 && !adminFeeAccountId.value) {
+    $q.notify({ type: 'warning', message: 'Indique a conta de entrada da taxa administrativa', position: 'top' })
+    return
+  }
 
   submitting.value = true
   try {
@@ -434,7 +478,10 @@ async function confirmApproval() {
         status: 0,
         // ── TESOURARIA: método/conta do desembolso (movimento SAIDA/DESEMBOLSO) ──
         payment_method: paymentMethod.value,
-        bank_account_id: paymentMethod.value !== 'CASH' ? bankAccountId.value : null
+        bank_account_id: paymentMethod.value !== 'CASH' ? bankAccountId.value : null,
+        // Taxa administrativa: valor + conta de entrada (backend registra o movimento)
+        admin_fee_value: adminFeeExempt.value ? 0 : adminFeeValue.value,
+        admin_fee_account_id: adminFeeExempt.value ? null : adminFeeAccountId.value
       })
     } catch (err2) {
       // Já existe plano de amortização (409): apenas activar o crédito (e a data de desembolso)

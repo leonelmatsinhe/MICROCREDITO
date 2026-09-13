@@ -160,6 +160,84 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       });
     }
 
+    // ── TESOURARIA: validações de saldo antes de desembolsar ──
+    // Desembolso electrónico (BANK/MPESA/EMOLA) exige saldo suficiente na
+    // conta de origem — bloqueia o crédito se não houver dinheiro.
+    const bodyAny = req.body as any;
+    const payMethod = String(bodyAny?.payment_method || "CASH").toUpperCase();
+    const disburseAccountId = bodyAny?.bank_account_id ? Number(bodyAny.bank_account_id) : null;
+    if (payMethod !== "CASH" && disburseAccountId) {
+      const { getBalance } = await import("../services/bankAccountService");
+      const available = await getBalance(Number(companyId), disburseAccountId);
+      if (available < Number(amount)) {
+        return res.status(400).json({
+          success: false,
+          message: `Saldo insuficiente na conta seleccionada (disponível: ${available.toFixed(2)} MZN; necessário: ${Number(amount).toFixed(2)} MZN). Transfira fundos ou escolha outra conta.`,
+        });
+      }
+    }
+
+    // ── TAXA ADMINISTRATIVA: entrada obrigatória numa conta ──
+    // Se o crédito cobra taxa administrativa, o valor TEM de entrar numa
+    // conta (banco / mobile money) — é dinheiro real da empresa.
+    const adminFeeValue = Number(bodyAny?.admin_fee_value || 0);
+    const adminFeeAccountId = bodyAny?.admin_fee_account_id ? Number(bodyAny.admin_fee_account_id) : null;
+    if (adminFeeValue > 0) {
+      if (!adminFeeAccountId) {
+        return res.status(400).json({
+          success: false,
+          message: "Taxa administrativa cobrada: indique a conta de entrada do respectivo valor (banco, mobile money ou caixa).",
+        });
+      }
+      try {
+        const { registerMovement, isElectronic } = await import("../services/treasuryService");
+        const { getOne } = await import("../services/bankAccountService");
+        const feeAccount = await getOne(Number(companyId), adminFeeAccountId);
+        if (!feeAccount) {
+          return res.status(400).json({ success: false, message: "Conta da taxa administrativa não encontrada." });
+        }
+        // Método de pagamento derivado do tipo da conta de destino.
+        const accType = String(feeAccount.type || "BANCO").toUpperCase();
+        const accName = String(feeAccount.bank_name || "").toLowerCase();
+        const feeMethod = accType === "CAIXA_FISICO"
+          ? "CASH"
+          : accName.includes("mpesa") || accName.includes("m-pesa")
+            ? "MPESA"
+            : accName.includes("emola") || accName.includes("e-mola")
+              ? "EMOLA"
+              : "BANK";
+        if (isElectronic(feeMethod) && !Number(feeAccount.is_active)) {
+          return res.status(400).json({ success: false, message: "A conta da taxa administrativa está inactiva." });
+        }
+        const jwt = await import("jsonwebtoken");
+        const decoded: any = jwt.verify(
+          (req.headers.authorization || "").split(" ")[1] || "",
+          process.env.APP_SECRET + ""
+        );
+        await registerMovement({
+          companyId: Number(companyId),
+          userId: Number(decoded?.id) || undefined,
+          type: "ENTRADA",
+          category: "TAXA_ADMIN",
+          amount: adminFeeValue,
+          paymentMethod: feeMethod as any,
+          bankAccountId: feeMethod !== "CASH" ? adminFeeAccountId : null,
+          description: `Taxa administrativa do crédito #${loanId} — entrada em ${feeAccount.bank_name} ${feeAccount.accountNumber}`,
+          loanId: Number(loanId),
+          customerId: Number(customerId) || null,
+          reference: { type: "customer_loans", id: Number(loanId) },
+          automatic: true,
+        });
+      } catch (feeError: any) {
+        // Sem caixa aberto ou conta sem saldo → bloqueia a aprovação
+        // (a taxa é dinheiro real: não pode ficar por registar).
+        if (feeError?.code === "CAIXA_FECHADO") {
+          return res.status(403).json({ success: false, error: "CAIXA_FECHADO", message: "Abra o caixa do dia para registar a taxa administrativa." });
+        }
+        return res.status(400).json({ success: false, message: feeError?.message || "Erro ao registar a entrada da taxa administrativa." });
+      }
+    }
+
     // Gera o plano de amortização usando o sistema francês
     const customerAmortizationPlan = simulator({
       companyId,

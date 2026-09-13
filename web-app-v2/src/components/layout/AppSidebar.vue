@@ -76,6 +76,27 @@
       <q-separator class="q-my-sm q-mx-md" />
 
       <q-item
+        v-if="isSuperAdmin"
+        clickable
+        v-ripple
+        class="sidebar-item"
+        :class="{ 'sidebar-item-mini': miniMode }"
+        dense
+        to="/configuracoes"
+      >
+        <q-item-section avatar class="item-avatar-section">
+          <q-icon name="tune" :size="miniMode ? '20px' : '18px'" />
+        </q-item-section>
+        <q-item-section v-if="!miniMode" style="font-size: 13px; white-space: nowrap">
+          Configurações
+        </q-item-section>
+        <q-tooltip v-if="miniMode" anchor="center right" self="center left">
+          Configurações
+        </q-tooltip>
+      </q-item>
+
+      <q-item
+        v-if="!isSuperAdmin"
         clickable
         v-ripple
         class="sidebar-item"
@@ -175,17 +196,29 @@ function handleLogoError() {
 }
 
 const userRoleLabel = computed(() => {
-  const roles = { 0: 'Operador', 1: 'Administrador', 2: 'Operador', 3: 'Gestor de Crédito' }
+  const roles = { 0: 'Super Admin', 1: 'Administrador', 2: 'Operador', 3: 'Gestor de Crédito' }
   return roles[authStore.userRole] || 'Utilizador'
 })
 
 const canSeeSms = computed(() => authStore.userRole === 1 || authStore.userRole === 3)
+
+const isSuperAdmin = computed(() => authStore.userRole === 0)
 
 const menuItems = computed(() => {
   const role = authStore.userRole
   const items = []
 
   const loansItem = { to: '/loans', icon: 'account_balance_wallet', label: 'Créditos' }
+
+  // SUPER ADMIN (role 0): só Painel + Painel da Empresa.
+  // Mutuários e Créditos escondidos completamente.
+  if (isSuperAdmin.value) {
+    items.push(
+      { to: '/dashboard', icon: 'dashboard', label: 'Painel' },
+      { to: '/company', icon: 'domain', label: 'Painel da Empresa' }
+    )
+    return items
+  }
 
   if (role === 1) {
     // Admin: acesso total

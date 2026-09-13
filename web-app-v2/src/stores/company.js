@@ -13,14 +13,12 @@ export const useCompanyStore = defineStore('company', {
     companyName: (state) => state.company?.companyName || state.company?.smsSender || 'Mais Mola',
     companyLogo: (state) => {
       const logo = state.company?.companyLogo
-      if (!logo) return '/logo.png'
-      if (typeof logo === 'string') {
-        if (logo.startsWith('http')) return logo
-        if (logo.startsWith('/')) return logo
-        // Filename only — files stored in uploads/documents/
-        return `/documents/${logo}`
-      }
-      return '/logo.png'
+      // FIX: URLs externas (firebasestorage etc.) são bloqueadas por
+      // OpaqueResponseBlocking — usar sempre o logo local.
+      if (!logo || typeof logo !== 'string' || logo.startsWith('http')) return '/logo.png'
+      if (logo.startsWith('/')) return logo
+      // Filename only — files stored in uploads/documents/
+      return `/documents/${logo}`
     },
     smsSender: (state) => state.company?.smsSender || '',
     hasCompany: (state) => !!state.company

@@ -78,6 +78,26 @@ export const CompanyModel = db.define("companies", {
     defaultValue: 0,
     comment: 'Oculta a cláusula VIGÉSIMA PRIMEIRA (seguro/garantias) no contrato de concessão (1 = ocultar, 0 = mostrar).',
   },
+  // ── Fluxo de subscrição (cadastro público + aprovação do Super Admin) ──
+  approval_status: {
+    type: DataTypes.ENUM('PENDENTE', 'APROVADA', 'REJEITADA', 'SUSPENSA'),
+    allowNull: false,
+    defaultValue: 'PENDENTE',
+  },
+  nuit: { type: DataTypes.STRING(20), allowNull: true },
+  phone: { type: DataTypes.STRING(20), allowNull: true },
+  email: { type: DataTypes.STRING(100), allowNull: true },
+  license_number: { type: DataTypes.STRING(100), allowNull: true },
+  plan: {
+    type: DataTypes.ENUM('STARTER', 'CRESCIMENTO', 'PROFISSIONAL'),
+    allowNull: false,
+    defaultValue: 'CRESCIMENTO',
+  },
+  plan_id: { type: DataTypes.INTEGER, allowNull: true },
+  requested_at: { type: DataTypes.DATE, allowNull: true },
+  approved_at: { type: DataTypes.DATE, allowNull: true },
+  approved_by: { type: DataTypes.INTEGER, allowNull: true },
+  rejection_reason: { type: DataTypes.TEXT, allowNull: true },
 }, {
     tableName: "companies",
     freezeTableName: true,

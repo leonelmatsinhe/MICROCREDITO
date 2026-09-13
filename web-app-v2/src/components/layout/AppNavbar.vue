@@ -24,6 +24,21 @@
 
       <!-- Actions -->
       <div class="row items-center q-gutter-xs">
+        <!-- SYNC/REFRESH — páginas de gestão (Painel da Empresa, Configurações Super Admin) -->
+        <q-btn
+          v-if="canRefresh"
+          flat
+          round
+          dense
+          icon="sync"
+          text-color="white"
+          size="sm"
+          :loading="superAdminStore.loading || planStore.loading"
+          @click="refreshAdminData"
+        >
+          <q-tooltip>Actualizar dados</q-tooltip>
+        </q-btn>
+
         <!-- Theme Toggle -->
         <q-btn
           flat
@@ -153,6 +168,8 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useCustomerStore } from '@/stores/customers'
+import { useSuperAdminStore } from '@/stores/superAdmin'
+import { usePlanStore } from '@/stores/plan'
 import AlertBell from './AlertBell.vue'
 import { getInitials, timeAgo } from '@/utils/formatters'
 
@@ -164,6 +181,16 @@ const $q = useQuasar()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
 const customerStore = useCustomerStore()
+const superAdminStore = useSuperAdminStore()
+const planStore = usePlanStore()
+
+// Páginas que têm o botão sync na navbar
+const canRefresh = computed(() => ['Company', 'SuperAdminSettings'].includes(route.name))
+
+function refreshAdminData() {
+  superAdminStore.fetchCompanies()
+  planStore.fetchPlans({ all: true })
+}
 
 const props = defineProps({
   notifications: { type: Array, default: () => [] },

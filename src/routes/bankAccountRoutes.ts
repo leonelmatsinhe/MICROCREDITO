@@ -10,6 +10,7 @@ import {
   remove,
   transfer,
   deposit,
+  adjustBalanceEndpoint,
 } from "../controllers/BankAccountController";
 
 /**
@@ -32,6 +33,8 @@ bankAccountRoutes.get("/api/bank-accounts", auth, index);
 bankAccountRoutes.get("/api/bank-accounts/wallet-totals", auth, walletTotals);
 bankAccountRoutes.post("/api/bank-accounts/transfer", auth, transfer);
 bankAccountRoutes.post("/api/bank-accounts/deposit", auth, deposit);
+// Ajuste manual de saldo (introduzir saldo real da conta) — admin/tesouraria.
+bankAccountRoutes.post("/api/bank-accounts/:id/adjust-balance", auth, adjustBalanceEndpoint);
 
 bankAccountRoutes.get("/api/bank-accounts/:id/balance", auth, balance);
 bankAccountRoutes.get("/api/bank-accounts/:id/transactions", auth, transactions);

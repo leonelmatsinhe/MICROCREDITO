@@ -32,7 +32,8 @@ const isDark = computed(() => uiStore.isDark)
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #F9FAFB 0%, #F3F4F6 100%);
+  /* Uniforme com o .auth-bg da LoginPage (cinza azul claro) */
+  background: linear-gradient(135deg, #e8eef5 0%, #dde7f0 50%, #d5e2ee 100%);
 }
 
 body.body--dark .auth-fullpage {

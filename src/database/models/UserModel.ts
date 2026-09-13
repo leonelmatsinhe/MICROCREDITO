@@ -48,5 +48,10 @@ export const UserModel = db.define("user", {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  is_active: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
 
 });

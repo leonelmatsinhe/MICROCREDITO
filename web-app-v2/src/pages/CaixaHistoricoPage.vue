@@ -134,6 +134,16 @@
               <span v-else class="text-grey-5">—</span>
             </q-td>
 
+            <!-- Exportações Excel/PDF deste caixa -->
+            <q-td key="exports" :props="props" class="text-center">
+              <q-btn flat round dense size="sm" icon="grid_on" color="green-8" @click.stop="exportRegister(props.row, 'xlsx')">
+                <q-tooltip>Baixar caixa em Excel</q-tooltip>
+              </q-btn>
+              <q-btn flat round dense size="sm" icon="picture_as_pdf" color="red-8" @click.stop="exportRegister(props.row, 'pdf')">
+                <q-tooltip>Baixar caixa em PDF</q-tooltip>
+              </q-btn>
+            </q-td>
+
             <!-- Botão expandir -->
             <q-td key="expand" :props="props" class="text-center">
               <q-btn
@@ -151,7 +161,7 @@
 
           <!-- ── Linha expandida: movimentos do caixa ── -->
           <q-tr v-if="expandedId === props.row.id" class="expanded-row">
-            <q-td colspan="10" class="expanded-cell">
+            <q-td colspan="11" class="expanded-cell">
               <div v-if="expandedLoading" class="text-center q-pa-sm">
                 <q-spinner-dots size="24px" color="primary" />
               </div>
@@ -349,6 +359,114 @@ function closeExpanded() {
   expandedMovements.value = null
 }
 
+// ─── EXPORTAÇÃO EXCEL / PDF de um caixa do histórico ───
+// Busca os movimentos do caixa e gera o ficheiro com resumo + movimentos.
+async function exportRegister(row, format) {
+  try {
+    $q.notify({ type: 'info', message: 'A gerar ficheiro...', position: 'top', timeout: 800 })
+    const { data } = await api.get(`/api/cash-registers/${row.id}/movements`)
+    const movements = (data?.success && Array.isArray(data.result)) ? data.result : []
+    if (format === 'xlsx') {
+      await exportRegisterXlsx(row, movements)
+    } else {
+      await exportRegisterPdf(row, movements)
+    }
+  } catch (error) {
+    console.error('Erro ao exportar caixa:', error)
+    $q.notify({ type: 'negative', message: 'Erro ao exportar o caixa', position: 'top' })
+  }
+}
+
+// Linhas comuns (Excel e PDF usam as mesmas colunas)
+function registerSummaryRows(row) {
+  const calc = row.closing_balance_calculated ?? calculatedBalance(row)
+  return [
+    ['Dia', formatDay(row.opening_date)],
+    ['Responsável', row.userName || '—'],
+    ['Estado', row.status],
+    ['Saldo Inicial', formatMZN(row.opening_balance)],
+    ['Entradas (total)', formatMZN(row.total_in)],
+    ['Saídas (total)', formatMZN(row.total_out)],
+    ['Saldo Calculado', formatMZN(calc)],
+    ['Valor Contado', row.closing_balance_informed != null ? formatMZN(row.closing_balance_informed) : '—'],
+    ['Divergência', row.difference != null ? formatMZN(row.difference) : '—']
+  ]
+}
+
+function movementTableRows(movements) {
+  return movements.map(m => [
+    formatDay(m.createdAt) + ' ' + formatTime(m.createdAt),
+    m.type === 'ENTRADA' ? 'ENTRADA' : 'SAÍDA',
+    categoryLabel(m.category),
+    m.description || '',
+    (m.type === 'ENTRADA' ? '+' : '-') + formatMZN(m.amount)
+  ])
+}
+
+async function exportRegisterXlsx(row, movements) {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+
+  // Folha 1: resumo do caixa
+  const wsSummary = XLSX.utils.aoa_to_sheet([
+    ['CAIXA — ' + formatDay(row.opening_date)],
+    [],
+    ...registerSummaryRows(row)
+  ])
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Resumo')
+
+  // Folha 2: movimentos
+  const wsMovements = XLSX.utils.aoa_to_sheet([
+    ['Hora', 'Tipo', 'Categoria', 'Descrição', 'Valor'],
+    ...movementTableRows(movements)
+  ])
+  XLSX.utils.book_append_sheet(wb, wsMovements, 'Movimentos')
+
+  XLSX.writeFile(wb, `caixa-${formatDay(row.opening_date).replaceAll('/', '-')}-${row.id}.xlsx`)
+}
+
+async function exportRegisterPdf(row, movements) {
+  const pdfMakeMod = await import('pdfmake/build/pdfmake')
+  const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
+  const pdfMake = (pdfMakeMod.default || pdfMakeMod)
+  pdfMake.vfs = (pdfFontsMod.default?.vfs || pdfFontsMod.vfs || pdfFontsMod.default || pdfFontsMod)
+
+  const docDefinition = {
+    pageSize: 'A4',
+    pageMargins: [30, 25, 30, 30],
+    content: [
+      { text: 'Mais Mola — Gestão de Microcrédito', fontSize: 14, bold: true, color: '#0a3d2e' },
+      { text: `Fecho de Caixa — ${formatDay(row.opening_date)}`, fontSize: 11, color: '#475569', margin: [0, 2, 0, 12] },
+      {
+        table: {
+          widths: [120, '*'],
+          body: registerSummaryRows(row).map(([k, v]) => [
+            { text: k, bold: true, fillColor: '#f1f5f9' },
+            String(v)
+          ])
+        },
+        fontSize: 9,
+        layout: 'lightHorizontalLines'
+      },
+      { text: 'MOVIMENTOS', fontSize: 10, bold: true, color: '#0a3d2e', margin: [0, 14, 0, 5] },
+      {
+        table: {
+          headerRows: 1,
+          widths: [70, 45, 65, '*', 65],
+          body: [
+            ['Hora', 'Tipo', 'Categoria', 'Descrição', 'Valor'].map(h => ({ text: h, bold: true, fillColor: '#e2e8f0' })),
+            ...(movements.length ? movementTableRows(movements) : [['—', '—', '—', 'Sem movimentos', '—']])
+          ]
+        },
+        fontSize: 7.5,
+        layout: 'lightHorizontalLines'
+      },
+      { text: `Documento gerado automaticamente pelo sistema em ${new Date().toLocaleString('pt-MZ')}`, fontSize: 7, color: '#94a3b8', margin: [0, 14, 0, 0] }
+    ]
+  }
+  pdfMake.createPdf(docDefinition).download(`caixa-${formatDay(row.opening_date).replaceAll('/', '-')}-${row.id}.pdf`)
+}
+
 // ─── Tabela ───
 const pagination = ref({ page: 1, rowsPerPage: 25 })
 const columns = [
@@ -361,6 +479,7 @@ const columns = [
   { name: 'calculated', label: 'Saldo Calculado', field: 'closing_balance_calculated', align: 'right', sortable: true },
   { name: 'closing_balance_informed', label: 'Valor Contado', field: 'closing_balance_informed', align: 'right', sortable: true },
   { name: 'difference', label: 'Divergência', field: 'difference', align: 'center', sortable: true },
+  { name: 'exports', label: 'Exportar', field: () => '', align: 'center' },
   { name: 'expand', label: '', field: () => '', align: 'center' }
 ]
 

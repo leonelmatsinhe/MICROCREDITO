@@ -80,6 +80,26 @@ exports.CompanyModel = db_1.db.define("companies", {
         defaultValue: 0,
         comment: 'Oculta a cláusula VIGÉSIMA PRIMEIRA (seguro/garantias) no contrato de concessão (1 = ocultar, 0 = mostrar).',
     },
+    // ── Fluxo de subscrição (cadastro público + aprovação do Super Admin) ──
+    approval_status: {
+        type: sequelize_1.DataTypes.ENUM('PENDENTE', 'APROVADA', 'REJEITADA', 'SUSPENSA'),
+        allowNull: false,
+        defaultValue: 'PENDENTE',
+    },
+    nuit: { type: sequelize_1.DataTypes.STRING(20), allowNull: true },
+    phone: { type: sequelize_1.DataTypes.STRING(20), allowNull: true },
+    email: { type: sequelize_1.DataTypes.STRING(100), allowNull: true },
+    license_number: { type: sequelize_1.DataTypes.STRING(100), allowNull: true },
+    plan: {
+        type: sequelize_1.DataTypes.ENUM('STARTER', 'CRESCIMENTO', 'PROFISSIONAL'),
+        allowNull: false,
+        defaultValue: 'CRESCIMENTO',
+    },
+    plan_id: { type: sequelize_1.DataTypes.INTEGER, allowNull: true },
+    requested_at: { type: sequelize_1.DataTypes.DATE, allowNull: true },
+    approved_at: { type: sequelize_1.DataTypes.DATE, allowNull: true },
+    approved_by: { type: sequelize_1.DataTypes.INTEGER, allowNull: true },
+    rejection_reason: { type: sequelize_1.DataTypes.TEXT, allowNull: true },
 }, {
     tableName: "companies",
     freezeTableName: true,

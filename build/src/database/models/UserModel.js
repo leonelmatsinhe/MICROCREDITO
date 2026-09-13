@@ -50,4 +50,9 @@ exports.UserModel = db_1.db.define("user", {
         type: sequelize_1.DataTypes.DATE,
         allowNull: true,
     },
+    is_active: {
+        type: sequelize_1.DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+    },
 });

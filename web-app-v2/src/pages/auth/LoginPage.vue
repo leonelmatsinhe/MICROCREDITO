@@ -58,8 +58,8 @@
           </div>
         </div>
 
-        <!-- Portal do Mutuário -->
-        <div class="hero-portal q-mt-lg">
+        <!-- REMOVIDO TEMPORARIAMENTE: portal do mutuário -->
+        <!-- <div class="hero-portal q-mt-lg">
           <q-icon name="person" size="18px" style="color: #4ade80" class="q-mr-sm" />
           <div class="col">
             <div class="text-weight-medium" style="font-size: 13px; color: white">É mutuário?</div>
@@ -78,7 +78,7 @@
           >
             Portal do Mutuário
           </q-btn>
-        </div>
+        </div> -->
       </div>
     </div>
 
@@ -164,7 +164,8 @@
 
           <q-separator class="q-my-xs" />
 
-          <q-btn
+          <!-- REMOVIDO TEMPORARIAMENTE: login de mutuário e auto-cadastro -->
+          <!-- <q-btn
             outline
             color="secondary"
             class="full-width"
@@ -188,6 +189,19 @@
           >
             <q-icon name="person_add" class="q-mr-xs" size="18px" />
             <span style="font-size: 13px">Criar conta de mutuário</span>
+          </q-btn> -->
+
+          <q-btn
+            flat
+            color="primary"
+            class="full-width"
+            size="md"
+            no-caps
+            :disable="loading"
+            @click="router.push('/registar-empresa')"
+          >
+            <q-icon name="business" class="q-mr-xs" size="18px" />
+            <span style="font-size: 13px">Criar Conta da Empresa</span>
           </q-btn>
         </q-form>
 
@@ -817,6 +831,20 @@ async function handleSubmit() {
     const result = await authStore.login(form.value.email, form.value.password)
     if (result.success) {
       $q.notify({ type: 'positive', message: 'Login realizado com sucesso!', position: 'top' })
+
+      // Super Admin (role 0) vai directo ao Painel da Empresa (aprovações)
+      if (result.user?.userRole === 0) {
+        router.push('/company')
+        return
+      }
+
+      // Empresa ainda não aprovada — bloquear entrada no painel
+      if (result.user?.companyStatus && result.user.companyStatus !== 'APROVADA') {
+        error.value = 'Sua empresa está aguardando aprovação do Super Admin. Contacto: +258 870740202'
+        authStore.logout()
+        return
+      }
+
       router.push(route.query.redirect || authStore.defaultRoute)
     } else {
       error.value = result.message
@@ -857,14 +885,47 @@ async function handleCustomerLogin() {
   min-height: 100vh;
   display: flex;
   align-items: stretch;
-  /* Gradiente verde → azul em toda a página, coordenado com a marca */
-  background: linear-gradient(135deg, #0b3d2e 0%, #15653b 30%, #1b7a45 45%, #15807a 60%, #1e6fa8 80%, #1e40af 100%);
+  /* Fundo cinza azul claro suave */
+  background: linear-gradient(135deg, #e8eef5 0%, #dde7f0 50%, #d5e2ee 100%);
   box-sizing: border-box;
   position: relative;
 }
 
+/* Textos do painel esquerdo adaptados ao fundo claro */
+.auth-bg .hero-brand .text-weight-bold,
+.auth-bg .hero-tagline .text-h4 {
+  color: #0b3d2e !important;
+}
+.auth-bg .hero-tagline p {
+  color: #4a5b68 !important;
+}
+.auth-bg .benefit-title { color: #0b3d2e; }
+.auth-bg .benefit-desc { color: #5b6b78; }
+.auth-bg .hero-portal {
+  background: rgba(11, 61, 46, 0.06);
+  border: 1px solid rgba(11, 61, 46, 0.15);
+}
+.auth-bg .hero-portal .text-weight-medium { color: #0b3d2e !important; }
+.auth-bg .hero-portal .text-caption { color: #5b6b78 !important; }
+
 body.body--dark .auth-bg {
   background: linear-gradient(135deg, #0b1e16 0%, #12352a 30%, #0f3d46 55%, #123a63 80%, #14294f 100%);
+}
+
+/* No dark mode, restaurar textos claros */
+body.body--dark .auth-bg .hero-brand .text-weight-bold,
+body.body--dark .auth-bg .hero-tagline .text-h4,
+body.body--dark .auth-bg .benefit-title {
+  color: #ffffff !important;
+}
+body.body--dark .auth-bg .hero-tagline p,
+body.body--dark .auth-bg .benefit-desc,
+body.body--dark .auth-bg .hero-portal .text-caption {
+  color: rgba(255,255,255,0.75) !important;
+}
+body.body--dark .auth-bg .hero-portal {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 /* ============ Painel esquerdo (marketing) ============ */
