@@ -30,18 +30,23 @@ const LogsPage = () => import('@/pages/LogsPage.vue')
 const SmsPendingCredentialsPage = () => import('@/pages/SmsPendingCredentialsPage.vue')
 
 const routes = [
-  // WEBSITE OFICIAL — landing de vendas (pública, entrada principal)
+  // LOGIN — página inicial do sistema
   {
     path: '/',
-    name: 'Landing',
-    component: LandingPage,
-    meta: { requiresAuth: false }
-  },
-  // LOGIN — página original do sistema
-  {
-    path: '/login',
     name: 'Login',
     component: LoginPage,
+    meta: { requiresAuth: false }
+  },
+  // COMPATIBILIDADE — /login aponta para a página inicial (login)
+  {
+    path: '/login',
+    redirect: '/'
+  },
+  // WEBSITE OFICIAL — landing de vendas isolada em /landing
+  {
+    path: '/landing',
+    name: 'Landing',
+    component: LandingPage,
     meta: { requiresAuth: false }
   },
   // CADASTRO PÚBLICO DE EMPRESA — fluxo de subscrição (landing → aprovação Super Admin)

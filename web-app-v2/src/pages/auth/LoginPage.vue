@@ -190,19 +190,7 @@
             <q-icon name="person_add" class="q-mr-xs" size="18px" />
             <span style="font-size: 13px">Criar conta de mutuário</span>
           </q-btn> -->
-
-          <q-btn
-            flat
-            color="primary"
-            class="full-width"
-            size="md"
-            no-caps
-            :disable="loading"
-            @click="router.push('/registar-empresa')"
-          >
-            <q-icon name="business" class="q-mr-xs" size="18px" />
-            <span style="font-size: 13px">Criar Conta da Empresa</span>
-          </q-btn>
+          <!-- REMOVIDO: botão de cadastro de empresa -->
         </q-form>
 
         <div class="text-center q-mt-sm text-grey-5" style="font-size: 10px">
