@@ -38,8 +38,15 @@
             :rules="[v => !!v || 'Campo obrigatório']" />
           <q-input v-model="form.licenseNumber" outlined dense label="Licença BM (opcional)" />
           <q-select v-model="form.provinceId" outlined dense label="Província *" emit-value map-options
-            :options="provinceOptions" :rules="[v => !!v || 'Campo obrigatório']" />
-          <q-input v-model="form.districtId" outlined dense label="Distrito" />
+            :options="provinceOptions" @update:model-value="onProvinceChange"
+            :rules="[v => !!v || 'Campo obrigatório']" />
+          <q-select v-model="form.districtId" outlined dense label="Distrito" emit-value map-options
+            :options="districtOptions" :disable="!form.provinceId" clearable
+            :loading="districtsLoading"
+            :rules="[v => !v || !!form.provinceId || 'Escolha a província primeiro']" />
+          <div v-if="form.provinceId && districtOptions.length === 0 && !districtsLoading" class="text-caption text-grey-7 q-ml-md">
+            Sem distritos cadastrados para esta província — pode escrever o distrito no endereço.
+          </div>
           <q-input v-model="form.companyAddress" outlined dense label="Endereço" />
           <q-input v-model="form.companyPhone" outlined dense label="Telefone Empresa *" mask="#########"
             :rules="[v => !!v || 'Campo obrigatório']" />
@@ -133,6 +140,7 @@ const planRadioOptions = computed(() => plans.value.map(p => ({
 })))
 
 onMounted(async () => {
+  loadLocations()
   try {
     const { data } = await api.get('/api/subscription-plans', { params: { is_active: 1 } })
     if (data.success) {
@@ -144,19 +152,35 @@ onMounted(async () => {
   } catch { /* mantém lista vazia — validação exige escolha */ }
 })
 
-const provinceOptions = [
-  { label: 'Maputo Cidade', value: 1 },
-  { label: 'Maputo Província', value: 2 },
-  { label: 'Gaza', value: 3 },
-  { label: 'Inhambane', value: 4 },
-  { label: 'Sofala', value: 5 },
-  { label: 'Manica', value: 6 },
-  { label: 'Tete', value: 7 },
-  { label: 'Zambézia', value: 8 },
-  { label: 'Nampula', value: 9 },
-  { label: 'Cabo Delgado', value: 10 },
-  { label: 'Niassa', value: 11 }
-]
+// ── Províncias e Distritos (API, com relacionamento provincia → distritos) ──
+const provinceOptions = ref([])
+const allDistricts = ref([])
+const districtsLoading = ref(false)
+const districtOptions = computed(() =>
+  allDistricts.value
+    .filter(d => Number(d.provinceId) === Number(form.value.provinceId))
+    .map(d => ({ label: d.name, value: d.id }))
+)
+
+// Autopopula os distritos quando a província muda; limpa a selecção anterior
+function onProvinceChange() {
+  form.value.districtId = null
+}
+
+async function loadLocations() {
+  districtsLoading.value = true
+  try {
+    const [prov, dist] = await Promise.all([
+      api.get('/api/provinces'),
+      api.get('/api/districts'),
+    ])
+    if (prov.data.success) {
+      provinceOptions.value = prov.data.result.map(p => ({ label: p.name, value: p.id }))
+    }
+    if (dist.data.success) allDistricts.value = dist.data.result || []
+  } catch { /* deixa vazio — província fica sem opções mas não bloqueia o resto */ }
+  districtsLoading.value = false
+}
 
 const planOptions = [
   { label: 'Starter — 2.500 MZN/mês (até 100 clientes)', value: 'STARTER' },
@@ -169,7 +193,7 @@ const form = ref({
   companyNuit: '',
   licenseNumber: '',
   provinceId: null,
-  districtId: '',
+  districtId: null,
   companyAddress: '',
   companyPhone: '',
   companyEmail: '',

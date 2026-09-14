@@ -15,7 +15,11 @@ const findAllProvinces = async (req: Request, res: Response) => {
 };
 
 const findAllDistricts = async (req: Request, res: Response) => {
+  // Suporta ?provinceId=N para autopopular distritos ao seleccionar uma província
+  const { provinceId } = req.query;
+  const where = provinceId ? { provinceId: Number(provinceId) } : {};
   const districts = await DistrictModel.findAll({
+    where,
     order: [["name", "ASC"]],
   });
   return districts

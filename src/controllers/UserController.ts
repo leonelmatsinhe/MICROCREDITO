@@ -192,10 +192,11 @@ const loginUser = async (req: Request, res: Response) => {
       });
     }
 
-    // Verificar estado de aprovação da empresa (Super Admin tem companyId NULL)
+    // Verificar estado de aprovação da empresa (Super Admin tem companyId NULL e nunca é bloqueado)
     let companyStatus: string | null = null;
+    const userRole = Number(user.getDataValue("userRole"));
     const companyId = user.getDataValue("companyId");
-    if (companyId) {
+    if (companyId && userRole !== 0) {
       try {
         const [rows]: any = await db.query(
           "SELECT approval_status FROM companies WHERE id = ?",

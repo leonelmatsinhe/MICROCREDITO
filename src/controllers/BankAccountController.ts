@@ -225,7 +225,7 @@ export const remove = async (req: Request, res: Response) => {
  */
 export const adjustBalanceEndpoint = async (req: Request, res: Response) => {
   try {
-    const { companyId, userName } = await resolveIdentity(req);
+    const { userId, companyId, userName } = await resolveIdentity(req);
     if (!companyId) {
       return res.status(401).json({ success: false, message: "Token invalid" });
     }
@@ -239,6 +239,7 @@ export const adjustBalanceEndpoint = async (req: Request, res: Response) => {
       accountId: id,
       newBalance,
       userName,
+      userId: Number(userId) || undefined,
       description: (req.body as any)?.description,
     });
     return res.status(200).json({ success: true, result: account });

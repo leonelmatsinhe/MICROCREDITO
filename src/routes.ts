@@ -311,6 +311,9 @@ routes.get("/api/document/file/:fileName", (req: Request, res: Response) => {
 routes.post("/api/companies/register", registerCompany);
 // Planos de subscrição — público (landing + registo de empresa)
 routes.get("/api/subscription-plans", listPlans);
+// Províncias e distritos públicos (usados no cadastro público da empresa)
+routes.get("/api/provinces", findAllProvinces);
+routes.get("/api/districts", findAllDistricts);
 // TEMPORÁRIO: debug de empresas sem auth (remover em produção)
 routes.get("/api/debug/companies", debugCompanies);
 

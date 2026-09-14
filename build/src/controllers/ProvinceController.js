@@ -25,7 +25,11 @@ const findAllProvinces = (req, res) => __awaiter(void 0, void 0, void 0, functio
 });
 exports.findAllProvinces = findAllProvinces;
 const findAllDistricts = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    // Suporta ?provinceId=N para autopopular distritos ao seleccionar uma província
+    const { provinceId } = req.query;
+    const where = provinceId ? { provinceId: Number(provinceId) } : {};
     const districts = yield DistrictModel_1.DistrictModel.findAll({
+        where,
         order: [["name", "ASC"]],
     });
     return districts

@@ -164,6 +164,7 @@ export const adjustBalance = async (params: {
   accountId: number;
   newBalance: number;
   userName?: string;
+  userId?: number;
   description?: string;
 }): Promise<any> => {
   const account: any = await AccountModel.findOne({
@@ -205,7 +206,7 @@ export const adjustBalance = async (params: {
           description: params.description?.trim() || `Ajuste manual de saldo (${current.toFixed(2)} → ${target.toFixed(2)} MZN)`,
           referenceType: "accounts",
           referenceId: params.accountId,
-          createdBy: params.userName ?? null,
+          createdBy: params.userId ?? null,
         },
         { transaction }
       );

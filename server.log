@@ -1,0 +1,22 @@
+[Migration] customerId reconciliado em customer_loans
+[Migration] customerId reconciliado em amortization_loans
+[Migration] customerId reconciliado em tranzactions
+[Migration] customerId reconciliado em customer_documents
+[Migration] customerId reconciliado em debts
+[Migration] customerId reconciliado em whatsapp_messages
+[Migration] customerId reconciliado em sms_queue
+[Migration] 0 aplicadas, 116 já existentes, 0 erros.
+MBR Server is running on PORT 4000
+[SMS] Fila de SMS activa (BulkSMM) — a cada 60s
+[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h
+[0mPOST /api/login [32m200[0m 144.085 ms - 46[0m
+[SMS] Alertas automáticos enfileirados para 3 empresa(s)
+[0mPOST /api/login [32m200[0m 122.965 ms - 46[0m
+[0mGET /api/provinces [33m401[0m 2.104 ms - 48[0m
+[0mGET /api/districts?provinceId=1 [33m401[0m 0.956 ms - 48[0m
+[0mGET /api/provinces [33m401[0m 0.835 ms - 48[0m
+[0mGET /api/districts [33m401[0m 0.444 ms - 48[0m
+[0mGET /api/subscription-plans?is_active=1 [36m304[0m 46.898 ms - -[0m
+[0mGET /api/subscription-plans?is_active=1 [36m304[0m 2.017 ms - -[0m
+[0mGET /api/provinces [33m401[0m 1.018 ms - 48[0m
+[0mGET /api/districts?provinceId=1 [33m401[0m 0.290 ms - 48[0m

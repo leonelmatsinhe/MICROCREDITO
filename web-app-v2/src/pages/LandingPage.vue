@@ -33,9 +33,10 @@
 
     <!-- ===================== HERO ===================== -->
     <section class="hero">
+      <!-- hero entra com animação de carga (classe reveal aplicada via CSS animation) -->
       <div class="hero-inner">
         <!-- Texto -->
-        <div class="hero-copy">
+        <div class="hero-copy hero-enter">
           <span class="hero-badge">
             <span class="badge-check">✓</span>
             Aprovado para Relatórios do Banco de Moçambique
@@ -64,7 +65,7 @@
         </div>
 
         <!-- Mockup do dashboard -->
-        <div class="hero-visual">
+        <div class="hero-visual hero-enter-delayed">
           <div class="dash">
             <div class="dash-bar">
               <span class="dots"><i class="r"></i><i class="y"></i><i class="g"></i></span>
@@ -144,25 +145,25 @@
     <!-- ===================== O PROBLEMA ===================== -->
     <section class="section problem">
       <div class="container">
-        <div class="center-head">
+        <div v-reveal class="center-head">
           <span class="tag">O PROBLEMA ATUAL</span>
           <h2>Planilhas não aguentam o crescimento</h2>
           <p>Vimos de perto os mesmos 3 gargalos que travam 9 em cada 10 microcréditos em Moçambique.</p>
         </div>
         <div class="problem-grid">
-          <div class="p-card">
+          <div v-reveal="0" class="p-card">
             <span class="p-ico yellow">📒</span>
             <h3>Excel desorganizado</h3>
             <p>Várias versões, fórmulas quebradas, clientes duplicados. Perde-se 6h por semana só a consolidar.</p>
             <span class="chip-before">✕ Antes</span>
           </div>
-          <div class="p-card">
+          <div v-reveal="120" class="p-card">
             <span class="p-ico red">⚠️</span>
             <h3>Mora alta sem alerta</h3>
             <p>Sem SMS/WhatsApp automático, 40% dos atrasos só são notados depois de 7 dias. Dinheiro parado.</p>
             <span class="chip-before">✕ Antes</span>
           </div>
-          <div class="p-card">
+          <div v-reveal="240" class="p-card">
             <span class="p-ico blue">🕐</span>
             <h3>Relatório BM demora dias</h3>
             <p>Fechar o mapa do Banco de Moçambique leva 2-3 dias. Risco de multa por atraso ou erro.</p>
@@ -170,7 +171,7 @@
           </div>
         </div>
         <!-- Banner solução -->
-        <div class="solution-banner">
+        <div v-reveal="150" class="solution-banner">
           <span class="sol-ico">🛡️</span>
           <div>
             <b>Com Mais Mola, tudo centralizado e auditável</b>
@@ -184,13 +185,13 @@
     <!-- ===================== FUNCIONALIDADES ===================== -->
     <section id="funcionalidades" class="section features">
       <div class="container">
-        <span class="tag">FUNCIONALIDADES</span>
-        <div class="features-head">
+        <span v-reveal class="tag">FUNCIONALIDADES</span>
+        <div v-reveal class="features-head">
           <h2>Tudo o que precisa para crescer com segurança</h2>
           <p>Desenhado para a realidade moçambicana: dinheiro móvel, múltiplas contas bancárias e relatórios do Banco de Moçambique.</p>
         </div>
         <div class="features-grid">
-          <div v-for="f in features" :key="f.title" class="f-card">
+          <div v-for="(f, fi) in features" :key="f.title" v-reveal="fi * 90" class="f-card">
             <span class="f-ico">{{ f.icon }}</span>
             <h3>{{ f.title }}</h3>
             <p>{{ f.desc }}</p>
@@ -202,10 +203,10 @@
     <!-- ===================== COMO FUNCIONA ===================== -->
     <section id="como-funciona" class="section steps-section">
       <div class="container">
-        <span class="tag">COMO FUNCIONA</span>
-        <h2 class="steps-title">De Excel caótico a operação profissional em 4 passos</h2>
+        <span v-reveal class="tag">COMO FUNCIONA</span>
+        <h2 v-reveal class="steps-title">De Excel caótico a operação profissional em 4 passos</h2>
         <div class="steps-grid">
-          <div v-for="(s, i) in steps" :key="s.title" class="step-card">
+          <div v-for="(s, i) in steps" :key="s.title" v-reveal="i * 110" class="step-card">
             <span class="step-num">{{ String(i + 1).padStart(2, '0') }}</span>
             <h3>{{ s.title }}</h3>
             <p>{{ s.desc }}</p>
@@ -217,7 +218,7 @@
     <!-- ===================== CAIXA CENTRAL (NOVIDADE) ===================== -->
     <section class="section cash-section">
       <div class="container cash-grid">
-        <div class="cash-copy">
+        <div v-reveal class="cash-copy">
           <span class="tag tag-dark"><i class="dot-live"></i> NOVIDADE</span>
           <h2>Caixa Central que reflete suas contas bancárias reais</h2>
           <p>
@@ -230,7 +231,7 @@
           </ul>
         </div>
         <!-- Card de contas (mockup) -->
-        <div class="cash-card">
+        <div v-reveal="180" class="cash-card">
           <div class="cash-card-head">
             <b>Caixa Central</b>
             <span class="chip-sync">Sincronizado</span>
@@ -254,14 +255,14 @@
     <!-- ===================== PREÇOS ===================== -->
     <section id="precos" class="section pricing">
       <div class="container">
-        <div class="center-head">
+        <div v-reveal class="center-head">
           <span class="tag">PREÇOS TRANSPARENTES</span>
           <h2>Comece pequeno, cresça sem trocar de sistema</h2>
           <p>Todos os planos incluem 14 dias grátis, sem fidelidade, suporte via WhatsApp.</p>
         </div>
         <!-- Planos dinâmicos: vêm de GET /api/subscription-plans?is_active=1 -->
         <div class="pricing-grid">
-          <div v-for="p in dynamicPlans" :key="p.id" class="price-card" :class="{ popular: Number(p.is_popular) === 1 }">
+          <div v-for="(p, pi) in dynamicPlans" :key="p.id" v-reveal="pi * 120" class="price-card" :class="{ popular: Number(p.is_popular) === 1 }">
             <span v-if="Number(p.is_popular) === 1" class="popular-badge">MAIS POPULAR</span>
             <h3>{{ p.name }}</h3>
             <small>Até {{ Number(p.max_clients) >= 999999 ? 'clientes ilimitados' : Number(p.max_clients) + ' clientes' }}</small>
@@ -274,7 +275,7 @@
           </div>
 
           <!-- Fallback estático caso a API falhe -->
-          <div v-if="dynamicPlans.length === 0 && plansFailed" class="price-card popular">
+          <div v-if="dynamicPlans.length === 0 && plansFailed" v-reveal class="price-card popular">
             <span class="popular-badge">MAIS POPULAR</span>
             <h3>Crescimento</h3>
             <small>Até 500 clientes</small>
@@ -289,7 +290,7 @@
     <!-- ===================== FAQ ===================== -->
     <section class="section faq-section">
       <div class="container faq-grid">
-        <div class="faq-copy">
+        <div v-reveal class="faq-copy">
           <span class="tag">FAQ</span>
           <h2>Perguntas frequentes</h2>
           <p>Tire suas dúvidas. Se precisar, fale direto no WhatsApp, respondemos em minutos.</p>
@@ -298,7 +299,7 @@
           </a>
         </div>
         <div class="faq-list">
-          <details v-for="f in faq" :key="f.q" class="faq-item" open>
+          <details v-for="(f, fi) in faq" :key="f.q" v-reveal="fi * 80" class="faq-item" open>
             <summary>{{ f.q }} <span class="chev">⌄</span></summary>
             <p>{{ f.a }}</p>
           </details>
@@ -309,7 +310,7 @@
     <!-- ===================== CTA FINAL ===================== -->
     <section class="section cta-section">
       <div class="container">
-        <div class="cta-banner">
+        <div v-reveal class="cta-banner">
           <div class="cta-copy">
             <h2>Pronto para organizar sua microcrédito hoje?</h2>
             <p>Junte-se a mais de 120 microcréditos em Maputo, Matola e Beira que já reduziram mora e fecham relatórios do BM em minutos.</p>
@@ -331,7 +332,7 @@
     <!-- ===================== FOOTER ===================== -->
     <footer id="contactos" class="footer">
       <div class="container footer-grid">
-        <div class="footer-brand-col">
+        <div v-reveal class="footer-brand-col">
           <div class="brand">
             <span class="brand-mark">M</span>
             <span class="brand-text">
@@ -385,6 +386,35 @@
 // caixa central, preços, FAQ, CTA final e footer escuro.
 // ============================================================
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+
+// ---------- Transições de scroll (reveal) ----------
+// Directiva v-reveal: elemento entra com fade+slide suave quando aparece no ecrã.
+// Suporta valor de atraso (v-reveal="120") para efeito cascata entre cards.
+const revealObserver = typeof IntersectionObserver !== 'undefined'
+  ? new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('revealed')
+            revealObserver.unobserve(entry.target)
+          }
+        })
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    )
+  : null
+
+const vReveal = {
+  mounted(el, binding) {
+    el.classList.add('reveal')
+    if (binding.value) el.style.transitionDelay = `${binding.value}ms`
+    if (revealObserver) revealObserver.observe(el)
+    else el.classList.add('revealed')
+  },
+  unmounted(el) {
+    if (revealObserver) revealObserver.unobserve(el)
+  },
+}
 
 // ---------- SEO ----------
 onMounted(() => {
@@ -480,7 +510,33 @@ const faq = [
 .landing {
   font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: #0f172a; background: #e8eef5; overflow-x: hidden;
+  scroll-behavior: smooth;
 }
+
+/* ---------- Transições de scroll (reveal) ---------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity .7s cubic-bezier(.22,.61,.36,1), transform .7s cubic-bezier(.22,.61,.36,1);
+  will-change: opacity, transform;
+}
+.reveal.revealed { opacity: 1; transform: translateY(0); }
+
+/* ---------- Entrada do hero (animação de carga) ---------- */
+@keyframes heroIn {
+  from { opacity: 0; transform: translateY(36px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.hero-enter { animation: heroIn .8s cubic-bezier(.22,.61,.36,1) both; }
+.hero-enter-delayed { animation: heroIn .9s .18s cubic-bezier(.22,.61,.36,1) both; }
+
+/* Respeitar utilizadores com preferência por menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .hero-enter, .hero-enter-delayed { animation: none !important; }
+  .landing { scroll-behavior: auto; }
+}
+
 .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
 .section { padding: 72px 0; }
 h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.5px; }
@@ -651,7 +707,8 @@ h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; l
 /* ═══════════════════ PROBLEMA ═══════════════════ */
 .problem { background: #e8eef5; }
 .problem-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 28px; }
-.p-card { background: #fff; border-radius: 16px; padding: 28px 24px; border: 1px solid #e8f0ea; }
+.p-card { background: #fff; border-radius: 16px; padding: 28px 24px; border: 1px solid #e8f0ea; transition: box-shadow .25s ease, transform .25s ease; }
+.p-card:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(11,61,46,.1); }
 .p-ico { font-size: 1.3rem; width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
 .p-ico.yellow { background: #fef3c7; } .p-ico.red { background: #fee2e2; } .p-ico.blue { background: #dbeafe; }
 .p-card h3 { font-size: 1.1rem; font-weight: 800; color: #0b3d2e; margin: 0 0 8px; }
@@ -678,8 +735,8 @@ h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; l
 .features-head { display: grid; grid-template-columns: 1.4fr 1fr; gap: 32px; align-items: end; margin-bottom: 36px; }
 .features-head p { color: #5b6b62; margin: 0; line-height: 1.6; }
 .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.f-card { background: #f8fbf9; border: 1px solid #e8f0ea; border-radius: 16px; padding: 26px 22px; transition: transform .2s; }
-.f-card:hover { transform: translateY(-3px); }
+.f-card { background: #f8fbf9; border: 1px solid #e8f0ea; border-radius: 16px; padding: 26px 22px; transition: transform .25s ease, box-shadow .25s ease; }
+.f-card:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(11,61,46,.1); }
 .f-ico {
   width: 44px; height: 44px; border-radius: 12px; background: #fff;
   border: 1px solid #e8f0ea; display: flex; align-items: center; justify-content: center;
@@ -692,7 +749,8 @@ h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; l
 .steps-section { background: #e8eef5; }
 .steps-title { max-width: 720px; margin-bottom: 40px; }
 .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; position: relative; }
-.step-card { background: #fff; border-radius: 16px; padding: 30px 22px; border: 1px solid #e8f0ea; position: relative; }
+.step-card { background: #fff; border-radius: 16px; padding: 30px 22px; border: 1px solid #e8f0ea; position: relative; transition: transform .25s ease, box-shadow .25s ease; }
+.step-card:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(11,61,46,.1); }
 .step-num {
   width: 42px; height: 42px; border-radius: 50%; background: #0b3d2e; color: #fff;
   font-weight: 800; font-size: .85rem; display: flex; align-items: center; justify-content: center;
@@ -746,7 +804,10 @@ h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; l
 .price-card {
   background: #fff; border: 1px solid #e8f0ea; border-radius: 20px;
   padding: 32px 26px; display: flex; flex-direction: column; position: relative;
+  transition: transform .25s ease, box-shadow .25s ease;
 }
+.price-card:hover { transform: translateY(-5px); box-shadow: 0 18px 44px rgba(11,61,46,.12); }
+.price-card.popular:hover { transform: translateY(-5px) scale(1.03); }
 .price-card.popular { background: #0b3d2e; color: #fff; border-color: #0b3d2e; transform: scale(1.03); box-shadow: 0 24px 54px rgba(11,61,46,.35); z-index: 1; }
 .popular-badge {
   position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
@@ -777,7 +838,9 @@ h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; l
 .faq-list { display: flex; flex-direction: column; gap: 12px; }
 .faq-item {
   background: #fff; border: 1px solid #e8f0ea; border-radius: 14px; padding: 4px 22px;
+  transition: box-shadow .25s ease;
 }
+.faq-item:hover { box-shadow: 0 8px 24px rgba(11,61,46,.08); }
 .faq-item summary {
   list-style: none; cursor: pointer; font-weight: 700; font-size: .95rem; color: #0f172a;
   padding: 16px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -785,7 +848,12 @@ h2 { font-size: 2.1rem; font-weight: 800; line-height: 1.15; margin: 0 0 12px; l
 .faq-item summary::-webkit-details-marker { display: none; }
 .chev { color: #8aa397; transition: transform .2s; }
 .faq-item[open] .chev { transform: rotate(180deg); }
-.faq-item p { color: #5b6b62; font-size: .9rem; line-height: 1.65; margin: 0 0 18px; }
+.faq-item p {
+  color: #5b6b62; font-size: .9rem; line-height: 1.65; margin: 0 0 18px;
+  overflow: hidden;
+}
+.faq-item[open] p { animation: faqIn .3s ease; }
+@keyframes faqIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ═══════════════════ CTA FINAL ═══════════════════ */
 .cta-section { background: #e8eef5; padding-top: 20px; }

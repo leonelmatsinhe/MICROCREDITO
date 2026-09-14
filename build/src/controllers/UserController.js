@@ -222,10 +222,11 @@ const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 message: "Sua empresa está aguardando aprovação do Super Admin. Contacto: +258 870740202",
             });
         }
-        // Verificar estado de aprovação da empresa (Super Admin tem companyId NULL)
+        // Verificar estado de aprovação da empresa (Super Admin tem companyId NULL e nunca é bloqueado)
         let companyStatus = null;
+        const userRole = Number(user.getDataValue("userRole"));
         const companyId = user.getDataValue("companyId");
-        if (companyId) {
+        if (companyId && userRole !== 0) {
             try {
                 const [rows] = yield db_1.db.query("SELECT approval_status FROM companies WHERE id = ?", { replacements: [companyId] });
                 companyStatus = ((_b = rows[0]) === null || _b === void 0 ? void 0 : _b.approval_status) || null;

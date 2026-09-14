@@ -471,7 +471,7 @@
           </div>
         </q-card-section>
 
-        <q-card-actions align="right" class="q-pa-md">
+        <q-card-actions align="right" class="q-pa-md q-gutter-sm">
           <q-btn
             outline
             label="Solicitar documentos"

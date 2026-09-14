@@ -154,6 +154,9 @@ routes.get("/api/document/file/:fileName", (req, res) => {
 routes.post("/api/companies/register", SuperAdminController_1.registerCompany);
 // Planos de subscrição — público (landing + registo de empresa)
 routes.get("/api/subscription-plans", SuperAdminController_1.listPlans);
+// Províncias e distritos públicos (usados no cadastro público da empresa)
+routes.get("/api/provinces", ProvinceController_1.findAllProvinces);
+routes.get("/api/districts", ProvinceController_1.findAllDistricts);
 // TEMPORÁRIO: debug de empresas sem auth (remover em produção)
 routes.get("/api/debug/companies", SuperAdminController_1.debugCompanies);
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
