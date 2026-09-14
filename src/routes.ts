@@ -100,6 +100,7 @@ import {
   destroyLoan,
   findLoanByCustomer,
   getLoanAmortization,
+  invalidateDisbursedLoan,
   updateLoan,
   updateLoanInstallmentDates,
 } from "./controllers/LoanController";
@@ -358,6 +359,7 @@ routes.get("/api/loan/amortization/:id", getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", findAllLoans);
 routes.get("/api/loans/overview/:companyId", findAllLoansOverview);
+routes.put("/api/loan/:id/invalidate-disbursement", invalidateDisbursedLoan);
 routes.put("/api/loan/:id", updateLoan);
 routes.put("/api/loan/:id/update-dates", updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", destroyLoan);

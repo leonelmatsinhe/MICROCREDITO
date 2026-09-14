@@ -314,6 +314,12 @@ const updateLoan = async (req: Request, res: Response) => {
 
   // Buscar o empréstimo antes de atualizar para verificar mudança de status
   const previousLoan: any = await LoanModel.findByPk(id);
+  if (previousLoan && Number(previousLoan.status) === 1 && Number(req.body.status) === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Use a acção de invalidar desembolso para voltar este crédito a Pendentes.",
+    });
+  }
 
   // Valida a capacidade de pagamento (1/3 do rendimento) também ao REABRIR um
   // pedido rejeitado (2/-1 → 0): o pedido só volta a Pendentes dentro da regra
@@ -505,6 +511,99 @@ const destroyLoan = async (req: Request, res: Response) => {
     await transaction.rollback();
     console.error("Erro ao eliminar crédito e dependências:", error);
     return res.status(500).json({ success: false, message: "Não foi possível eliminar o crédito." });
+  }
+};
+
+const invalidateDisbursedLoan = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const transaction = await db.transaction();
+  try {
+    const loan: any = await LoanModel.findByPk(id, { transaction });
+    if (!loan) {
+      await transaction.rollback();
+      return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+    }
+
+    if (Number(loan.status) !== 1) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Apenas créditos desembolsados podem ser invalidados para Pendentes.",
+      });
+    }
+
+    const installments: any[] = await AmorizationLoanModel.findAll({
+      where: { loanId: id },
+      attributes: ["id", "paidAmount", "status"],
+      transaction,
+      raw: true,
+    });
+    const installmentIds = installments.map((installment: any) => Number(installment.id));
+    const paidInstallmentCount = installments.filter((installment: any) =>
+      Number(installment.paidAmount) > 0 || [1, -1].includes(Number(installment.status))
+    ).length;
+    if (paidInstallmentCount > 0) {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        message: `Não é possível invalidar o desembolso porque existem ${paidInstallmentCount} prestação(ões) com pagamento registado.`,
+      });
+    }
+
+    const paymentWhere: any = installmentIds.length > 0
+      ? {
+          [Op.or]: [
+            { loanId: id },
+            { amortizationLoanId: { [Op.in]: installmentIds } },
+          ],
+        }
+      : { loanId: id };
+
+    const paymentCount = await TranzactionModel.count({
+      where: paymentWhere,
+      transaction,
+    });
+    if (paymentCount > 0) {
+      await transaction.rollback();
+      return res.status(409).json({
+        success: false,
+        message: `Não é possível invalidar o desembolso porque existem ${paymentCount} pagamento(s) associado(s) a este crédito.`,
+      });
+    }
+
+    if (installmentIds.length > 0) {
+      await DebtModel.destroy({
+        where: {
+          [Op.or]: [
+            { loanId: id },
+            { amortisationId: { [Op.in]: installmentIds } },
+          ],
+        },
+        transaction,
+      });
+      await AmorizationLoanModel.destroy({ where: { loanId: id }, transaction });
+    } else {
+      await DebtModel.destroy({ where: { loanId: id }, transaction });
+    }
+
+    await LoanModel.update(
+      { status: 0, disbursementDate: null },
+      { where: { id }, transaction }
+    );
+    await transaction.commit();
+
+    return res.status(200).json({
+      success: true,
+      message: "Desembolso invalidado. O crédito voltou a Pendentes e o plano de prestações foi removido.",
+      removedInstallments: installmentIds.length,
+    });
+  } catch (error: any) {
+    await transaction.rollback();
+    console.error("Erro ao invalidar desembolso:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Não foi possível invalidar o desembolso.",
+    });
   }
 };
 
@@ -801,5 +900,6 @@ export {
   createLoan,
   updateLoan,
   destroyLoan,
+  invalidateDisbursedLoan,
   updateLoanInstallmentDates,
 };

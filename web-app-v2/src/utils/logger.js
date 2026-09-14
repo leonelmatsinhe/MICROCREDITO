@@ -219,6 +219,21 @@ export async function logReopenLoan(customerName, amount, accountNumber) {
   })
 }
 
+export async function logInvalidateDisbursement(customerName, amount, accountNumber) {
+  const user = getCurrentUser()
+  if (!user) return
+  const conta = accountNumber !== undefined && accountNumber !== null && accountNumber !== '' ? ` (conta ${accountNumber})` : ''
+  return logAction({
+    userId: user.id,
+    companyId: user.companyId,
+    userName: user.name,
+    userRole: user.userRole,
+    action: 'INVALIDAR DESEMBOLSO',
+    module: 'Créditos',
+    description: `Desembolso de ${formatMoney(amount)} invalidado para "${customerName}"${conta} — crédito voltou a Pendentes`
+  })
+}
+
 /**
  * Helper para logs de Pagamentos
  */

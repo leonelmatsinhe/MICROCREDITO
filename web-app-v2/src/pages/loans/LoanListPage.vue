@@ -299,6 +299,18 @@
               <!-- Desembolsados / Terminados: painel do mutuário + eliminar (se sem pagamentos) -->
               <template v-else>
                 <q-btn
+                  v-if="segment.key === 'active'"
+                  flat round dense icon="undo" size="xs"
+                  :color="Number(props.row.totalPaid) > 0 ? 'grey-5' : 'orange-8'"
+                  :disable="Number(props.row.totalPaid) > 0"
+                  @click.stop="confirmInvalidateDisbursement(props.row)"
+                >
+                  <q-tooltip v-if="Number(props.row.totalPaid) > 0">
+                    Não é possível invalidar — existem pagamentos associados a este crédito
+                  </q-tooltip>
+                  <q-tooltip v-else>Invalidar desembolso e voltar a Pendentes</q-tooltip>
+                </q-btn>
+                <q-btn
                   flat round dense icon="visibility" color="primary" size="xs"
                   @click.stop="goToCustomer(props.row.accountNumber)"
                 >
@@ -350,6 +362,48 @@
         <q-card-actions align="right" class="q-pa-md">
           <q-btn flat label="Cancelar" color="grey" v-close-popup />
           <q-btn unelevated label="Eliminar" color="negative" :loading="deleting" @click="deleteLoanConfirmed" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Invalidar desembolso -->
+    <q-dialog v-model="showInvalidateConfirm" persistent>
+      <q-card style="border-radius: 12px; min-width: 320px; max-width: 460px">
+        <q-card-section class="row items-center q-pb-none">
+          <q-avatar icon="undo" color="orange-8" text-color="white" size="40px" />
+          <div class="q-ml-md">
+            <div class="text-h6">Invalidar Desembolso</div>
+            <div class="text-caption text-grey-6">O crédito volta para Pendentes.</div>
+          </div>
+        </q-card-section>
+        <q-card-section>
+          <div class="text-body2">
+            Esta acção volta o crédito da conta <strong>{{ invalidatingLoan?.accountNumber }}</strong> para
+            <strong>Pendentes</strong> e apaga as prestações associadas.
+            <template v-if="Number(invalidatingLoan?.totalPaid) > 0">
+              <div class="text-negative text-weight-medium q-mt-sm">
+                <q-icon name="warning" size="16px" class="q-mr-xs" />
+                Não é possível invalidar — existem pagamentos registados neste crédito.
+              </div>
+            </template>
+            <template v-else>
+              <div class="text-caption text-grey-6 q-mt-sm">
+                Esta operação só é permitida porque ainda não há pagamentos associados ao crédito.
+              </div>
+            </template>
+          </div>
+        </q-card-section>
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat label="Cancelar" color="grey" :disable="invalidating" v-close-popup />
+          <q-btn
+            unelevated
+            label="Invalidar"
+            color="orange-8"
+            icon="undo"
+            :loading="invalidating"
+            :disable="Number(invalidatingLoan?.totalPaid) > 0"
+            @click="invalidateDisbursementConfirmed"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -709,7 +763,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort, formatInterestRate, formatPeriod, getInitials } from '@/utils/formatters'
-import { logReopenLoan, logApproveLoan, logRejectLoan, logSendSms } from '@/utils/logger'
+import { logReopenLoan, logApproveLoan, logRejectLoan, logSendSms, logInvalidateDisbursement } from '@/utils/logger'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
@@ -749,6 +803,9 @@ const pagination = ref({ sortBy: 'dateCreated', descending: true, page: 1, rowsP
 const showDeleteConfirm = ref(false)
 const deletingLoan = ref(null)
 const deleting = ref(false)
+const showInvalidateConfirm = ref(false)
+const invalidatingLoan = ref(null)
+const invalidating = ref(false)
 
 // ─── Revisão de documentos / aprovação (tab Pendentes) ───
 const showReview = ref(false)
@@ -1097,6 +1154,40 @@ async function deleteLoanConfirmed() {
     $q.notify({ type: 'negative', message: msg, position: 'top', timeout: 8000 })
   } finally {
     deleting.value = false
+  }
+}
+
+function confirmInvalidateDisbursement(row) {
+  invalidatingLoan.value = row
+  showInvalidateConfirm.value = true
+}
+
+async function invalidateDisbursementConfirmed() {
+  const loan = invalidatingLoan.value
+  if (!loan) return
+
+  invalidating.value = true
+  try {
+    const { data } = await api.put(`/api/loan/${loan.id}/invalidate-disbursement`)
+    await logInvalidateDisbursement(loan.customerName || `Conta ${loan.accountNumber}`, loan.amount, loan.accountNumber)
+    $q.notify({
+      type: 'positive',
+      message: data?.message || 'Desembolso invalidado — o crédito voltou a Pendentes.',
+      position: 'top'
+    })
+    showInvalidateConfirm.value = false
+    invalidatingLoan.value = null
+    await fetchLoans()
+    tab.value = 'pending'
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || 'Erro ao invalidar desembolso',
+      position: 'top',
+      timeout: 8000
+    })
+  } finally {
+    invalidating.value = false
   }
 }
 

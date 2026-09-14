@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateLoanInstallmentDates = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
+exports.updateLoanInstallmentDates = exports.invalidateDisbursedLoan = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
@@ -275,6 +275,12 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     const { id } = req.params;
     // Buscar o empréstimo antes de atualizar para verificar mudança de status
     const previousLoan = yield LoanModel_1.LoanModel.findByPk(id);
+    if (previousLoan && Number(previousLoan.status) === 1 && Number(req.body.status) === 0) {
+        return res.status(400).json({
+            success: false,
+            message: "Use a acção de invalidar desembolso para voltar este crédito a Pendentes.",
+        });
+    }
     // Valida a capacidade de pagamento (1/3 do rendimento) também ao REABRIR um
     // pedido rejeitado (2/-1 → 0): o pedido só volta a Pendentes dentro da regra
     // ou com parecer/observação registada (mín. 10 caracteres).
@@ -452,6 +458,89 @@ const destroyLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
     }
 });
 exports.destroyLoan = destroyLoan;
+const invalidateDisbursedLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    const transaction = yield db_1.db.transaction();
+    try {
+        const loan = yield LoanModel_1.LoanModel.findByPk(id, { transaction });
+        if (!loan) {
+            yield transaction.rollback();
+            return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+        }
+        if (Number(loan.status) !== 1) {
+            yield transaction.rollback();
+            return res.status(400).json({
+                success: false,
+                message: "Apenas créditos desembolsados podem ser invalidados para Pendentes.",
+            });
+        }
+        const installments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
+            where: { loanId: id },
+            attributes: ["id", "paidAmount", "status"],
+            transaction,
+            raw: true,
+        });
+        const installmentIds = installments.map((installment) => Number(installment.id));
+        const paidInstallmentCount = installments.filter((installment) => Number(installment.paidAmount) > 0 || [1, -1].includes(Number(installment.status))).length;
+        if (paidInstallmentCount > 0) {
+            yield transaction.rollback();
+            return res.status(409).json({
+                success: false,
+                message: `Não é possível invalidar o desembolso porque existem ${paidInstallmentCount} prestação(ões) com pagamento registado.`,
+            });
+        }
+        const paymentWhere = installmentIds.length > 0
+            ? {
+                [sequelize_1.Op.or]: [
+                    { loanId: id },
+                    { amortizationLoanId: { [sequelize_1.Op.in]: installmentIds } },
+                ],
+            }
+            : { loanId: id };
+        const paymentCount = yield TranzactionModel_1.TranzactionModel.count({
+            where: paymentWhere,
+            transaction,
+        });
+        if (paymentCount > 0) {
+            yield transaction.rollback();
+            return res.status(409).json({
+                success: false,
+                message: `Não é possível invalidar o desembolso porque existem ${paymentCount} pagamento(s) associado(s) a este crédito.`,
+            });
+        }
+        if (installmentIds.length > 0) {
+            yield DebtModel_1.DebtModel.destroy({
+                where: {
+                    [sequelize_1.Op.or]: [
+                        { loanId: id },
+                        { amortisationId: { [sequelize_1.Op.in]: installmentIds } },
+                    ],
+                },
+                transaction,
+            });
+            yield AmortizationLoanModel_1.AmorizationLoanModel.destroy({ where: { loanId: id }, transaction });
+        }
+        else {
+            yield DebtModel_1.DebtModel.destroy({ where: { loanId: id }, transaction });
+        }
+        yield LoanModel_1.LoanModel.update({ status: 0, disbursementDate: null }, { where: { id }, transaction });
+        yield transaction.commit();
+        return res.status(200).json({
+            success: true,
+            message: "Desembolso invalidado. O crédito voltou a Pendentes e o plano de prestações foi removido.",
+            removedInstallments: installmentIds.length,
+        });
+    }
+    catch (error) {
+        yield transaction.rollback();
+        console.error("Erro ao invalidar desembolso:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Não foi possível invalidar o desembolso.",
+        });
+    }
+});
+exports.invalidateDisbursedLoan = invalidateDisbursedLoan;
 /**
  * Lista de créditos da empresa com métricas agregadas por crédito, para a
  * página de Créditos (Pendentes / Desembolsados / Terminados):

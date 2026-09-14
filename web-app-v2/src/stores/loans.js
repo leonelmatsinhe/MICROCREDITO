@@ -175,6 +175,20 @@ export const useLoansStore = defineStore('loans', {
       }
     },
 
+    // Invalidar desembolso e voltar o crédito para Pendentes
+    async invalidateDisbursement(id) {
+      this.saving = true
+      try {
+        const { data } = await api.put(`/api/loan/${id}/invalidate-disbursement`)
+        return data
+      } catch (error) {
+        console.error('Erro ao invalidar desembolso:', error)
+        throw error
+      } finally {
+        this.saving = false
+      }
+    },
+
     // Create amortization installments for a loan
     // payload must include: companyId, loanId, accountNumber, interestRate, numberOfInstallments, amount, dueDate
     async createAmortization(payload) {

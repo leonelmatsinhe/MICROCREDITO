@@ -199,6 +199,7 @@ routes.get("/api/loan/amortization/:id", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", LoanController_1.findAllLoans);
 routes.get("/api/loans/overview/:companyId", LoanController_1.findAllLoansOverview);
+routes.put("/api/loan/:id/invalidate-disbursement", LoanController_1.invalidateDisbursedLoan);
 routes.put("/api/loan/:id", LoanController_1.updateLoan);
 routes.put("/api/loan/:id/update-dates", LoanController_1.updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", LoanController_1.destroyLoan);
