@@ -42,6 +42,8 @@ const SuperAdminController_1 = require("./controllers/SuperAdminController");
 const cashRoutes_1 = require("./routes/cashRoutes");
 // CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
 const bankAccountRoutes_1 = require("./routes/bankAccountRoutes");
+// AI BOT MAISMOLA — assistente read-only (Groq tool-calling)
+const aiBotRoutes_1 = require("./routes/aiBotRoutes");
 const NotificationController_1 = require("./controllers/NotificationController");
 const DashboardController_1 = require("./controllers/DashboardController");
 const checkCashRegisterOpen_1 = require("./middlewares/checkCashRegisterOpen");
@@ -53,6 +55,8 @@ exports.routes = routes;
 routes.use(cashRoutes_1.cashRoutes);
 // CARTEIRA REAL — sub-router das contas bancárias (accounts + bank_transactions)
 routes.use(bankAccountRoutes_1.bankAccountRoutes);
+// AI BOT — sub-router do assistente de IA (só leitura; identidade via JWT)
+routes.use(aiBotRoutes_1.aiBotRoutes);
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
 routes.get("/logo/:image", (req, res) => {
     // Suporta tanto "filename" como "/documents/filename"

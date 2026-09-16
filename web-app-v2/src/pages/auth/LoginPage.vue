@@ -13,7 +13,7 @@
           />
           <div class="q-ml-sm">
             <div class="text-weight-bold" style="font-size: 16px; color: white">Mais Mola</div>
-            <div class="text-caption" style="color: rgba(255,255,255,0.65); font-size: 11px">Gestão de Microcrédito</div>
+            <div class="text-caption hero-brand-caption" style="font-size: 11px">Gestão de Microcrédito</div>
           </div>
         </div>
 
@@ -164,8 +164,8 @@
 
           <q-separator class="q-my-xs" />
 
-          <!-- REMOVIDO TEMPORARIAMENTE: login de mutuário e auto-cadastro -->
-          <!-- <q-btn
+          <!-- Login do mutuário -->
+          <q-btn
             outline
             color="secondary"
             class="full-width"
@@ -175,9 +175,10 @@
             @click="showCustomerLogin = true"
           >
             <q-icon name="person" class="q-mr-xs" size="18px" />
-            <span style="font-size: 13px">Entrar como Mutuário</span>
+            <span style="font-size: 13px">Painel do Mutuário</span>
           </q-btn>
 
+          <!-- Gaveta de auto-cadastro -->
           <q-btn
             flat
             color="primary"
@@ -189,11 +190,11 @@
           >
             <q-icon name="person_add" class="q-mr-xs" size="18px" />
             <span style="font-size: 13px">Criar conta de mutuário</span>
-          </q-btn> -->
+          </q-btn>
           <!-- REMOVIDO: botão de cadastro de empresa -->
         </q-form>
 
-        <div class="text-center q-mt-sm text-grey-5" style="font-size: 10px">
+        <div class="text-center q-mt-sm auth-copyright" style="font-size: 10px">
           © {{ currentYear }} Mais Mola
         </div>
       </div>
@@ -884,6 +885,12 @@ async function handleCustomerLogin() {
 .auth-bg .hero-tagline .text-h4 {
   color: #0b3d2e !important;
 }
+.auth-bg .hero-brand-caption {
+  color: #4a5b68 !important;
+}
+.auth-bg .auth-copyright {
+  color: #4a5b68 !important;
+}
 .auth-bg .hero-tagline p {
   color: #4a5b68 !important;
 }
@@ -905,6 +912,12 @@ body.body--dark .auth-bg .hero-brand .text-weight-bold,
 body.body--dark .auth-bg .hero-tagline .text-h4,
 body.body--dark .auth-bg .benefit-title {
   color: #ffffff !important;
+}
+body.body--dark .auth-bg .hero-brand-caption {
+  color: rgba(255,255,255,0.65) !important;
+}
+body.body--dark .auth-copyright {
+  color: rgba(255,255,255,0.5) !important;
 }
 body.body--dark .auth-bg .hero-tagline p,
 body.body--dark .auth-bg .benefit-desc,

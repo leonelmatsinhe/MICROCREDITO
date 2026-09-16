@@ -2,6 +2,8 @@
   <AuthLayout v-if="isAuthPage">
     <router-view />
   </AuthLayout>
+  <!-- Portal do mutuário tem o seu próprio layout (mobile-first, sem sidebar) -->
+  <router-view v-else-if="isPortalRoute" />
   <MainLayout v-else-if="isLoggedIn">
     <router-view />
   </MainLayout>
@@ -28,6 +30,7 @@ const companyStore = useCompanyStore()
 
 const isAuthPage = computed(() => route.name === 'Login')
 const isLoggedIn = computed(() => authStore.isLoggedIn)
+const isPortalRoute = computed(() => route.path === '/portal' || route.path.startsWith('/portal/'))
 
 // Aplicar tema ao iniciar
 $q.dark.set(uiStore.isDark)

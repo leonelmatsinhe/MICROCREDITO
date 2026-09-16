@@ -158,6 +158,9 @@
         </q-btn>
       </div>
     </q-toolbar>
+
+    <!-- AI BOT MAISMOLA — botão flutuante + dialog (read-only) -->
+    <AiBotMaisMola />
   </q-header>
 </template>
 
@@ -171,6 +174,7 @@ import { useCustomerStore } from '@/stores/customers'
 import { useSuperAdminStore } from '@/stores/superAdmin'
 import { usePlanStore } from '@/stores/plan'
 import AlertBell from './AlertBell.vue'
+import AiBotMaisMola from '../AiBotMaisMola.vue'
 import { getInitials, timeAgo } from '@/utils/formatters'
 
 const emit = defineEmits(['toggle-sidebar'])

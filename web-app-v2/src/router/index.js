@@ -17,7 +17,12 @@ const LoanListPage = () => import('@/pages/loans/LoanListPage.vue')
 const SettingsPage = () => import('@/pages/SettingsPage.vue')
 const ProfilePage = () => import('@/pages/ProfilePage.vue')
 const NotificationsPage = () => import('@/pages/NotificationsPage.vue')
-const CustomerPortalPage = () => import('@/pages/CustomerPortalPage.vue')
+const PortalLayout = () => import('@/layouts/PortalLayout.vue')
+const PortalDashboardPage = () => import('@/pages/portal/PortalDashboardPage.vue')
+const PortalLoansPage = () => import('@/pages/portal/PortalLoansPage.vue')
+const PortalInstallmentsPage = () => import('@/pages/portal/PortalInstallmentsPage.vue')
+const PortalPaymentsPage = () => import('@/pages/portal/PortalPaymentsPage.vue')
+const PortalProfilePage = () => import('@/pages/portal/PortalProfilePage.vue')
 const ContractDocumentsPage = () => import('@/pages/loans/ContractDocumentsPage.vue')
 const ReportsBMPage = () => import('@/pages/ReportsBMPage.vue')
 const InstallmentsControlPage = () => import('@/pages/InstallmentsControlPage.vue')
@@ -56,10 +61,10 @@ const routes = [
     component: RegisterCompanyPage,
     meta: { requiresAuth: false }
   },
-  // PORTAL DO MUTUÁRIO — desabilitado temporariamente (redireciona para a landing)
+  // PORTAL DO MUTUÁRIO
   {
     path: '/portal-mutuario',
-    redirect: '/'
+    redirect: '/portal'
   },
   {
     path: '/dashboard',
@@ -187,10 +192,17 @@ const routes = [
     component: NotificationsPage,
     meta: { requiresAuth: true }
   },
-  // Portal do mutuário — desabilitado temporariamente (redirect landing)
+  // Portal do mutuário — layout mobile-first (sem sidebar)
   {
     path: '/portal',
-    redirect: '/'
+    component: PortalLayout,
+    children: [
+      { path: '', name: 'CustomerPortal', component: PortalDashboardPage, meta: { requiresAuth: true } },
+      { path: 'creditos', name: 'PortalCreditos', component: PortalLoansPage, meta: { requiresAuth: true } },
+      { path: 'prestacoes', name: 'PortalPrestacoes', component: PortalInstallmentsPage, meta: { requiresAuth: true } },
+      { path: 'pagamentos', name: 'PortalPagamentos', component: PortalPaymentsPage, meta: { requiresAuth: true } },
+      { path: 'perfil', name: 'PortalPerfil', component: PortalProfilePage, meta: { requiresAuth: true } }
+    ]
   },
   {
     path: '/:pathMatch(.*)*',

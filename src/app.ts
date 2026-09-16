@@ -12,6 +12,7 @@ import {
   enqueueOutstandingLateInterestAlerts,
   flushSmsQueue,
 } from "./services/SmsGatewayService";
+import { runDailyOverdueCollectionSms } from "./services/overdueCollectionSmsService";
 import cors from "cors";
 import morgan from "morgan";
 import bodyParser from "body-parser";
@@ -111,6 +112,33 @@ const bootstrap = async () => {
     setTimeout(runAutomaticSmsAlerts, 30 * 1000);
     setInterval(runAutomaticSmsAlerts, 6 * 60 * 60 * 1000);
     console.log("[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h");
+
+    // SMS DE COBRANÇA POR ATRASO — job diário (ranking de atrasos do AI Bot).
+    // Corre 1x por dia às 07:00 (fuso do servidor) e 1x 60s após o arranque
+    // (catch-up de servidores reiniciados). Anti-duplicação: 1 SMS por
+    // cliente/dia — verificação na fila antes de criar.
+    const scheduleNextOverdueRun = () => {
+      const now = new Date();
+      const next = new Date(now);
+      next.setHours(7, 0, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      setTimeout(async () => {
+        await runOverdueCollectionJob();
+        scheduleNextOverdueRun(); // reagenda para o dia seguinte
+      }, next.getTime() - now.getTime());
+    };
+    const runOverdueCollectionJob = async () => {
+      try {
+        const companies: any[] = (await CompanyModel.findAll({ attributes: ["id"] })) as any[];
+        await runDailyOverdueCollectionSms(companies.map((c: any) => Number(c.id)));
+        flushSmsQueue(200);
+      } catch (error: any) {
+        console.error("[SMS Cobranca] Erro no job diário:", error?.message || error);
+      }
+    };
+    setTimeout(runOverdueCollectionJob, 60 * 1000);
+    scheduleNextOverdueRun();
+    console.log("[SMS Cobranca] Job diário activo — 07:00 e catch-up no arranque");
   });
 };
 

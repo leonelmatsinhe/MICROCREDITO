@@ -20,6 +20,7 @@ const migrations_1 = require("./migrations");
 const CompanyModel_1 = require("./database/models/CompanyModel");
 require("./database/associations");
 const SmsGatewayService_1 = require("./services/SmsGatewayService");
+const overdueCollectionSmsService_1 = require("./services/overdueCollectionSmsService");
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
@@ -101,6 +102,34 @@ const bootstrap = () => __awaiter(void 0, void 0, void 0, function* () {
         setTimeout(runAutomaticSmsAlerts, 30 * 1000);
         setInterval(runAutomaticSmsAlerts, 6 * 60 * 60 * 1000);
         console.log("[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h");
+        // SMS DE COBRANÇA POR ATRASO — job diário (ranking de atrasos do AI Bot).
+        // Corre 1x por dia às 07:00 (fuso do servidor) e 1x 60s após o arranque
+        // (catch-up de servidores reiniciados). Anti-duplicação: 1 SMS por
+        // cliente/dia — verificação na fila antes de criar.
+        const scheduleNextOverdueRun = () => {
+            const now = new Date();
+            const next = new Date(now);
+            next.setHours(7, 0, 0, 0);
+            if (next <= now)
+                next.setDate(next.getDate() + 1);
+            setTimeout(() => __awaiter(void 0, void 0, void 0, function* () {
+                yield runOverdueCollectionJob();
+                scheduleNextOverdueRun(); // reagenda para o dia seguinte
+            }), next.getTime() - now.getTime());
+        };
+        const runOverdueCollectionJob = () => __awaiter(void 0, void 0, void 0, function* () {
+            try {
+                const companies = (yield CompanyModel_1.CompanyModel.findAll({ attributes: ["id"] }));
+                yield (0, overdueCollectionSmsService_1.runDailyOverdueCollectionSms)(companies.map((c) => Number(c.id)));
+                (0, SmsGatewayService_1.flushSmsQueue)(200);
+            }
+            catch (error) {
+                console.error("[SMS Cobranca] Erro no job diário:", (error === null || error === void 0 ? void 0 : error.message) || error);
+            }
+        });
+        setTimeout(runOverdueCollectionJob, 60 * 1000);
+        scheduleNextOverdueRun();
+        console.log("[SMS Cobranca] Job diário activo — 07:00 e catch-up no arranque");
     });
 });
 bootstrap();

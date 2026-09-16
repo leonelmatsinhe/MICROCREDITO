@@ -174,6 +174,8 @@ import {
 import { cashRoutes } from "./routes/cashRoutes";
 // CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
 import { bankAccountRoutes } from "./routes/bankAccountRoutes";
+// AI BOT MAISMOLA — assistente read-only (Groq tool-calling)
+import { aiBotRoutes } from "./routes/aiBotRoutes";
 
 import {
   getNotifications,
@@ -198,6 +200,8 @@ const routes = express.Router();
 routes.use(cashRoutes);
 // CARTEIRA REAL — sub-router das contas bancárias (accounts + bank_transactions)
 routes.use(bankAccountRoutes);
+// AI BOT — sub-router do assistente de IA (só leitura; identidade via JWT)
+routes.use(aiBotRoutes);
 const documentUpload = multer(multerConfig).single("file");
 
 routes.get("/logo/:image", (req: Request, res: Response) => {
