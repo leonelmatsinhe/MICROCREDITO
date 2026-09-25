@@ -45,6 +45,24 @@
                   <div v-if="payment.installmentOrder" class="text-caption text-primary q-mt-xs">
                     Prestação {{ ordinalBadge(payment.installmentOrder) }}
                   </div>
+                  <!-- Comprovativo: mostra o n.º já emitido e permite descarregar -->
+                  <div class="row items-center q-gutter-x-xs q-mt-xs">
+                    <q-btn
+                      flat
+                      dense
+                      no-caps
+                      padding="2px 6px"
+                      size="11px"
+                      color="primary"
+                      icon="picture_as_pdf"
+                      label="Recibo"
+                      :loading="reciboSendingId === payment.id"
+                      @click="downloadRecibo(payment)"
+                    />
+                    <span v-if="payment.reciboNumero" class="text-caption text-grey-6">
+                      {{ payment.reciboNumero }}
+                    </span>
+                  </div>
                 </div>
                 <div class="text-right" style="flex-shrink: 0">
                   <div class="text-caption text-grey-5">{{ formatDate(payment.createdAt) }}</div>
@@ -102,11 +120,25 @@ const authStore = useAuthStore()
 const companyStore = useCompanyStore()
 const {
   loading, customer, loans, allPayments,
-  formatMoney, formatDate, getLoanStatusColor, getLoanStatusText, ordinalBadge, paymentMethodLabel
+  formatMoney, formatDate, getLoanStatusColor, getLoanStatusText, ordinalBadge, paymentMethodLabel,
+  downloadPaymentRecibo
 } = usePortalData()
 
 const generatingPdf = ref(false)
 const showExtractPicker = ref(false)
+// Id do pagamento cujo recibo está a ser preparado (spinner do botão)
+const reciboSendingId = ref(null)
+
+/** Descarrega o comprovativo (recibo com numeração legal AT) de um pagamento. */
+async function downloadRecibo(payment) {
+  if (!payment?.id || reciboSendingId.value) return
+  reciboSendingId.value = payment.id
+  try {
+    await downloadPaymentRecibo(payment.id, payment.reciboNumero)
+  } finally {
+    reciboSendingId.value = null
+  }
+}
 
 function openExtractPicker() {
   if (loans.value.length === 1) {

@@ -100,6 +100,67 @@
           </div>
         </div>
 
+        <!-- ═══ CARTEIRA DE FINANCIAMENTO (analítica) — obrigatória ═══ -->
+        <q-select
+          v-model="walletId"
+          :options="walletSelectOptions"
+          label="Carteira de financiamento *"
+          dense
+          outlined
+          emit-value
+          map-options
+          :loading="loadingWallets"
+          class="q-mb-sm"
+          :rules="[v => !!v || 'Seleccione a carteira (parceria/fundo)']"
+          hint="Origem do capital. Define o relatório do financiador e o limite analítico."
+        >
+          <template v-slot:prepend>
+            <q-icon name="savings" size="18px" />
+          </template>
+          <template v-slot:option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section avatar>
+                <q-badge :color="scope.opt.cor || 'blue'" :label="scope.opt.codigo" />
+              </q-item-section>
+              <q-item-section>
+                <q-item-label style="font-size: 13px">{{ scope.opt.label }}</q-item-label>
+                <q-item-label caption>{{ scope.opt.resumo }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+          <template v-slot:no-option>
+            <q-item>
+              <q-item-section class="text-grey-5">
+                Sem carteiras configuradas — crie uma em Carteiras Financiamento.
+              </q-item-section>
+            </q-item>
+          </template>
+        </q-select>
+
+        <!-- Informação da carteira escolhida (alocado / desembolsado / disponível) -->
+        <q-banner
+          v-if="selectedWallet"
+          dense
+          rounded
+          class="q-mb-md"
+          :class="walletInsufficient ? 'bg-red-1 text-red-9' : 'bg-green-1 text-green-9'"
+        >
+          <template v-slot:avatar>
+            <q-icon :name="walletInsufficient ? 'error' : 'savings'" />
+          </template>
+          <div class="text-caption">
+            <span v-if="selectedWallet.parceiro"><strong>{{ selectedWallet.parceiro }}</strong> · </span>
+            Alocado: <strong>{{ selectedWallet.ilimitado ? 'sem limite' : formatMoney(selectedWallet.allocated) }}</strong>
+            · Desembolsado: <strong>{{ formatMoney(selectedWallet.disbursed) }}</strong>
+            · Disponível: <strong>{{ selectedWallet.ilimitado ? 'sem limite' : formatMoney(selectedWallet.saldo) }}</strong>
+            <span v-if="selectedWallet.taxa !== null"> · Taxa da carteira: <strong>{{ (Number(selectedWallet.taxa) * 100).toFixed(1) }}%</strong></span>
+          </div>
+          <div v-if="walletInsufficient" class="text-caption q-mt-xs">
+            O valor do crédito ({{ formatMoney(loan?.amount) }}) excede o disponível desta carteira.
+            Desembolso bloqueado — escolha outro fundo ou aumente o capital alocado.
+          </div>
+        </q-banner>
+
         <!-- Taxa de juro -->
         <q-select
           v-model="rateId"
@@ -225,6 +286,7 @@ import { ref, computed, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useLoansStore } from '@/stores/loans'
+import { useWalletsStore } from '@/stores/wallets'
 import { api } from '@/boot/axios'
 import { formatMoney } from '@/utils/formatters'
 
@@ -247,6 +309,52 @@ const show = computed({
 const rateList = ref([])
 const loadingRates = ref(false)
 const rateId = ref(null)
+// ─── CARTEIRA DE FINANCIAMENTO (analítica) — obrigatória no desembolso ───
+const walletId = ref(null)
+const loadingWallets = ref(false)
+const walletsStore = useWalletsStore()
+
+const walletOptionsList = computed(() => walletsStore.walletOptions)
+// Opções enriquecidas para o select (código + resumo analítico)
+const walletSelectOptions = computed(() =>
+  walletOptionsList.value.map((w) => ({
+    ...w,
+    resumo: `Alocado: ${w.ilimitado ? 'sem limite' : formatMoney(w.allocated)} · Desembolsado: ${formatMoney(w.disbursed)} · Disponível: ${w.ilimitado ? 'sem limite' : formatMoney(w.saldo)}`
+  }))
+)
+const selectedWallet = computed(() => walletOptionsList.value.find((w) => Number(w.value) === Number(walletId.value)) || null)
+// Bloqueia o desembolso quando o capital alocado da carteira não cobre o valor.
+const walletInsufficient = computed(() => {
+  const wallet = selectedWallet.value
+  if (!wallet || wallet.ilimitado) return false
+  return Number(wallet.saldo) < (Number(props.loan?.amount) || 0) - 0.01
+})
+
+async function fetchWallets() {
+  const companyId = props.loan?.companyId || authStore.companyId
+  if (!companyId) return
+  loadingWallets.value = true
+  try {
+    await walletsStore.fetchWallets(companyId, { onlyActive: true })
+    // Se o crédito já tiver carteira definida, usá-la; caso contrário, manter vazio (obrigatório escolher).
+    if (props.loan?.walletId) walletId.value = Number(props.loan.walletId)
+  } catch (e) {
+    console.error('Erro ao carregar carteiras de financiamento:', e)
+  } finally {
+    loadingWallets.value = false
+  }
+}
+
+/** Ao escolher a taxa, sugere a carteira associada a essa taxa. */
+function presetWalletFromRate() {
+  const rate = rateList.value.find((r) => Number(r.id) === Number(rateId.value))
+  if (rate && rate.walletId) {
+    walletId.value = Number(rate.walletId)
+    return true
+  }
+  return false
+}
+
 const adminFeeExempt = ref(false)
 const observation = ref('')
 const submitting = ref(false)
@@ -397,8 +505,12 @@ function presetRateFromLoan() {
   if (existing > 0) {
     const match = rateList.value.find(r => Math.abs(Number(r.tax) - existing) < 1e-6)
     rateId.value = match ? match.id : null
+    if (match) presetWalletFromRate()
   }
 }
+
+// Escolher a taxa sugere a carteira a ela associada (o Admin pode trocar).
+watch(rateId, () => presetWalletFromRate())
 
 watch(show, async (val) => {
   if (val) {
@@ -411,8 +523,11 @@ watch(show, async (val) => {
     paymentMethod.value = 'CASH'
     bankAccountId.value = null
     adminFeeAccountId.value = null
+    // Carteira: limpar e carregar (obrigatória no desembolso)
+    walletId.value = props.loan?.walletId ? Number(props.loan.walletId) : null
     fetchBankAccounts()
     fetchAllAccounts()
+    fetchWallets()
     if (rateList.value.length === 0) {
       await fetchRates()
     }
@@ -449,6 +564,19 @@ async function confirmApproval() {
     $q.notify({ type: 'warning', message: 'Seleccione a conta bancária de origem do desembolso', position: 'top' })
     return
   }
+  // Carteira de financiamento: obrigatória e com saldo analítico suficiente.
+  if (!walletId.value) {
+    $q.notify({ type: 'warning', message: 'Seleccione a carteira de financiamento (parceria/fundo)', position: 'top' })
+    return
+  }
+  if (walletInsufficient.value) {
+    $q.notify({
+      type: 'negative',
+      message: 'Saldo analítico da carteira insuficiente para este desembolso',
+      position: 'top'
+    })
+    return
+  }
   // Taxa administrativa cobrada TEM de ter conta de entrada definida.
   if (!adminFeeExempt.value && adminFeeValue.value > 0 && !adminFeeAccountId.value) {
     $q.notify({ type: 'warning', message: 'Indique a conta de entrada da taxa administrativa', position: 'top' })
@@ -476,6 +604,8 @@ async function confirmApproval() {
         amount: Number(loan.amount),
         dueDate,
         status: 0,
+        // ── CARTEIRA DE FINANCIAMENTO: origem analítica do capital ──
+        walletId: walletId.value,
         // ── TESOURARIA: método/conta do desembolso (movimento SAIDA/DESEMBOLSO) ──
         payment_method: paymentMethod.value,
         bank_account_id: paymentMethod.value !== 'CASH' ? bankAccountId.value : null,

@@ -55,7 +55,10 @@ app.use(routes_1.routes);
 app.get("*", (req, res) => {
     res.sendFile(path_1.default.join(publicDir, "index.html"));
 });
-const PORT = process.env.PORT || 4000;
+// Number() em vez de comparação directa: env vars são strings, e "0" é truthy —
+// num Windows com PORT=0 no ambiente do sistema, o servidor ficava à escuta na
+// porta 0 (porta aleatória do SO) e o frontend deixava de o encontrar.
+const PORT = Number(process.env.PORT) || 4000;
 const bootstrap = () => __awaiter(void 0, void 0, void 0, function* () {
     // Migrações de schema: aplicadas ANTES de aceitar pedidos, em todos os
     // arranques (local, PM2, Ubuntu). Idempotentes — ver src/migrations.

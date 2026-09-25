@@ -252,6 +252,19 @@
         <template v-slot:body-cell-actions="props">
           <q-td :props="props" class="text-center">
             <div class="row items-center no-wrap justify-center" style="gap: 2px">
+              <!-- Pagamentos e recibos do crédito — página de detalhe (/loans/:id) -->
+              <q-btn
+                flat
+                round
+                dense
+                icon="receipt_long"
+                color="primary"
+                size="xs"
+                @click.stop="goToLoanDetail(props.row)"
+              >
+                <q-tooltip>Pagamentos, recibos e prestações do crédito</q-tooltip>
+              </q-btn>
+
               <!-- Rejeitados: reabrir (re-submeter) + painel do mutuário + eliminar -->
               <template v-if="segment.key === 'rejected'">
                 <q-btn
@@ -1124,6 +1137,10 @@ function clearFilters() {
   dateTo.value = ''
   managerFilter.value = null
   resetPage()
+}
+
+function goToLoanDetail(row) {
+  router.push({ name: 'LoanDetail', params: { id: row.id } })
 }
 
 function goToCustomer(accountNumber) {

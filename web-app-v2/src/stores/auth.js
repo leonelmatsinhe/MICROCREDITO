@@ -21,12 +21,18 @@ export const useAuthStore = defineStore('auth', {
     
     // Verificar se é gestor (role 3)
     isGestor: (state) => state.user?.userRole === 3,
-    
+
+    // Parceiro financiador (role 4) — portal dedicado, só a sua carteira
+    isPartner: (state) => state.user?.userRole === 4,
+    walletId: (state) => state.user?.walletId ?? null,
+
     // Rota de redirecionamento baseada no role
     defaultRoute: (state) => {
       // Mutuário (sem userRole)
       if (state.user?.isCustomer) return '/portal'
       const role = state.user?.userRole
+      // Parceiro financiador: portal do financiador (nunca vê o painel MBRM)
+      if (role === 4) return '/parceiro/dashboard'
       if (role === 3) return '/gestor'
       if (role === 0) return '/company'
       if (role >= 1) return '/dashboard'

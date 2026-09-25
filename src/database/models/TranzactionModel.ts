@@ -87,4 +87,15 @@ export const TranzactionModel = db.define("tranzactions", {
     allowNull: true,
     defaultValue: 0,
   },
+  walletId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Carteira de financiamento do crédito (copiada do customer_loans no pagamento)",
+  },
+  mora_amount: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Juros de mora efectivamente recebidos neste pagamento",
+  },
 });

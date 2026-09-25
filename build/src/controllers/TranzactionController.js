@@ -31,8 +31,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkAndLiquidateLoan = exports.updateTranzaction = exports.addTranzaction = exports.getLoanLateInterest = exports.getCustomerTranzactions = exports.findAllPaymentsOverview = exports.findPaginatedTransactions = exports.findTransactionsByCompany = exports.findAlltranzactions = void 0;
+const moment_1 = __importDefault(require("moment"));
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
@@ -364,7 +368,10 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
     if (!installment) {
         return res.status(404).send({ success: false, message: "Prestação não encontrada." });
     }
-    const loan = yield LoanModel_1.LoanModel.findByPk(installment.loanId, { attributes: ["companyId"] });
+    const loan = yield LoanModel_1.LoanModel.findByPk(installment.loanId, { attributes: ["companyId", "walletId"] });
+    // Carteira de financiamento do crédito — copiada para o pagamento (e para o
+    // recibo), de forma a alimentar o relatório e o portal do parceiro.
+    const walletId = Number(installment.getDataValue("walletId")) || Number(loan === null || loan === void 0 ? void 0 : loan.getDataValue("walletId")) || null;
     const company = loan
         ? yield CompanyModel_1.CompanyModel.findByPk(loan.getDataValue("companyId"), { attributes: ["forfeit"] })
         : null;
@@ -422,14 +429,21 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
         notes: notes || null,
         discountApplied: discountApplied || false,
         discountAmount,
+        walletId: walletId || null,
+        mora_amount: Number(latePaymentInterest) || 0,
     });
     if (tranzaction != null) {
         // Actualizar status da prestação: 1=pago, -1=parcial, 0=pendente
-        const updateAmortizationLoan = yield AmortizationLoanModel_1.AmorizationLoanModel.update({
-            status: newStatus,
-            paidAmount: finalPaidAmount,
-            remainingBalance: isFullPayment ? 0 : debtAmount,
-        }, {
+        // Mora gerada nesta prestação: valor cobrado + dias de atraso considerados
+        // (alimenta o KPI "juros de mora gerados" do parceiro financiador).
+        const moraDays = Math.max(0, (0, moment_1.default)(paymentReferenceDate).diff((0, moment_1.default)(installment.dueDate), "days"));
+        const previousMoraAmount = Number(installment.mora_amount) || 0;
+        const updateAmortizationLoan = yield AmortizationLoanModel_1.AmorizationLoanModel.update(Object.assign({ status: newStatus, paidAmount: finalPaidAmount, remainingBalance: isFullPayment ? 0 : debtAmount }, (Number(latePaymentInterest) > 0
+            ? {
+                mora_amount: Math.round((previousMoraAmount + Number(latePaymentInterest)) * 100) / 100,
+                mora_days: moraDays,
+            }
+            : {})), {
             where: {
                 id: amortizationLoanId,
             },
@@ -557,10 +571,32 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
         catch (cashError) {
             console.error("[CAIXA] Falha ao registar pagamento no caixa (pagamento mantido):", (cashError === null || cashError === void 0 ? void 0 : cashError.message) || cashError);
         }
+        // ── RECIBO DO PAGAMENTO (numeração sequencial legal) ──
+        // Best-effort: uma falha na emissão não desfaz o pagamento; o recibo pode
+        // ser emitido/descarregado mais tarde no detalhe do crédito.
+        let recibo = null;
+        try {
+            const { generateReciboForTranzaction } = yield Promise.resolve().then(() => __importStar(require("../services/reciboService")));
+            recibo = yield generateReciboForTranzaction({
+                tranzactionId: Number(tranzaction.id),
+                companyId: Number(companyId),
+                createdBy: null,
+            });
+        }
+        catch (reciboError) {
+            console.error("[Recibo] Falha ao emitir o recibo do pagamento:", (reciboError === null || reciboError === void 0 ? void 0 : reciboError.message) || reciboError);
+        }
         return updateAmortizationLoan != null
             ? res
                 .status(201)
-                .send({ success: true, message: "Payment updated successfully." })
+                .send({
+                success: true,
+                message: "Payment updated successfully.",
+                walletId: walletId || null,
+                recibo: recibo
+                    ? { id: recibo.id, numero: recibo.numero, pdf_url: recibo.pdf_url || null }
+                    : null,
+            })
             : res.status(500).send({
                 success: false,
                 message: "There was an error in the payment.",

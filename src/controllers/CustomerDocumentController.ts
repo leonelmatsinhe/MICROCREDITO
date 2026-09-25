@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { CustomerModel } from "../database/models/CustomerModel";
+import { evaluateKyc, KYC_FULL_DOCUMENTS } from "../utils/kycDocuments";
 
 const isCompiled =
   __dirname.includes(path.sep + "build" + path.sep) ||
@@ -28,6 +29,53 @@ const deleteLocalDocumentFile = (fileUrl: string | null | undefined) => {
   const filePath = path.join(documentStorageDir, fileName);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
+  }
+};
+
+/**
+ * GET /api/document/checklist/:accountNumber — estado da checklist KYC.
+ * Retorna { complete, missing, documents, checklist } para a aba
+ * "Documentos & KYC" e para auditoria antes do desembolso.
+ */
+const getDocumentChecklist = async (req: Request, res: Response) => {
+  try {
+    const { accountNumber } = req.params;
+    const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+    if (!accountNumber) {
+      return res.status(400).json({ success: false, message: "accountNumber é obrigatório." });
+    }
+
+    const documents = await CustomerDocumentsModel.findAll({
+      where: {
+        accountNumber: Number(accountNumber),
+        ...(companyId ? { companyId } : {}),
+      },
+      order: [["id", "DESC"]],
+    });
+
+    const evaluation = evaluateKyc((documents || []).map((d: any) => d.toJSON ? d.toJSON() : d));
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        accountNumber: Number(accountNumber),
+        complete: evaluation.complete,
+        missing: evaluation.missing,
+        present: evaluation.present,
+        total: evaluation.total,
+        documents: evaluation.documents,
+        checklist: KYC_FULL_DOCUMENTS.map((name) => ({
+          name,
+          uploaded: evaluation.present.includes(name),
+        })),
+      },
+    });
+  } catch (error: any) {
+    console.error("Erro ao calcular checklist KYC:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Erro interno ao calcular checklist KYC.",
+    });
   }
 };
 
@@ -213,6 +261,7 @@ const deleteDocument = async (req: Request, res: Response) => {
 export {
   findAllDocuments,
   getCustomerDocuments,
+  getDocumentChecklist,
   createDocument,
   updateDocument,
   deleteDocument,

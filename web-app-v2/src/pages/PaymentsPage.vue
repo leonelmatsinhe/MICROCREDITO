@@ -167,6 +167,39 @@
           </q-td>
         </template>
 
+        <!-- RECIBO: emite (ou abre) o comprovativo do pagamento — numeração
+             sequencial legal, um recibo por pagamento individual. -->
+        <template v-slot:body-cell-recibo="props">
+          <q-td :props="props" class="text-center">
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              color="primary"
+              icon="receipt_long"
+              label="Recibo"
+              :loading="receiptLoadingId === props.row.id"
+              @click="gerarRecibo(props.row)"
+            >
+              <q-tooltip>Emitir / abrir o recibo deste pagamento</q-tooltip>
+            </q-btn>
+          </q-td>
+        </template>
+
+        <!-- SELO: hash + código de validação do recibo já emitido -->
+        <template v-slot:body-cell-selo="props">
+          <q-td :props="props" class="text-center">
+            <q-badge v-if="props.row.reciboHash" outline color="primary" style="font-size: 9px">
+              {{ props.row.reciboNumero }}
+              <q-tooltip>
+                <div style="font-family: monospace; font-size: 10px">{{ props.row.reciboHash }}</div>
+              </q-tooltip>
+            </q-badge>
+            <span v-else class="text-caption text-grey-5">—</span>
+          </q-td>
+        </template>
+
         <!-- Total na última linha da grelha -->
         <template v-slot:bottom-row>
           <q-tr class="payments-total-row">
@@ -176,11 +209,15 @@
             <q-td class="text-right">
               <span class="text-weight-bold text-positive">{{ formatMoney(totalAmount) }}</span>
             </q-td>
-            <q-td colspan="6" />
+            <q-td colspan="8" />
           </q-tr>
         </template>
       </q-table>
     </q-card>
+
+    <!-- VISUALIZADOR DO RECIBO — pré-visualização + descarregar/imprimir/
+         e-mail/WhatsApp/validar QR Code (selo SHA-256 AT). -->
+    <ReciboViewerDialog v-model="viewerOpen" :recibo="viewerRecibo" />
   </div>
 </template>
 
@@ -191,6 +228,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort } from '@/utils/formatters'
+import ReciboViewerDialog from '@/components/recibos/ReciboViewerDialog.vue'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -229,12 +267,37 @@ async function fetchPayments() {
   try {
     const { data } = await api.get(`/api/payments/${companyId}/all`)
     allPayments.value = (data?.success && Array.isArray(data.result)) ? data.result : []
+    await carregarSeloDosRecibos(allPayments.value)
   } catch (error) {
     console.error('Erro ao carregar pagamentos:', error)
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao carregar pagamentos', position: 'top' })
     allPayments.value = []
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * Selo AT de cada pagamento: pede, numa única chamada, o número/hash dos
+ * recibos já emitidos para as linhas carregadas.
+ */
+async function carregarSeloDosRecibos(rows) {
+  const ids = (rows || []).map((row) => Number(row.id)).filter(Boolean)
+  if (ids.length === 0) return
+  try {
+    const { data } = await api.post('/api/recibos/lookup', {
+      companyId: authStore.companyId,
+      tranzactionIds: ids
+    })
+    if (data?.success && Array.isArray(data.result)) {
+      const porPagamento = new Map(data.result.map((recibo) => [Number(recibo.tranzactionId), recibo]))
+      allPayments.value = allPayments.value.map((row) => {
+        const recibo = porPagamento.get(Number(row.id))
+        return recibo ? { ...row, reciboNumero: recibo.numero, reciboHash: recibo.hash_at } : row
+      })
+    }
+  } catch {
+    // Sem selo visível não se bloqueia a listagem de pagamentos.
   }
 }
 
@@ -299,8 +362,50 @@ const columns = [
   { name: 'method', label: 'Método', field: 'paymentMethod', align: 'center' },
   { name: 'reference', label: 'Referência', field: 'tranzactionReference', align: 'center' },
   { name: 'staff', label: 'Operador', field: 'staffName', align: 'center', sortable: true },
+  { name: 'recibo', label: 'Recibo', field: 'id', align: 'center' },
+  { name: 'selo', label: 'Selo AT', field: 'reciboHash', align: 'center' },
   { name: 'date', label: 'Data', field: 'createdAt', align: 'center', sortable: true }
 ]
+
+// Id do pagamento cujo recibo está a ser emitido (spinner do botão)
+const receiptLoadingId = ref(null)
+// Recibo aberto no visualizador (PDF + acções de partilha)
+const viewerOpen = ref(false)
+const viewerRecibo = ref(null)
+
+/**
+ * Gera (ou devolve, se já existir) o recibo do pagamento e abre o PDF.
+ * O backend reserva a numeração sequencial legal e devolve o ficheiro.
+ */
+async function gerarRecibo(payment) {
+  receiptLoadingId.value = payment.id
+  try {
+    const { data } = await api.post(`/api/recibos/gerar/${payment.id}`, { companyId: authStore.companyId })
+    if (!data?.success) {
+      $q.notify({ type: 'negative', message: data?.message || 'Erro ao emitir o recibo', position: 'top' })
+      return
+    }
+    // Abre o visualizador (pré-visualização + descarregar/imprimir/e-mail/
+    // WhatsApp/validar QR) em vez de um blob solto no browser.
+    viewerRecibo.value = { ...data.result, customer_phone: payment.phoneNumber || payment.customerPhone || null }
+    viewerOpen.value = true
+    // Actualiza a linha (número + hash) para o selo aparecer na grelha.
+    allPayments.value = allPayments.value.map((row) =>
+      Number(row.id) === Number(payment.id)
+        ? { ...row, reciboNumero: data.result?.numero, reciboHash: data.result?.hash_at }
+        : row
+    )
+    $q.notify({ type: 'positive', message: `Recibo ${data.result?.numero} emitido`, position: 'top' })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || 'Erro ao emitir o recibo',
+      position: 'top'
+    })
+  } finally {
+    receiptLoadingId.value = null
+  }
+}
 
 // ─── Helpers ───
 function methodLabel(value) {

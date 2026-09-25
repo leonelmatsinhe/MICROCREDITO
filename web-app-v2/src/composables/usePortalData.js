@@ -140,6 +140,48 @@ export function usePortalData() {
     return digits
   }
 
+  // ---- Comprovativo (recibo) de um pagamento ----
+  // O backend emite o recibo legal na primeira abertura, pelo que TODOS os
+  // pagamentos têm comprovativo — mesmo os anteriores à numeração sequencial.
+  async function downloadPaymentRecibo(paymentId, numero) {
+    const user = authStore.user
+    if (!user?.companyId || !user?.id || !paymentId) {
+      $q.notify({ type: 'negative', message: 'Sessão inválida. Volte a entrar.', position: 'top' })
+      return false
+    }
+    try {
+      const response = await api.get(
+        `/api/portal/${user.companyId}/${user.id}/payments/${paymentId}/recibo/pdf`,
+        { params: { download: 1 }, responseType: 'blob' }
+      )
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `Recibo-${numero || paymentId}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => window.URL.revokeObjectURL(url), 30000)
+      $q.notify({ type: 'positive', message: numero ? `Recibo ${numero}` : 'Comprovativo gerado', position: 'top' })
+      return true
+    } catch (e) {
+      console.error('Erro ao obter o recibo do pagamento:', e)
+      let message = 'Erro ao obter o comprovativo do pagamento'
+      // Com responseType 'blob' o erro também chega como Blob — lê-se o JSON.
+      const payload = e?.response?.data
+      if (payload instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await payload.text())
+          if (parsed?.message) message = parsed.message
+        } catch { /* resposta não-JSON */ }
+      } else if (payload?.message) {
+        message = payload.message
+      }
+      $q.notify({ type: 'negative', message, position: 'top' })
+      return false
+    }
+  }
+
   // ---- Carregamento (API igual ao original) ----
   async function loadData(force = false) {
     if (loaded.value && !force) { loading.value = false; return }
@@ -181,7 +223,7 @@ export function usePortalData() {
     hasActiveLoan, hasPendingRequest, hasOutstandingDebt, canRequestCredit, loanRequestCapacity,
     upcomingInstallments, allInstallments,
     // acções
-    loadData, refresh, ensureCompanyLoaded,
+    loadData, refresh, ensureCompanyLoaded, downloadPaymentRecibo,
     // helpers
     installmentPayments, installmentPaidLateFee, installmentPaidDate, installmentReference,
     formatMoney, formatDate, getInitials, getLoanStatusColor, getLoanStatusText,

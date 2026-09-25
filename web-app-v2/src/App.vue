@@ -1,9 +1,9 @@
 <template>
-  <AuthLayout v-if="isAuthPage">
+  <LandingLayout v-if="isAuthPage">
     <router-view />
-  </AuthLayout>
-  <!-- Portal do mutuário tem o seu próprio layout (mobile-first, sem sidebar) -->
-  <router-view v-else-if="isPortalRoute" />
+  </LandingLayout>
+  <!-- Portal do mutuário e portal do financiador têm layout próprio (sem sidebar MBRM) -->
+  <router-view v-else-if="isPortalRoute || isPartnerRoute" />
   <MainLayout v-else-if="isLoggedIn">
     <router-view />
   </MainLayout>
@@ -17,7 +17,7 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useCompanyStore } from '@/stores/company'
-import AuthLayout from '@/layouts/AuthLayout.vue'
+import LandingLayout from '@/layouts/LandingLayout.vue'
 import MainLayout from '@/layouts/MainLayout.vue'
 import { activityTracker } from '@/utils/activityTracker'
 
@@ -31,6 +31,8 @@ const companyStore = useCompanyStore()
 const isAuthPage = computed(() => route.name === 'Login')
 const isLoggedIn = computed(() => authStore.isLoggedIn)
 const isPortalRoute = computed(() => route.path === '/portal' || route.path.startsWith('/portal/'))
+// Portal do parceiro financiador (userRole 4): layout dedicado, sem sidebar do staff
+const isPartnerRoute = computed(() => route.path === '/parceiro' || route.path.startsWith('/parceiro/'))
 
 // Aplicar tema ao iniciar
 $q.dark.set(uiStore.isDark)

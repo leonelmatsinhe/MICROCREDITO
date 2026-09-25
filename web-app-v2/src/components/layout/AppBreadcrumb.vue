@@ -48,6 +48,8 @@ function getRouteLabel(name) {
     CustomerList: 'Mutuários',
     CustomerDetail: 'Detalhe do Mutuário',
     LoanList: 'Créditos',
+    LoanDetail: 'Detalhe do Crédito',
+    LoanDocuments: 'Documentos do Crédito',
     Loans: 'Créditos',
     Payments: 'Pagamentos',
     Installments: 'Prestações',
@@ -59,7 +61,18 @@ function getRouteLabel(name) {
     SmsPendingCredentials: 'Centro de Mensagens',
     Logs: 'Histórico do Sistema',
     InstallmentsControl: 'Controle de Prestações',
-    ReportsBM: 'Relatório Banco de Moçambique'
+    ReportsBM: 'Relatório Banco de Moçambique',
+    FinancingWallets: 'Carteiras de Financiamento',
+    PartnerUsers: 'Parceiros Financiadores',
+    FinancierReports: 'Relatório de Financiadores',
+    PartnerDashboard: 'Painel da Carteira',
+    PartnerCreditos: 'Créditos Desembolsados',
+    PartnerPrestacoesPagas: 'Prestações Pagas',
+    PartnerPrestacoesPendentes: 'Prestações Pendentes',
+    PartnerMora: 'Juros de Mora',
+    PartnerRecebimentos: 'Recebimentos',
+    PartnerExtrato: 'Extrato da Carteira',
+    PartnerRecibos: 'Recibos'
   }
   return labels[name] || name
 }

@@ -12,6 +12,7 @@ const SuperAdminSettingsPage = () => import('@/pages/SuperAdminSettingsPage.vue'
 const CustomerListPage = () => import('@/pages/customers/CustomerListPage.vue')
 const CustomerDetailPage = () => import('@/pages/customers/CustomerDetailPage.vue')
 const LoanListPage = () => import('@/pages/loans/LoanListPage.vue')
+const LoanDetailPage = () => import('@/pages/loans/LoanDetailPage.vue')
 // Páginas removidas: LoanDetailPage, AmortizationPage, PaymentsPage, InstallmentsPage, ReportsPage
 // Funcionalidades integradas nos Mutuários (painel do mutuário) e na página de Créditos
 const SettingsPage = () => import('@/pages/SettingsPage.vue')
@@ -33,6 +34,24 @@ const BankAccountsPage = () => import('@/pages/BankAccountsPage.vue')
 const CaixaHistoricoPage = () => import('@/pages/CaixaHistoricoPage.vue')
 const LogsPage = () => import('@/pages/LogsPage.vue')
 const SmsPendingCredentialsPage = () => import('@/pages/SmsPendingCredentialsPage.vue')
+
+// CARTEIRAS DE FINANCIAMENTO (dinheiro analítico) + PARCEIROS FINANCIADORES
+// FINANCIAMENTO (carteiras + taxas) e EQUIPA E PARCEIROS — páginas unificadas
+const FinancingPage = () => import('@/pages/FinancingPage.vue')
+const TeamPage = () => import('@/pages/TeamPage.vue')
+const FinancierReportsPage = () => import('@/pages/FinancierReportsPage.vue')
+// VALIDAÇÃO PÚBLICA DO RECIBO — destino do QR Code impresso (sem sessão)
+const ValidarReciboPage = () => import('@/pages/ValidarReciboPage.vue')
+
+// PORTAL DO PARCEIRO FINANCIADOR (userRole 4) — só a carteira do parceiro
+const PartnerLayout = () => import('@/layouts/PartnerLayout.vue')
+const PartnerDashboardPage = () => import('@/pages/partner/PartnerDashboardPage.vue')
+const PartnerLoansPage = () => import('@/pages/partner/PartnerLoansPage.vue')
+const PartnerInstallmentsPage = () => import('@/pages/partner/PartnerInstallmentsPage.vue')
+const PartnerMoraPage = () => import('@/pages/partner/PartnerMoraPage.vue')
+const PartnerPaymentsPage = () => import('@/pages/partner/PartnerPaymentsPage.vue')
+const PartnerStatementPage = () => import('@/pages/partner/PartnerStatementPage.vue')
+const PartnerRecibosPage = () => import('@/pages/partner/PartnerRecibosPage.vue')
 
 const routes = [
   // LOGIN — página inicial do sistema
@@ -65,6 +84,13 @@ const routes = [
   {
     path: '/portal-mutuario',
     redirect: '/portal'
+  },
+  // VALIDAÇÃO PÚBLICA DO RECIBO — aberta pelo QR Code (hash SHA-256)
+  {
+    path: '/validar',
+    name: 'ValidarRecibo',
+    component: ValidarReciboPage,
+    meta: { requiresAuth: false }
   },
   {
     path: '/dashboard',
@@ -108,6 +134,14 @@ const routes = [
     path: '/loans',
     name: 'LoanList',
     component: LoanListPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
+  },
+
+  // DETALHE DO CRÉDITO — pagamentos e recibos + prestações
+  {
+    path: '/loans/:id',
+    name: 'LoanDetail',
+    component: LoanDetailPage,
     meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
   },
 
@@ -180,17 +214,58 @@ const routes = [
     component: SmsPendingCredentialsPage,
     meta: { requiresAuth: true, allowedRoles: [1, 3] }
   },
+  // FINANCIAMENTO — Carteiras de financiamento + Taxas de juro (página única)
+  {
+    path: '/financiamento',
+    name: 'Financing',
+    component: FinancingPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 2] }
+  },
+  // Rotas antigas continuam a funcionar (marcadores/links guardados)
+  { path: '/carteiras-financiamento', redirect: { name: 'Financing' } },
+  // EQUIPA E PARCEIROS — utilizadores MBRM + parceiros financiadores (userRole 4)
+  {
+    path: '/equipe',
+    name: 'Team',
+    component: TeamPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 2] }
+  },
+  { path: '/parceiros-financiadores', redirect: { name: 'Team', query: { tab: 'parceiros' } } },
+  // RELATÓRIO DE FINANCIADOR (isolado por carteira) — Admin
+  {
+    path: '/reports/financiadores',
+    name: 'FinancierReports',
+    component: FinancierReportsPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 2] }
+  },
+  // PORTAL DO PARCEIRO FINANCIADOR (userRole 4) — layout próprio, só leitura
+  {
+    path: '/parceiro',
+    component: PartnerLayout,
+    meta: { requiresAuth: true, allowedRoles: [4] },
+    children: [
+      { path: '', redirect: '/parceiro/dashboard' },
+      { path: 'dashboard', name: 'PartnerDashboard', component: PartnerDashboardPage },
+      { path: 'creditos', name: 'PartnerCreditos', component: PartnerLoansPage },
+      { path: 'prestacoes-pagas', name: 'PartnerPrestacoesPagas', component: PartnerInstallmentsPage, props: { scope: 'pagas' } },
+      { path: 'prestacoes-pendentes', name: 'PartnerPrestacoesPendentes', component: PartnerInstallmentsPage, props: { scope: 'pendentes' } },
+      { path: 'mora', name: 'PartnerMora', component: PartnerMoraPage },
+      { path: 'recebimentos', name: 'PartnerRecebimentos', component: PartnerPaymentsPage },
+      { path: 'extrato', name: 'PartnerExtrato', component: PartnerStatementPage },
+      { path: 'recibos', name: 'PartnerRecibos', component: PartnerRecibosPage }
+    ]
+  },
   {
     path: '/profile',
     name: 'Profile',
     component: ProfilePage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, allowedRoles: [0, 1, 2, 3] }
   },
   {
     path: '/notifications',
     name: 'Notifications',
     component: NotificationsPage,
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: true, allowedRoles: [0, 1, 2, 3] }
   },
   // Portal do mutuário — layout mobile-first (sem sidebar)
   {

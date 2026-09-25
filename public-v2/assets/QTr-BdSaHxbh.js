@@ -1,0 +1,1 @@
+import{ag as t,ai as a,aj as s}from"./index-D1s_v2Rd.js";const p=t({name:"QTr",props:{props:Object,noHover:Boolean},setup(r,{slots:e}){return()=>{var o;return a("tr",{style:(o=r.props)==null?void 0:o.__trStyle,class:"q-tr"+(r.props===void 0||r.props.header?"":" "+r.props.__trClass)+(r.noHover?" q-tr--no-hover":"")},s(e.default))}}});export{p as Q};

@@ -61,4 +61,21 @@ exports.AmorizationLoanModel = db_1.db.define("amortization_loan", {
         defaultValue: 0,
         comment: "Valor total pago nesta prestação (para pagamentos parciais)",
     },
+    walletId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Carteira de financiamento do crédito (analítica)",
+    },
+    mora_amount: {
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Juros de mora acumulados/gerados nesta prestação",
+    },
+    mora_days: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Dias de atraso considerados no cálculo da mora desta prestação",
+    },
 });

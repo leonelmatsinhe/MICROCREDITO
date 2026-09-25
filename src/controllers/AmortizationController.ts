@@ -10,6 +10,8 @@ import { CompanyModel } from "../database/models/CompanyModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
 import { enqueueDisbursementSms } from "../services/SmsGatewayService";
+import { evaluateKyc } from "../utils/kycDocuments";
+import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
   try {
@@ -160,6 +162,71 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       });
     }
 
+    // ── KYC BLOQUEANTE NO DESEMBOLSO ──
+    // Última linha de defesa: mesmo que o pedido tenha sido criado antes da
+    // regra, o dinheiro só sai sem os 3 documentos base (BI, NUIT,
+    // Comprovativo de rendimentos).
+    const kycDocuments = await CustomerDocumentsModel.findAll({
+      where: {
+        accountNumber: Number(accountNumber),
+        companyId: Number(companyId),
+      },
+      raw: true,
+    });
+    const kyc = evaluateKyc(kycDocuments as any[]);
+    if (!kyc.complete) {
+      return res.status(400).json({
+        success: false,
+        error: "KYC_INCOMPLETE",
+        message: `Desembolso bloqueado: checklist KYC incompleta. Documentos em falta: ${kyc.missing.join(", ")}.`,
+        missing: kyc.missing,
+      });
+    }
+
+    // ── CARTEIRA DE FINANCIAMENTO (analítica) + SALDO REAL ──
+    // O desembolso tem obrigatoriamente de ser classificado numa carteira de
+    // financiamento. A carteira é validada em duas camadas:
+    //   1. analítica — não pode exceder o capital alocado ao fundo/parceria;
+    //   2. real — tem de existir dinheiro na conta de desembolso da empresa.
+    const bodyForWallet = req.body as any;
+    const walletIdRaw = bodyForWallet?.walletId ?? bodyForWallet?.wallet_id ?? null;
+    let walletId = walletIdRaw ? Number(walletIdRaw) : null;
+
+    // ── CARTEIRA DERIVADA DA TAXA DE JURO ──
+    // A taxa escolhida para o crédito pode estar ligada a uma carteira
+    // (`interest_rates.walletId`): nesse caso o desembolso já não obriga a
+    // escolher a carteira à mão. Se a taxa estiver ligada a mais do que uma
+    // carteira, avisa-se e pede-se a escolha explícita.
+    let carteiraDerivada: any = null;
+    if (!walletId) {
+      try {
+        const { resolveWalletFromRate } = await import("../services/financingWalletService");
+        carteiraDerivada = await resolveWalletFromRate(Number(companyId), loan.getDataValue("interestRate"));
+        if (carteiraDerivada?.walletId) walletId = Number(carteiraDerivada.walletId);
+      } catch (deriveError: any) {
+        console.error("[Carteiras] Falha ao derivar a carteira da taxa:", deriveError?.message || deriveError);
+      }
+    }
+    if (!walletId && carteiraDerivada?.ambiguo) {
+      return res.status(400).json({ success: false, message: carteiraDerivada.motivo });
+    }
+
+    let walletValidation: any = null;
+    try {
+      const { validateDisbursement } = await import("../services/financingWalletService");
+      walletValidation = await validateDisbursement({
+        companyId: Number(companyId),
+        walletId,
+        amount: Number(amount),
+        requireWallet: true,
+      });
+    } catch (walletError: any) {
+      console.error("[Carteiras] Falha ao validar a carteira do desembolso:", walletError?.message || walletError);
+    }
+    if (walletValidation && !walletValidation.ok) {
+      return res.status(400).json({ success: false, message: walletValidation.message });
+    }
+
     // ── TESOURARIA: validações de saldo antes de desembolsar ──
     // Desembolso electrónico (BANK/MPESA/EMOLA) exige saldo suficiente na
     // conta de origem — bloqueia o crédito se não houver dinheiro.
@@ -250,18 +317,24 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       status
     });
 
-    // Insere o plano de amortização no banco de dados
+    // Insere o plano de amortização no banco de dados — cada prestação herda a
+    // carteira de financiamento do crédito (permite os relatórios por parceiro).
     const bulckInsert = await AmorizationLoanModel.bulkCreate(
       customerAmortizationPlan.map((installment: any) => ({
         ...installment,
         customerId,
+        walletId: walletId || loan.getDataValue("walletId") || null,
       }))
     );
 
     // Atualiza o status do empréstimo e guarda a data real de desembolso:
     // o dueDate enviado é a base do plano (a 1ª prestação vence 1 mês depois).
     await LoanModel.update(
-      { status: 1, disbursementDate: String(dueDate || "").slice(0, 10) || null },
+      {
+        status: 1,
+        disbursementDate: String(dueDate || "").slice(0, 10) || null,
+        ...(walletId ? { walletId } : {}),
+      },
       {
         where: {
           id: loanId

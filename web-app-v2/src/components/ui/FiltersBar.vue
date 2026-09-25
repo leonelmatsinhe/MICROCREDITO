@@ -1,27 +1,25 @@
 <template>
-  <q-card flat bordered class="q-mb-md filter-card">
+  <q-card flat class="filter-card">
     <q-card-section class="q-py-sm q-px-md">
       <div class="row items-center q-gutter-sm">
-        <!-- Quick Filters -->
+        <!-- Quick Filters — QBtnToggle (Hoje/Semana/Mês/Ano) -->
         <div class="col-auto">
-          <q-btn-group flat rounded>
-            <q-btn
-              v-for="filter in quickFilters"
-              :key="filter.value"
-              :label="filter.label"
-              :color="activeFilter === filter.value ? 'primary' : 'grey-6'"
-              :flat="activeFilter !== filter.value"
-              :outline="activeFilter === filter.value"
-              size="sm"
-              no-caps
-              @click="applyQuickFilter(filter.value)"
-            />
-          </q-btn-group>
+          <q-btn-toggle
+            v-model="activeFilter"
+            :options="quickFilters"
+            toggle-color="green-9"
+            unelevated
+            rounded
+            dense
+            no-caps
+            class="quick-toggle"
+            @update:model-value="applyQuickFilter"
+          />
         </div>
 
-        <q-separator vertical class="q-mx-sm" />
+        <q-separator vertical inset class="q-mx-xs" />
 
-        <!-- Date From -->
+        <!-- Date From — QDate com mask DD/MM/YYYY -->
         <div class="col-auto">
           <q-input
             v-model="dateFrom"
@@ -29,19 +27,20 @@
             dense
             placeholder="Data início"
             mask="##/##/####"
-            style="width: 130px"
+            style="width: 135px"
+            bg-color="white"
           >
             <template v-slot:prepend>
               <q-icon name="event" size="16px" class="cursor-pointer">
                 <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                  <q-date v-model="dateFrom" mask="DD/MM/YYYY" />
+                  <q-date v-model="dateFrom" mask="DD/MM/YYYY" @update:model-value="onDatePicked" />
                 </q-popup-proxy>
               </q-icon>
             </template>
           </q-input>
         </div>
 
-        <!-- Date To -->
+        <!-- Date To — QDate com mask DD/MM/YYYY -->
         <div class="col-auto">
           <q-input
             v-model="dateTo"
@@ -49,12 +48,13 @@
             dense
             placeholder="Data fim"
             mask="##/##/####"
-            style="width: 130px"
+            style="width: 135px"
+            bg-color="white"
           >
             <template v-slot:prepend>
               <q-icon name="event" size="16px" class="cursor-pointer">
                 <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                  <q-date v-model="dateTo" mask="DD/MM/YYYY" />
+                  <q-date v-model="dateTo" mask="DD/MM/YYYY" @update:model-value="onDatePicked" />
                 </q-popup-proxy>
               </q-icon>
             </template>
@@ -64,50 +64,32 @@
         <q-space />
 
         <!-- Actions -->
-        <div class="col-auto">
-          <q-btn
-            flat
-            dense
-            no-caps
-            color="grey-6"
-            icon="clear_all"
-            label="Limpar"
-            size="sm"
-            @click="clearFilters"
-          />
-        </div>
-        <div class="col-auto">
-          <q-btn
-            color="primary"
-            dense
-            round
-            icon="search"
-            size="sm"
-            @click="applyFilters"
-          >
-            <q-tooltip>Aplicar filtros</q-tooltip>
-          </q-btn>
-        </div>
-        <div class="col-auto">
-          <q-btn
-            color="secondary"
-            dense
-            round
-            icon="sync"
-            size="sm"
-            @click="$emit('sync')"
-          >
-            <q-tooltip>Sincronizar dados</q-tooltip>
-          </q-btn>
-        </div>
+        <q-btn flat dense no-caps color="grey-7" label="Limpar" size="sm" @click="clearFilters">
+          <q-tooltip>Limpar filtros</q-tooltip>
+        </q-btn>
+        <q-btn
+          unelevated
+          dense
+          no-caps
+          color="green-9"
+          icon="search"
+          label="Filtrar"
+          size="sm"
+          @click="applyFilters"
+        >
+          <q-tooltip>Aplicar filtros</q-tooltip>
+        </q-btn>
+        <q-btn color="green-9" dense round unelevated icon="sync" size="sm" @click="$emit('sync')">
+          <q-tooltip>Sincronizar dados</q-tooltip>
+        </q-btn>
       </div>
     </q-card-section>
   </q-card>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
+import { ref, watch } from 'vue'
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
 
 const emit = defineEmits(['filter', 'clear', 'sync'])
 
@@ -127,15 +109,10 @@ function formatDateDisplay(date) {
   return format(date, 'dd/MM/yyyy')
 }
 
-// Format for API (YYYY-MM-DD)
-function formatDateAPI(date) {
-  return format(date, 'yyyy-MM-dd')
-}
-
 // Convert DD/MM/YYYY to YYYY-MM-DD
 function toAPIDate(dateStr) {
   if (!dateStr) return ''
-  const parts = dateStr.split('/')
+  const parts = String(dateStr).split('/')
   if (parts.length !== 3) return ''
   return `${parts[2]}-${parts[1]}-${parts[0]}`
 }
@@ -171,6 +148,12 @@ function applyFilters() {
   emitDateFilter()
 }
 
+// Datas escolhidas no calendário também actualizam sem recarregar a página
+function onDatePicked() {
+  activeFilter.value = null
+  emitDateFilter()
+}
+
 function clearFilters() {
   dateFrom.value = ''
   dateTo.value = ''
@@ -187,18 +170,32 @@ function emitDateFilter() {
   })
 }
 
+// Manter o toggle sincronizado quando o usuário digita datas manuais
+watch([dateFrom, dateTo], ([from, to], [prevFrom, prevTo]) => {
+  if (from === prevFrom && to === prevTo) return
+})
+
 // Aplicar filtro do mês por defeito
 applyQuickFilter('month')
 </script>
 
 <style lang="scss" scoped>
 .filter-card {
-  border-radius: 12px;
-  border: 1px solid $gray-200;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.quick-toggle {
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 10px;
+  padding: 2px;
 }
 
 body.body--dark .filter-card {
-  background-color: $gray-800;
-  border-color: $gray-700;
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 </style>

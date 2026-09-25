@@ -12,6 +12,8 @@ const projectRoot = isCompiled
 
 import {
   create,
+  createPartner,
+  updatePartner,
   findAll,
   findOne,
   destroy,
@@ -81,6 +83,7 @@ import {
 import {
   findAllDocuments,
   getCustomerDocuments,
+  getDocumentChecklist,
   createDocument,
   updateDocument,
   deleteDocument,
@@ -100,10 +103,15 @@ import {
   destroyLoan,
   findLoanByCustomer,
   getLoanAmortization,
+  loanDetail,
   invalidateDisbursedLoan,
   updateLoan,
   updateLoanInstallmentDates,
+  simulateLoan,
 } from "./controllers/LoanController";
+
+// LIQUIDAÇÃO TOTAL ATÓMICA — todas as prestações numa única sequelize.transaction
+import { addTranzactionBulk } from "./controllers/TranzactionBulkController";
 
 import { getAllLoanGuarantees, createGuarantee, deleteGuarantee } from "./controllers/GuaranteesController"
 
@@ -145,11 +153,13 @@ import {
   getCustomerDashboard,
   getCustomerLoanDetail,
   registerPortalPayment,
+  getCustomerPaymentReciboPdf,
   sendCustomerCredentials,
   requestCustomerLoan,
 } from "./controllers/CustomerPortalController";
 
 import { customerContract } from "./controllers/PdfController";
+import { downloadLegalDoc } from "./controllers/LegalDocsController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
 // FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
@@ -191,6 +201,62 @@ import {
 import { getDashboardOverview } from "./controllers/DashboardController";
 import { checkCashRegisterOpen } from "./middlewares/checkCashRegisterOpen";
 import { getBMReport, getBMReportExcel } from "./controllers/BMReportController";
+
+// CARTEIRAS DE FINANCIAMENTO (dinheiro analítico) — CRUD + KPIs
+import {
+  findAll as findAllWallets,
+  dashboard as walletsDashboard,
+  findOne as findOneWallet,
+  create as createWallet,
+  update as updateWallet,
+  destroy as destroyWallet,
+  deactivate as deactivateWallet,
+  dependencies as walletDependencies,
+  unclassifiedLoans as walletUnclassifiedLoans,
+  classificationProposals as walletClassificationProposals,
+  classifyLoans as walletClassifyLoans,
+  purgeTest as purgeTestWallets,
+  testCandidates as walletTestCandidates,
+  options as walletOptions,
+  listRatesWithWallet,
+  listPartnerUsers,
+} from "./controllers/FinancingWalletController";
+
+// PORTAL DO PARCEIRO FINANCIADOR (userRole 4) — só leitura, só a sua carteira
+import {
+  profile as partnerProfile,
+  dashboard as partnerDashboard,
+  loans as partnerLoans,
+  installments as partnerInstallments,
+  mora as partnerMora,
+  transactions as partnerTransactions,
+  statement as partnerStatement,
+  statementExcel as partnerStatementExcel,
+  recibos as partnerRecibos,
+  reciboPdf as partnerReciboPdf,
+} from "./controllers/PartnerPortalController";
+
+// RELATÓRIOS DE FINANCIADOR + desagregação interna das carteiras
+import {
+  getFinancierReport,
+  getFinancierReportExcel,
+  sendFinancierReportEmail,
+  getWalletsBreakdown,
+} from "./controllers/FinancierReportController";
+
+// RECIBOS com numeração sequencial legal (AT Moçambique)
+import {
+  gerar as gerarRecibo,
+  byLoan as recibosByLoan,
+  byCustomer as recibosByCustomer,
+  findOne as findRecibo,
+  pdf as reciboPdf,
+  validar as validarRecibo,
+  enviar as enviarRecibo,
+  lookup as lookupRecibos,
+} from "./controllers/ReciboController";
+
+import { isAdmin, isPartner, isStaff } from "./middlewares/roles";
 import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
 
 
@@ -237,6 +303,12 @@ routes.post("/api/customer/changePassword", changeCustomerPassword);
 routes.get("/api/portal/:companyId/:customerId/dashboard", getCustomerDashboard);
 routes.get("/api/portal/:companyId/:customerId/loan/:loanId", getCustomerLoanDetail);
 routes.post("/api/portal/:companyId/:customerId/payments", registerPortalPayment);
+// Comprovativo (recibo) de um pagamento — mesmo recibo legal usado pelo Admin.
+// Emitido sob procura, para que TODOS os pagamentos tenham comprovativo.
+routes.get(
+  "/api/portal/:companyId/:customerId/payments/:tranzactionId/recibo/pdf",
+  getCustomerPaymentReciboPdf
+);
 routes.post("/api/portal/send-credentials", sendCustomerCredentials);
 routes.post("/api/portal/:companyId/:customerId/loans/request", requestCustomerLoan);
 
@@ -321,6 +393,9 @@ routes.get("/api/provinces", findAllProvinces);
 routes.get("/api/districts", findAllDistricts);
 // TEMPORÁRIO: debug de empresas sem auth (remover em produção)
 routes.get("/api/debug/companies", debugCompanies);
+// VALIDAÇÃO PÚBLICA DO RECIBO — é o destino do QR Code impresso no documento,
+// por isso não pode exigir sessão (tem de vir antes do middleware auth).
+routes.get("/api/recibos/validar", validarRecibo);
 
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth);
@@ -358,7 +433,15 @@ routes.put("/api/users/:id", update);
 routes.delete("/api/users/:id", destroy);
 
 // Loans Route
+// SIMULAÇÃO NO BACKEND — plano Price com a mesma função do desembolso
+// (paridade garantida entre o simulador do frontend e o plano gravado).
+routes.post("/api/loan/simulate", simulateLoan);
 routes.get("/api/loan/:id", findLoanByCustomer);
+// DOSSIÊ DO CRÉDITO (página de detalhe: pagamentos + recibos + prestações)
+// DOCUMENTOS LEGAIS DO CRÉDITO (pdfkit no backend, layout do PDF oficial):
+// contrato | termo | garantias | extracto
+routes.get("/api/loans/:loanId/documents/:tipo/pdf", downloadLegalDoc);
+routes.get("/api/loan/:id/detail", isStaff, loanDetail);
 routes.get("/api/loan/amortization/:id", getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", findAllLoans);
@@ -370,6 +453,8 @@ routes.delete("/api/loan/:id", destroyLoan);
 routes.post("/api/loan", createLoan);
 
 // Documents Route
+// CHECKLIST KYC — antes de /api/document/:id (mesmo nº de segmentos)
+routes.get("/api/document/checklist/:accountNumber", getDocumentChecklist);
 routes.get("/api/document", findAllDocuments);
 routes.get("/api/document/:id", getCustomerDocuments);
 routes.put("/api/document/:id", documentUpload, updateDocument);
@@ -439,6 +524,9 @@ routes.put("/api/tranzaction/:id", updateTranzaction);
 // Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA
 // (REEMBOLSO / JUROS_MORA / TAXA_ADMIN) são criados no controller.
 routes.post("/api/tranzaction", checkCashRegisterOpen, addTranzaction);
+// LIQUIDAÇÃO TOTAL ATÓMICA — todas as prestações pendentes numa única
+// transacção SQL; falha a uma → rollback de todas. Também exige caixa aberto.
+routes.post("/api/tranzaction/bulk", checkCashRegisterOpen, addTranzactionBulk);
 
 // Installments Routes
 // POST createInstallmentsLoan = desembolso do crédito (cria plano + activa).
@@ -482,6 +570,76 @@ routes.post("/api/export/customers/excel", exportCustomersExcel);
 routes.post("/api/export/loans/excel", exportLoansExcel);
 routes.post("/api/export/payments/excel", exportPaymentsExcel);
 routes.post("/api/export/installments/excel", exportInstallmentsExcel);
+
+// ==================== CARTEIRAS DE FINANCIAMENTO (ANALÍTICAS) ====================
+// Dinheiro ANALÍTICO (valores base + separação de relatórios por parceiro).
+// O dinheiro REAL continua nas contas de tesouraria (accounts DESEMBOLSO/MISTO).
+// Rotas específicas ANTES de /:id (evita "options"/"dashboard" como id).
+routes.get("/api/wallets/:companyId/dashboard", walletsDashboard);
+routes.get("/api/wallets/:companyId/options", walletOptions);
+routes.get("/api/wallets/:companyId/rates", listRatesWithWallet);
+routes.get("/api/wallets/:companyId/partner-users", isAdmin, listPartnerUsers);
+// Créditos ainda sem carteira (antes de /:companyId/:id).
+routes.get("/api/wallets/:companyId/unclassified-loans", isAdmin, walletUnclassifiedLoans);
+// Propostas de classificação automática (taxa de juro → carteira). Só propõe.
+routes.get("/api/wallets/:companyId/classification-proposals", isAdmin, walletClassificationProposals);
+// Carteiras sem movimento que podem ser limpas (TESTE_* ou criadas há <7 dias).
+routes.get("/api/wallets/:companyId/test-candidates", isAdmin, walletTestCandidates);
+// Dependências de UMA carteira — antes de /:companyId/:id (mesmo nº de segmentos).
+routes.get("/api/wallets/:id/dependencies", isAdmin, walletDependencies);
+routes.get("/api/wallets/:companyId/:id", findOneWallet);
+routes.get("/api/wallets/:companyId", findAllWallets);
+routes.post("/api/wallets", isAdmin, createWallet);
+// Limpar em lote as carteiras de teste (só Admin).
+routes.post("/api/wallets/purge-test", isAdmin, purgeTestWallets);
+// Classificação retroativa de créditos antigos numa carteira de financiamento.
+routes.post("/api/wallets/classify-loans", isAdmin, walletClassifyLoans);
+routes.post("/api/wallets/:id/deactivate", isAdmin, deactivateWallet);
+routes.put("/api/wallets/:id", isAdmin, updateWallet);
+// DELETE apaga de facto — o controller recusa (409) se a carteira tiver movimento.
+routes.delete("/api/wallets/:id", isAdmin, destroyWallet);
+
+// ==================== PARCEIROS FINANCIADORES (userRole 4) ====================
+// Apenas o Admin da empresa cria/edita contas de parceiro, sempre ligadas a
+// UMA carteira de financiamento com portal activo.
+routes.post("/api/users/parceiros", isAdmin, createPartner);
+routes.put("/api/users/parceiros/:id", isAdmin, updatePartner);
+
+// ==================== RECIBOS (NUMERAÇÃO SEQUENCIAL LEGAL — AT) ====================
+routes.post("/api/recibos/gerar/:tranzactionId", isStaff, gerarRecibo);
+routes.get("/api/recibos/loan/:loanId", isStaff, recibosByLoan);
+routes.get("/api/recibos/customer/:customerId", isStaff, recibosByCustomer);
+// A rota pública de validação (/api/recibos/validar) está registada antes do
+// middleware de autenticação — ver bloco "VALIDAÇÃO PÚBLICA DO RECIBO".
+routes.post("/api/recibos/lookup", isStaff, lookupRecibos);
+routes.post("/api/recibos/:id/enviar", isStaff, enviarRecibo);
+routes.get("/api/recibos/:id/pdf", isStaff, reciboPdf);
+routes.get("/api/recibos/:id", isStaff, findRecibo);
+
+// ==================== RELATÓRIO DE FINANCIADOR (Admin) ====================
+// Relatório isolado por carteira (desembolsos + recebimentos) com Excel e
+// envio por e-mail ao parceiro. O relatório oficial do BM NÃO é alterado:
+// continua consolidado, sem discriminar carteiras.
+routes.get("/api/reports/financiadores/:companyId/:walletId/excel", getFinancierReportExcel);
+routes.get("/api/reports/financiadores/:companyId/:walletId", getFinancierReport);
+routes.post("/api/reports/financiadores/:companyId/:walletId/email", sendFinancierReportEmail);
+// Desagregação por carteira — apenas para análise interna.
+routes.get("/api/reports/wallets-breakdown/:companyId", getWalletsBreakdown);
+
+// ==================== PORTAL DO PARCEIRO FINANCIADOR (userRole 4) ====================
+// Todas as rotas exigem userRole 4 + carteira associada; a carteira é lida da
+// base de dados (users.walletId) — o parceiro nunca escolhe a carteira.
+routes.use("/api/partner", isPartner);
+routes.get("/api/partner/profile", partnerProfile);
+routes.get("/api/partner/dashboard", partnerDashboard);
+routes.get("/api/partner/loans", partnerLoans);
+routes.get("/api/partner/installments", partnerInstallments);
+routes.get("/api/partner/mora", partnerMora);
+routes.get("/api/partner/transactions", partnerTransactions);
+routes.get("/api/partner/statement/excel", partnerStatementExcel);
+routes.get("/api/partner/statement", partnerStatement);
+routes.get("/api/partner/recibos/:id/pdf", partnerReciboPdf);
+routes.get("/api/partner/recibos", partnerRecibos);
 
 
 

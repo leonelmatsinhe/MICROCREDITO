@@ -37,6 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getCustomersStats = exports.registerCustomer = exports.setCustomerPassword = exports.getAllCustomerNames = exports.changeCustomerPassword = exports.loginCustomer = exports.deleteCustomer = exports.updateCustomer = exports.bulkCreateCustomers = exports.createCustomer = exports.findOneCustomer = exports.searchCustomers = exports.findAllCustomers = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const crypto_1 = __importDefault(require("crypto"));
 const jwt = __importStar(require("jsonwebtoken"));
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
@@ -56,6 +57,23 @@ const stripPassword = (entity) => {
     delete plain.password;
     return plain;
 };
+// ─── VALIDAÇÕES DE IDENTIFICAÇÃO (Moçambique) ───────────────
+// NUIT: 9 dígitos numéricos (formato AT Moçambique).
+const isValidNuit = (nuit) => {
+    const value = String(nuit !== null && nuit !== void 0 ? nuit : "").trim();
+    if (!value)
+        return true; // vazio é permitido (opcional)
+    return /^\d{9}$/.test(value);
+};
+// BI: 12 caracteres alfanuméricos no formato oficial (ex: 110100123456B).
+const isValidNationalId = (nationalId) => {
+    const value = String(nationalId !== null && nationalId !== void 0 ? nationalId : "").trim();
+    if (!value)
+        return true; // vazio é permitido (opcional)
+    return /^[A-Z0-9]{12}$/.test(value.toUpperCase());
+};
+// Gera password temporária de 8 caracteres legível (sem caracteres ambíguos).
+const generateRandomPassword = () => crypto_1.default.randomBytes(16).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
 const validateCustomerDates = (dateOfBirth, issuedAt) => {
     const today = new Date();
     const todayDate = today.toISOString().slice(0, 10);
@@ -176,6 +194,43 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
     const dateError = validateCustomerDates(customerDateOfBirth, issuedAt);
     if (dateError)
         return res.status(400).json({ success: false, message: dateError });
+    // ── Validação de formato NUIT / BI ──
+    if (!isValidNuit(customerNuit)) {
+        return res.status(400).json({
+            success: false,
+            message: "NUIT inválido: deve conter exactamente 9 dígitos numéricos.",
+        });
+    }
+    if (!isValidNationalId(customerNationalId)) {
+        return res.status(400).json({
+            success: false,
+            message: "BI inválido: deve conter 12 caracteres alfanuméricos (ex: 110100123456B).",
+        });
+    }
+    // ── Duplicidade (NUIT/BI/telefone/email) — cadastro interno, igual ao
+    // auto-cadastro: impede duas contas com a mesma identificação. ──
+    const duplicateWhere = [];
+    const phone = String(customerPhone || "").trim();
+    if (phone)
+        duplicateWhere.push({ customerPhone: phone });
+    const email = String(customerEmail || "").trim();
+    if (email)
+        duplicateWhere.push({ customerEmail: email });
+    const nuit = String(customerNuit || "").trim();
+    if (nuit)
+        duplicateWhere.push({ customerNuit: nuit });
+    const nationalId = String(customerNationalId || "").trim();
+    if (nationalId)
+        duplicateWhere.push({ customerNationalId: nationalId });
+    if (duplicateWhere.length > 0) {
+        const existing = yield CustomerModel_1.CustomerModel.findOne({ where: { [sequelize_1.Op.or]: duplicateWhere } });
+        if (existing) {
+            return res.status(409).json({
+                success: false,
+                message: "Já existe um mutuário com este telefone, email, NUIT ou BI.",
+            });
+        }
+    }
     const accNumber = yield CustomerModel_1.CustomerModel.findOne({
         where: {
             companyId
@@ -183,7 +238,11 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
         order: [["id", "DESC"]],
     });
     const accountNumber = accNumber === null ? 100 : parseInt(accNumber === null || accNumber === void 0 ? void 0 : accNumber.getDataValue("accountNumber")) + 1;
-    bcryptjs_1.default.hash("123456" + "", 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
+    // ── Password temporária aleatória (8 chars) — nunca mais "123456". ──
+    // Por agora é logada no console e devolvida UMA única vez ao staff que
+    // cadastrou (para entrega por SMS/email/WhatsApp); a BD guarda só o hash.
+    const temporaryPassword = generateRandomPassword();
+    bcryptjs_1.default.hash(temporaryPassword, 10, (hashError, hash) => __awaiter(void 0, void 0, void 0, function* () {
         if (hashError) {
             return res.status(500).json({
                 success: false,
@@ -224,14 +283,21 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
             companyLicenseNumber,
             companyMainActivity,
         });
-        return customer != null
-            ? res
-                .status(201)
-                .send({ success: true, message: "Customer created successfully." })
-            : res.status(200).send({
-                success: false,
-                message: "There was an error registering the customer.",
+        if (customer != null) {
+            // Entrega das credenciais: console.log por agora (SMS/e-mail reais são
+            // ligados depois). A password em claro NUNCA volta a ser consultável.
+            console.log(`[CREDENCIAIS] Mutuário ${customerName} (conta ${accountNumber}) — telefone ${customerPhone} — senha temporária: ${temporaryPassword}`);
+            return res.status(201).send({
+                success: true,
+                message: "Mutuário criado com sucesso.",
+                // Entrega única: o frontend mostra/envia e descarta.
+                temporaryPassword,
             });
+        }
+        return res.status(200).send({
+            success: false,
+            message: "There was an error registering the customer.",
+        });
     }));
 });
 exports.createCustomer = createCustomer;

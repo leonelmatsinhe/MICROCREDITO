@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import moment from "moment";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { LoanModel } from "../database/models/LoanModel";
@@ -401,7 +402,11 @@ const addTranzaction = async (req: Request, res: Response) => {
   if (!installment) {
     return res.status(404).send({ success: false, message: "Prestação não encontrada." });
   }
-  const loan = await LoanModel.findByPk(installment.loanId, { attributes: ["companyId"] });
+  const loan = await LoanModel.findByPk(installment.loanId, { attributes: ["companyId", "walletId"] });
+  // Carteira de financiamento do crédito — copiada para o pagamento (e para o
+  // recibo), de forma a alimentar o relatório e o portal do parceiro.
+  const walletId =
+    Number(installment.getDataValue("walletId")) || Number(loan?.getDataValue("walletId")) || null;
   const company = loan
     ? await CompanyModel.findByPk(loan.getDataValue("companyId"), { attributes: ["forfeit"] })
     : null;
@@ -471,14 +476,26 @@ const addTranzaction = async (req: Request, res: Response) => {
     notes: notes || null,
     discountApplied: discountApplied || false,
     discountAmount,
+    walletId: walletId || null,
+    mora_amount: Number(latePaymentInterest) || 0,
   });
   if (tranzaction != null) {
     // Actualizar status da prestação: 1=pago, -1=parcial, 0=pendente
+    // Mora gerada nesta prestação: valor cobrado + dias de atraso considerados
+    // (alimenta o KPI "juros de mora gerados" do parceiro financiador).
+    const moraDays = Math.max(0, moment(paymentReferenceDate).diff(moment(installment.dueDate), "days"));
+    const previousMoraAmount = Number(installment.mora_amount) || 0;
     const updateAmortizationLoan = await AmorizationLoanModel.update(
       {
         status: newStatus,
         paidAmount: finalPaidAmount,
         remainingBalance: isFullPayment ? 0 : debtAmount,
+        ...(Number(latePaymentInterest) > 0
+          ? {
+              mora_amount: Math.round((previousMoraAmount + Number(latePaymentInterest)) * 100) / 100,
+              mora_days: moraDays,
+            }
+          : {}),
       },
       {
         where: {
@@ -609,10 +626,32 @@ const addTranzaction = async (req: Request, res: Response) => {
       console.error("[CAIXA] Falha ao registar pagamento no caixa (pagamento mantido):", cashError?.message || cashError);
     }
 
+    // ── RECIBO DO PAGAMENTO (numeração sequencial legal) ──
+    // Best-effort: uma falha na emissão não desfaz o pagamento; o recibo pode
+    // ser emitido/descarregado mais tarde no detalhe do crédito.
+    let recibo: any = null;
+    try {
+      const { generateReciboForTranzaction } = await import("../services/reciboService");
+      recibo = await generateReciboForTranzaction({
+        tranzactionId: Number((tranzaction as any).id),
+        companyId: Number(companyId),
+        createdBy: null,
+      });
+    } catch (reciboError: any) {
+      console.error("[Recibo] Falha ao emitir o recibo do pagamento:", reciboError?.message || reciboError);
+    }
+
     return updateAmortizationLoan != null
       ? res
         .status(201)
-        .send({ success: true, message: "Payment updated successfully." })
+        .send({
+          success: true,
+          message: "Payment updated successfully.",
+          walletId: walletId || null,
+          recibo: recibo
+            ? { id: recibo.id, numero: recibo.numero, pdf_url: recibo.pdf_url || null }
+            : null,
+        })
       : res.status(500).send({
         success: false,
         message: "There was an error in the payment.",

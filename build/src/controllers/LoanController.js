@@ -1,4 +1,27 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -9,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateLoanInstallmentDates = exports.invalidateDisbursedLoan = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
+exports.simulateLoan = exports.updateLoanInstallmentDates = exports.invalidateDisbursedLoan = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.loanDetail = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
@@ -24,6 +47,11 @@ const loanAmortization_1 = require("../utils/loanAmortization");
 const db_1 = require("../database/db");
 const DebtModel_1 = require("../database/models/DebtModel");
 const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
+const FinancingWalletModel_1 = require("../database/models/FinancingWalletModel");
+const ReciboModel_1 = require("../database/models/ReciboModel");
+const reciboService_1 = require("../services/reciboService");
+const kycDocuments_1 = require("../utils/kycDocuments");
+const loanAmortization_2 = require("../utils/loanAmortization");
 const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -95,6 +123,79 @@ const validateCapacityRule = (params) => __awaiter(void 0, void 0, void 0, funct
         normalizedObservation: observation || null,
     };
 });
+/**
+ * Verifica a checklist KYC do mutuário antes de criar/desembolsar crédito.
+ * Regra: nenhum crédito avança sem os 3 documentos base (BI, NUIT,
+ * Comprovativo de rendimentos).
+ */
+const validateKycForLoan = (accountNumber, companyId) => __awaiter(void 0, void 0, void 0, function* () {
+    const documents = yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll({
+        where: {
+            accountNumber: Number(accountNumber),
+            companyId: Number(companyId),
+        },
+        raw: true,
+    });
+    return (0, kycDocuments_1.evaluateKyc)(documents);
+});
+/**
+ * POST /api/loan/simulate — plano Price calculado no BACKEND.
+ * Garante paridade total entre o simulador do frontend e o plano gravado no
+ * desembolso (mesma função `simulator` usada por createInstallmentsLoan).
+ * Body: { amount, installments, monthlyRate, dateCreated? }
+ */
+const simulateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { amount, installments, monthlyRate, dateCreated } = req.body || {};
+        const principal = Number(amount);
+        const periods = parseInt(String(installments), 10);
+        const rate = Number(monthlyRate);
+        if (!Number.isFinite(principal) || principal <= 0) {
+            return res.status(400).json({ success: false, message: "O montante deve ser maior que zero." });
+        }
+        if (!Number.isInteger(periods) || periods < 1 || periods > 60) {
+            return res.status(400).json({ success: false, message: "O número de prestações deve estar entre 1 e 60." });
+        }
+        if (!Number.isFinite(rate) || rate < 0) {
+            return res.status(400).json({ success: false, message: "A taxa mensal deve ser um número positivo (ex: 0.10 = 10% a.m.)." });
+        }
+        const dueDate = dateCreated ? String(dateCreated).slice(0, 10) : new Date().toISOString().slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+            return res.status(400).json({ success: false, message: "Data inválida (formato YYYY-MM-DD)." });
+        }
+        const plan = (0, loanAmortization_2.simulator)({
+            amount: String(principal),
+            numberOfInstallments: String(periods),
+            interestRate: String(rate),
+            dueDate,
+            loanId: 0,
+            accountNumber: 0,
+            companyId: 0,
+            status: 0,
+        });
+        const installmentValue = plan.length > 0 ? Number(plan[0].installment) : 0;
+        const totalToPay = plan.reduce((sum, row) => sum + Number(row.installment || 0), 0);
+        return res.status(200).json({
+            success: true,
+            result: {
+                plan,
+                installment: Math.round(installmentValue * 100) / 100,
+                totalToPay: Math.round(totalToPay * 100) / 100,
+                totalInterest: Math.round((totalToPay - principal) * 100) / 100,
+                monthlyRate: rate,
+                annualRate: Math.round(rate * 12 * 10000) / 10000,
+            },
+        });
+    }
+    catch (error) {
+        console.error("Erro na simulação de crédito:", error);
+        return res.status(500).json({
+            success: false,
+            message: (error === null || error === void 0 ? void 0 : error.message) || "Erro interno ao simular crédito.",
+        });
+    }
+});
+exports.simulateLoan = simulateLoan;
 const findLoanByCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const loans = yield LoanModel_1.LoanModel.findAll({
@@ -195,7 +296,18 @@ const getLoanAmortization = (req, res) => __awaiter(void 0, void 0, void 0, func
 });
 exports.getLoanAmortization = getLoanAmortization;
 const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     let { accountNumber, companyId, amount, numberOfInstallments, interestRate, administrativeFee, creditManager, loanDescription, capacityExcessObservation, dateCreated, status, } = req.body;
+    // ── Validações de entrada (sem Joi — inline) ──
+    if (!loanDescription || !String(loanDescription).trim()) {
+        return res.status(400).json({ success: false, message: "A finalidade/descrição do crédito é obrigatória." });
+    }
+    if (!dateCreated || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateCreated).slice(0, 10))) {
+        return res.status(400).json({ success: false, message: "A data do crédito é obrigatória (YYYY-MM-DD)." });
+    }
+    if (!creditManager) {
+        return res.status(400).json({ success: false, message: "O gestor de crédito é obrigatório." });
+    }
     const capacityValidation = yield validateCapacityRule({
         accountNumber,
         companyId,
@@ -218,6 +330,31 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     if (!customer) {
         return res.status(404).json({ success: false, message: "Mutuário não encontrado." });
     }
+    // ── KYC BLOQUEANTE: sem os 3 documentos base, nenhum crédito é criado ──
+    const kyc = yield validateKycForLoan(accountNumber, companyId);
+    if (!kyc.complete) {
+        return res.status(400).json({
+            success: false,
+            error: "KYC_INCOMPLETE",
+            message: `Checklist KYC incompleta. Documentos em falta: ${kyc.missing.join(", ")}.`,
+            missing: kyc.missing,
+        });
+    }
+    // Carteira de financiamento (analítica): a que veio no pedido ou, se não veio,
+    // a derivada da taxa de juro escolhida (`interest_rates.walletId`). É sempre
+    // confirmada/alterada no desembolso, onde o saldo analítico e real são validados.
+    let walletId = ((_a = req.body) === null || _a === void 0 ? void 0 : _a.walletId) ? Number(req.body.walletId) : null;
+    if (!walletId) {
+        try {
+            const { resolveWalletFromRate } = yield Promise.resolve().then(() => __importStar(require("../services/financingWalletService")));
+            const derivada = yield resolveWalletFromRate(Number(companyId), interestRate);
+            if (derivada === null || derivada === void 0 ? void 0 : derivada.walletId)
+                walletId = Number(derivada.walletId);
+        }
+        catch (deriveError) {
+            console.error("[Carteiras] Falha ao derivar a carteira da taxa:", (deriveError === null || deriveError === void 0 ? void 0 : deriveError.message) || deriveError);
+        }
+    }
     const loan = yield LoanModel_1.LoanModel.create({
         accountNumber,
         customerId: customer.getDataValue("id"),
@@ -231,6 +368,7 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         capacityExcessObservation: capacityValidation.normalizedObservation,
         dateCreated,
         status,
+        walletId,
     });
     // Criar notificação para admin/gestor sobre nova solicitação
     if (loan) {
@@ -271,7 +409,7 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
 });
 exports.createLoan = createLoan;
 const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d;
+    var _b, _c, _d, _e;
     const { id } = req.params;
     // Buscar o empréstimo antes de atualizar para verificar mudança de status
     const previousLoan = yield LoanModel_1.LoanModel.findByPk(id);
@@ -291,10 +429,10 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         const capacityValidation = yield validateCapacityRule({
             accountNumber: previousLoan.accountNumber,
             companyId: previousLoan.companyId,
-            amount: (_a = req.body.amount) !== null && _a !== void 0 ? _a : previousLoan.amount,
-            interestRate: (_b = req.body.interestRate) !== null && _b !== void 0 ? _b : previousLoan.interestRate,
-            numberOfInstallments: (_c = req.body.numberOfInstallments) !== null && _c !== void 0 ? _c : previousLoan.numberOfInstallments,
-            capacityExcessObservation: (_d = req.body.capacityExcessObservation) !== null && _d !== void 0 ? _d : previousLoan.capacityExcessObservation,
+            amount: (_b = req.body.amount) !== null && _b !== void 0 ? _b : previousLoan.amount,
+            interestRate: (_c = req.body.interestRate) !== null && _c !== void 0 ? _c : previousLoan.interestRate,
+            numberOfInstallments: (_d = req.body.numberOfInstallments) !== null && _d !== void 0 ? _d : previousLoan.numberOfInstallments,
+            capacityExcessObservation: (_e = req.body.capacityExcessObservation) !== null && _e !== void 0 ? _e : previousLoan.capacityExcessObservation,
         });
         if (!capacityValidation.valid) {
             return res.status(capacityValidation.statusCode || 400).json({
@@ -782,3 +920,218 @@ const updateLoanInstallmentDates = (req, res) => __awaiter(void 0, void 0, void 
     }
 });
 exports.updateLoanInstallmentDates = updateLoanInstallmentDates;
+/**
+ * GET /api/loan/:id/detail
+ * DOSSIÊ DO CRÉDITO — alimenta a página de detalhe (`/loans/:id`):
+ * crédito + mutuário + carteira de financiamento, pagamentos com o recibo de
+ * cada um (ou sem recibo, para permitir emiti-lo), recibos emitidos e totais.
+ *
+ * As instalações (prestações) ficam em `GET /api/loan/amortization/:id`, que já
+ * calcula mora e plano completo — aqui só se resume o essencial.
+ */
+const loanDetail = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ success: false, message: "Crédito inválido." });
+        }
+        const loan = (yield LoanModel_1.LoanModel.findByPk(id, { raw: true }));
+        if (!loan) {
+            return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+        }
+        const companyId = Number(loan.companyId);
+        const [cliente, carteira, pagamentos, recibos, prestacoes] = yield Promise.all([
+            loan.customerId
+                ? CustomerModel_1.CustomerModel.findByPk(Number(loan.customerId), { raw: true })
+                : Promise.resolve(null),
+            loan.walletId
+                ? FinancingWalletModel_1.FinancingWalletModel.findByPk(Number(loan.walletId), { raw: true })
+                : Promise.resolve(null),
+            TranzactionModel_1.TranzactionModel.findAll({ where: { loanId: id }, order: [["id", "DESC"]], raw: true }),
+            ReciboModel_1.ReciboModel.findAll({ where: { loanId: id }, order: [["id", "DESC"]], raw: true }),
+            AmortizationLoanModel_1.AmorizationLoanModel.findAll({ where: { loanId: id }, raw: true }),
+        ]);
+        const reciboByTranzaction = new Map();
+        (recibos || []).forEach((r) => reciboByTranzaction.set(Number(r.tranzactionId), r));
+        const round2 = (value) => Math.round(value * 100) / 100;
+        const metodoCache = new Map();
+        const metodoLegivel = (value) => __awaiter(void 0, void 0, void 0, function* () {
+            const chave = String(value !== null && value !== void 0 ? value : "");
+            if (!metodoCache.has(chave)) {
+                const { description } = yield (0, reciboService_1.resolvePaymentMethod)(value, companyId);
+                metodoCache.set(chave, description);
+            }
+            return metodoCache.get(chave) || "—";
+        });
+        let totalPago = 0;
+        let totalCapital = 0;
+        let totalJuros = 0;
+        let totalMora = 0;
+        let totalDesconto = 0;
+        const listaPagamentos = [];
+        for (const tx of pagamentos || []) {
+            const valor = round2(toNumber(tx.amount));
+            const juros = round2(toNumber(tx.interestRateAmount));
+            const mora = round2(toNumber(tx.mora_amount) || toNumber(tx.latePaymentInterest));
+            const desconto = round2(toNumber(tx.discountAmount));
+            const capital = round2(Math.max(0, valor - juros));
+            const recibo = reciboByTranzaction.get(Number(tx.id));
+            totalPago += valor;
+            totalCapital += capital;
+            totalJuros += juros;
+            totalMora += mora;
+            totalDesconto += desconto;
+            listaPagamentos.push({
+                id: Number(tx.id),
+                amortizationLoanId: Number(tx.amortizationLoanId) || null,
+                paymentDate: tx.paymentDate || null,
+                amount: valor,
+                capitalAmount: capital,
+                interestAmount: juros,
+                lateInterestAmount: mora,
+                discountAmount: desconto,
+                totalAmount: round2(valor + mora - desconto),
+                reference: tx.tranzactionReference || "",
+                paymentMethod: tx.paymentMethod,
+                paymentMethodLabel: yield metodoLegivel(tx.paymentMethod),
+                staffName: tx.staffName || "",
+                notes: tx.notes || null,
+                receiptUrl: tx.receiptUrl || null,
+                walletId: Number(tx.walletId) || null,
+                recibo: recibo
+                    ? {
+                        id: Number(recibo.id),
+                        numero: recibo.numero,
+                        sequencia: Number(recibo.sequencia),
+                        ano: Number(recibo.ano),
+                        valor_pago: round2(toNumber(recibo.valor_pago)),
+                        hash_at: recibo.hash_at || null,
+                        at_validation_code: recibo.at_validation_code || null,
+                        pdf_url: recibo.pdf_url || null,
+                        emitido_em: recibo.created_at || recibo.createdAt || null,
+                    }
+                    : null,
+            });
+        }
+        // Prestações: valor em falta = valor da prestação - já pago (a tabela guarda
+        // o saldo devedor acumulado em `remainingBalance`, que não serve para isto).
+        const hoje = new Date();
+        let saldoDevedor = 0;
+        let pagas = 0;
+        let pendentes = 0;
+        let emAtraso = 0;
+        let moraGerada = 0;
+        let proximoVencimento = null;
+        (prestacoes || []).forEach((item) => {
+            const falta = Math.max(0, toNumber(item.installment) - toNumber(item.paidAmount));
+            const status = Number(item.status);
+            const vencimento = item.dueDate ? new Date(String(item.dueDate).slice(0, 10)) : null;
+            const vencida = vencimento instanceof Date && !Number.isNaN(vencimento.getTime()) && vencimento < hoje;
+            if (status === 1) {
+                pagas += 1;
+                return;
+            }
+            saldoDevedor += falta;
+            pendentes += 1;
+            moraGerada += toNumber(item.mora_amount);
+            if (vencida)
+                emAtraso += 1;
+            if (vencimento && !vencida) {
+                const iso = String(item.dueDate).slice(0, 10);
+                if (!proximoVencimento || iso < proximoVencimento)
+                    proximoVencimento = iso;
+            }
+        });
+        const ultimoPagamento = listaPagamentos.length
+            ? listaPagamentos
+                .map((p) => String(p.paymentDate || ""))
+                .filter(Boolean)
+                .sort()
+                .pop() || null
+            : null;
+        return res.status(200).json({
+            success: true,
+            result: {
+                credito: {
+                    id: Number(loan.id),
+                    companyId,
+                    accountNumber: loan.accountNumber,
+                    amount: round2(toNumber(loan.amount)),
+                    interestRate: toNumber(loan.interestRate),
+                    administrativeFee: toNumber(loan.administrativeFee),
+                    numberOfInstallments: Number(loan.numberOfInstallments) || 0,
+                    status: Number(loan.status),
+                    dateCreated: loan.dateCreated || null,
+                    disbursementDate: loan.disbursementDate || null,
+                    finalDueDate: loan.finalDueDate || null,
+                    creditManager: loan.creditManager || null,
+                    walletId: Number(loan.walletId) || null,
+                },
+                cliente: cliente
+                    ? {
+                        id: Number(cliente.id),
+                        accountNumber: cliente.accountNumber,
+                        name: cliente.customerName || cliente.name || "",
+                        nuit: cliente.customerNuit || null,
+                        phone: cliente.customerPhone || null,
+                        email: cliente.customerEmail || null,
+                        photoUrl: cliente.passportPhotoUrl || null,
+                    }
+                    : null,
+                carteira: carteira
+                    ? {
+                        id: Number(carteira.id),
+                        codigo: carteira.codigo,
+                        nome: carteira.nome,
+                        cor_badge: carteira.cor_badge || "blue",
+                        parceiro_nome: carteira.parceiro_nome || null,
+                        allocated_amount: carteira.allocated_amount === null || carteira.allocated_amount === undefined
+                            ? null
+                            : round2(toNumber(carteira.allocated_amount)),
+                    }
+                    : null,
+                resumo: {
+                    total_pago: round2(totalPago),
+                    total_capital: round2(totalCapital),
+                    total_juros: round2(totalJuros),
+                    total_mora: round2(totalMora),
+                    total_desconto: round2(totalDesconto),
+                    saldo_devedor: round2(saldoDevedor),
+                    mora_gerada: round2(moraGerada),
+                    prestacoes_pagas: pagas,
+                    prestacoes_pendentes: pendentes,
+                    prestacoes_atraso: emAtraso,
+                    num_pagamentos: listaPagamentos.length,
+                    pagamentos_sem_recibo: listaPagamentos.filter((p) => !p.recibo).length,
+                    ultimo_pagamento: ultimoPagamento,
+                    proximo_vencimento: proximoVencimento,
+                },
+                pagamentos: listaPagamentos,
+                recibos: (recibos || []).map((r) => ({
+                    id: Number(r.id),
+                    numero: r.numero,
+                    sequencia: Number(r.sequencia),
+                    ano: Number(r.ano),
+                    tranzactionId: Number(r.tranzactionId) || null,
+                    valor_pago: round2(toNumber(r.valor_pago)),
+                    valor_capital: round2(toNumber(r.valor_capital)),
+                    valor_juros: round2(toNumber(r.valor_juros)),
+                    valor_mora: round2(toNumber(r.valor_mora)),
+                    metodo_pagamento_desc: r.metodo_pagamento_desc || null,
+                    hash_at: r.hash_at || null,
+                    at_validation_code: r.at_validation_code || null,
+                    pdf_url: r.pdf_url || null,
+                    emitido_em: r.created_at || r.createdAt || null,
+                })),
+            },
+        });
+    }
+    catch (error) {
+        console.error("[Crédito] Erro no dossiê:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({
+            success: false,
+            message: "Não foi possível carregar os dados do crédito.",
+        });
+    }
+});
+exports.loanDetail = loanDetail;

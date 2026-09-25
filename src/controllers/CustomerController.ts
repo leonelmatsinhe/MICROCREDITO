@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import bcryptjs from "bcryptjs";
+import crypto from "crypto";
 import * as jwt from "jsonwebtoken";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
@@ -19,6 +20,25 @@ const stripPassword = (entity: any) => {
   delete plain.password;
   return plain;
 };
+
+// ─── VALIDAÇÕES DE IDENTIFICAÇÃO (Moçambique) ───────────────
+// NUIT: 9 dígitos numéricos (formato AT Moçambique).
+const isValidNuit = (nuit: unknown): boolean => {
+  const value = String(nuit ?? "").trim();
+  if (!value) return true; // vazio é permitido (opcional)
+  return /^\d{9}$/.test(value);
+};
+
+// BI: 12 caracteres alfanuméricos no formato oficial (ex: 110100123456B).
+const isValidNationalId = (nationalId: unknown): boolean => {
+  const value = String(nationalId ?? "").trim();
+  if (!value) return true; // vazio é permitido (opcional)
+  return /^[A-Z0-9]{12}$/.test(value.toUpperCase());
+};
+
+// Gera password temporária de 8 caracteres legível (sem caracteres ambíguos).
+const generateRandomPassword = (): string =>
+  crypto.randomBytes(16).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
 
 const validateCustomerDates = (dateOfBirth: unknown, issuedAt: unknown): string | null => {
   const today = new Date();
@@ -180,6 +200,41 @@ const createCustomer = async (req: Request, res: Response) => {
   const dateError = validateCustomerDates(customerDateOfBirth, issuedAt);
   if (dateError) return res.status(400).json({ success: false, message: dateError });
 
+  // ── Validação de formato NUIT / BI ──
+  if (!isValidNuit(customerNuit)) {
+    return res.status(400).json({
+      success: false,
+      message: "NUIT inválido: deve conter exactamente 9 dígitos numéricos.",
+    });
+  }
+  if (!isValidNationalId(customerNationalId)) {
+    return res.status(400).json({
+      success: false,
+      message: "BI inválido: deve conter 12 caracteres alfanuméricos (ex: 110100123456B).",
+    });
+  }
+
+  // ── Duplicidade (NUIT/BI/telefone/email) — cadastro interno, igual ao
+  // auto-cadastro: impede duas contas com a mesma identificação. ──
+  const duplicateWhere: any[] = [];
+  const phone = String(customerPhone || "").trim();
+  if (phone) duplicateWhere.push({ customerPhone: phone });
+  const email = String(customerEmail || "").trim();
+  if (email) duplicateWhere.push({ customerEmail: email });
+  const nuit = String(customerNuit || "").trim();
+  if (nuit) duplicateWhere.push({ customerNuit: nuit });
+  const nationalId = String(customerNationalId || "").trim();
+  if (nationalId) duplicateWhere.push({ customerNationalId: nationalId });
+  if (duplicateWhere.length > 0) {
+    const existing = await CustomerModel.findOne({ where: { [Op.or]: duplicateWhere } });
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Já existe um mutuário com este telefone, email, NUIT ou BI.",
+      });
+    }
+  }
+
   const accNumber = await CustomerModel.findOne({
     where: {
       companyId
@@ -188,7 +243,11 @@ const createCustomer = async (req: Request, res: Response) => {
   })
   const accountNumber = accNumber === null ? 100 : parseInt(accNumber?.getDataValue("accountNumber")) + 1
 
-  bcryptjs.hash("123456" + "", 10, async (hashError, hash) => {
+  // ── Password temporária aleatória (8 chars) — nunca mais "123456". ──
+  // Por agora é logada no console e devolvida UMA única vez ao staff que
+  // cadastrou (para entrega por SMS/email/WhatsApp); a BD guarda só o hash.
+  const temporaryPassword = generateRandomPassword();
+  bcryptjs.hash(temporaryPassword, 10, async (hashError, hash) => {
     if (hashError) {
       return res.status(500).json({
         success: false,
@@ -232,14 +291,23 @@ const createCustomer = async (req: Request, res: Response) => {
     });
 
 
-    return customer != null
-      ? res
-        .status(201)
-        .send({ success: true, message: "Customer created successfully." })
-      : res.status(200).send({
-        success: false,
-        message: "There was an error registering the customer.",
+    if (customer != null) {
+      // Entrega das credenciais: console.log por agora (SMS/e-mail reais são
+      // ligados depois). A password em claro NUNCA volta a ser consultável.
+      console.log(
+        `[CREDENCIAIS] Mutuário ${customerName} (conta ${accountNumber}) — telefone ${customerPhone} — senha temporária: ${temporaryPassword}`
+      );
+      return res.status(201).send({
+        success: true,
+        message: "Mutuário criado com sucesso.",
+        // Entrega única: o frontend mostra/envia e descarta.
+        temporaryPassword,
       });
+    }
+    return res.status(200).send({
+      success: false,
+      message: "There was an error registering the customer.",
+    });
   })
 };
 

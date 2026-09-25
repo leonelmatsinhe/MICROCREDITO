@@ -1,215 +1,203 @@
 <template>
-  <div class="auth-bg">
-    <!-- Painel de apresentação (marketing) -->
-    <div class="auth-hero">
-      <div class="hero-inner">
-        <div class="hero-brand row items-center">
-          <img
-            src="@/assets/logo.png"
-            alt="Mais Mola Logo"
-            width="44"
-            height="44"
-            style="border-radius: 10px; object-fit: contain; background: white; padding: 4px"
-          />
-          <div class="q-ml-sm">
-            <div class="text-weight-bold" style="font-size: 16px; color: white">Mais Mola</div>
-            <div class="text-caption hero-brand-caption" style="font-size: 11px">Gestão de Microcrédito</div>
-          </div>
-        </div>
+  <div class="login-section">
+      <div class="login-container q-py-xl">
+        <div class="row q-col-gutter-xl items-center justify-center">
 
-        <div class="hero-tagline">
-          <div class="text-h4 text-weight-bold" style="color: white; line-height: 1.25">
-            Gestão de microcrédito<br />simples, segura e eficiente
-          </div>
-          <p class="text-body1 q-mt-md" style="color: rgba(255,255,255,0.8); font-size: 14px; line-height: 1.6">
-            A plataforma que centraliza todo o ciclo do crédito — do pedido ao reembolso — numa única ferramenta, com controlo total para a sua instituição.
-          </p>
-        </div>
+          <!-- ============ COLUNA ESQUERDA — MARKETING ============ -->
+          <div class="col-12 col-md-6">
+            <div class="hero-copy">
+              <q-badge color="lime" text-color="green-10" rounded class="cert-badge q-pa-sm">
+                <q-icon name="verified" size="14px" class="q-mr-xs" />
+                ✓ Certificado AT 2026 • REC-{{ currentYear }}-84321
+              </q-badge>
 
-        <!-- Benefícios -->
-        <div class="hero-benefits q-mt-lg">
-          <div class="benefit-item">
-            <q-icon name="track_changes" size="20px" class="benefit-icon" />
-            <div>
-              <div class="benefit-title">Acompanhamento integral</div>
-              <div class="benefit-desc">Créditos pendentes, desembolsados, terminados e rejeitados num só painel.</div>
-            </div>
-          </div>
-          <div class="benefit-item">
-            <q-icon name="event_repeat" size="20px" class="benefit-icon" />
-            <div>
-              <div class="benefit-title">Prestações e alertas automáticos</div>
-              <div class="benefit-desc">Planos de amortização, controlo de mora e avisos por SMS e WhatsApp.</div>
-            </div>
-          </div>
-          <div class="benefit-item">
-            <q-icon name="insights" size="20px" class="benefit-icon" />
-            <div>
-              <div class="benefit-title">Relatórios e exportação</div>
-              <div class="benefit-desc">Dados exportáveis em PDF e Excel, com relatórios prontos para o Banco de Moçambique.</div>
-            </div>
-          </div>
-          <div class="benefit-item">
-            <q-icon name="verified_user" size="20px" class="benefit-icon" />
-            <div>
-              <div class="benefit-title">Acesso por perfis</div>
-              <div class="benefit-desc">Administrador, Gestor de Crédito e Operador com permissões próprias.</div>
-            </div>
-          </div>
-        </div>
+              <h1 class="hero-title text-h2 text-weight-bolder q-mt-md q-mb-none">
+                Gestão de microcrédito<br />
+                <span class="hero-title-accent">simples, segura</span> e eficiente
+              </h1>
 
-        <!-- REMOVIDO TEMPORARIAMENTE: portal do mutuário -->
-        <!-- <div class="hero-portal q-mt-lg">
-          <q-icon name="person" size="18px" style="color: #4ade80" class="q-mr-sm" />
-          <div class="col">
-            <div class="text-weight-medium" style="font-size: 13px; color: white">É mutuário?</div>
-            <div class="text-caption" style="color: rgba(255,255,255,0.7); font-size: 12px">
-              Acompanhe as suas prestações, pagamentos e extractos no Portal do Mutuário.
+              <p class="hero-sub q-mt-md">
+                A plataforma que centraliza todo o ciclo do crédito — do pedido ao reembolso —
+                numa única ferramenta, com controlo total para a sua instituição.
+              </p>
+
+              <!-- Features -->
+              <div class="features q-mt-lg">
+                <div class="feature-item">
+                  <q-avatar color="green-9" text-color="white" size="42px">
+                    <q-icon name="track_changes" size="22px" />
+                  </q-avatar>
+                  <div class="q-ml-md">
+                    <div class="feature-title">Acompanhamento integral</div>
+                    <div class="feature-desc">Créditos pendentes, desembolsados, terminados e rejeitados num só painel.</div>
+                  </div>
+                </div>
+
+                <div class="feature-item">
+                  <q-avatar color="green-9" text-color="white" size="42px">
+                    <q-icon name="event_repeat" size="22px" />
+                  </q-avatar>
+                  <div class="q-ml-md">
+                    <div class="feature-title">Prestações e alertas automáticos</div>
+                    <div class="feature-desc">Planos de amortização, controlo de mora e avisos por SMS e WhatsApp.</div>
+                  </div>
+                </div>
+
+                <div class="feature-item">
+                  <q-avatar color="green-9" text-color="white" size="42px">
+                    <q-icon name="insights" size="22px" />
+                  </q-avatar>
+                  <div class="q-ml-md">
+                    <div class="feature-title">Relatórios e exportação</div>
+                    <div class="feature-desc">Dados exportáveis em PDF e Excel, com relatórios prontos para o Banco de Moçambique.</div>
+                  </div>
+                </div>
+
+                <div class="feature-item">
+                  <q-avatar color="green-9" text-color="white" size="42px">
+                    <q-icon name="verified_user" size="22px" />
+                  </q-avatar>
+                  <div class="q-ml-md">
+                    <div class="feature-title">Acesso por perfis</div>
+                    <div class="feature-desc">Administrador, Gestor de Crédito e Operador com permissões próprias.</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <q-btn
-            outline
-            color="white"
-            size="sm"
-            no-caps
-            class="q-ml-md"
-            :disable="loading"
-            @click="showCustomerLogin = true"
-          >
-            Portal do Mutuário
-          </q-btn>
-        </div> -->
+
+          <!-- ============ COLUNA DIREITA — LOGIN ============ -->
+          <div class="col-12 col-md-5 offset-md-1">
+            <q-card id="login-card" flat class="login-glass-card q-pa-lg" style="border-radius: 24px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px)">
+              <!-- Header -->
+              <div class="text-center q-mb-md">
+                <img
+                  src="@/assets/logo.png"
+                  alt="Mais Mola Logo"
+                  width="52"
+                  height="52"
+                  style="border-radius: 14px; object-fit: contain"
+                />
+                <div class="text-h6 text-weight-bold q-mt-sm">Bem-vindo</div>
+                <div class="text-caption text-grey-6">Aceda com as suas credenciais de equipa</div>
+              </div>
+
+              <!-- Form -->
+              <q-form @submit="handleSubmit" greedy class="q-gutter-md">
+                <q-input
+                  v-model="form.email"
+                  label="E-mail ou nº de telemóvel"
+                  outlined
+                  rounded
+                  :rules="[val => !!val || 'Campo obrigatório']"
+                  :disable="loading"
+                >
+                  <template v-slot:prepend>
+                    <q-icon name="mail" color="grey-6" size="18px" />
+                  </template>
+                </q-input>
+
+                <q-input
+                  v-model="form.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  label="Senha"
+                  outlined
+                  rounded
+                  :rules="[val => !!val || 'Campo obrigatório']"
+                  :disable="loading"
+                  @keyup.enter="handleSubmit"
+                >
+                  <template v-slot:prepend>
+                    <q-icon name="lock" color="grey-6" size="18px" />
+                  </template>
+                  <template v-slot:append>
+                    <q-icon
+                      :name="showPassword ? 'visibility_off' : 'visibility'"
+                      class="cursor-pointer text-grey-6"
+                      size="18px"
+                      @click="showPassword = !showPassword"
+                    />
+                  </template>
+                </q-input>
+
+                <q-banner v-if="error" class="bg-negative text-white login-error" rounded dense>
+                  <template v-slot:avatar>
+                    <q-icon name="error" size="16px" />
+                  </template>
+                  <span style="font-size: 12px">{{ error }}</span>
+                </q-banner>
+
+                <!-- Botão principal -->
+                <q-btn
+                  type="submit"
+                  unelevated
+                  color="green-10"
+                  rounded
+                  size="lg"
+                  class="full-width login-main-btn"
+                  no-caps
+                  :loading="loading"
+                  :disable="loading"
+                >
+                  <template v-if="loading">
+                    <q-spinner-dots class="q-mr-xs" size="18px" />
+                    <span>Carregando...</span>
+                  </template>
+                  <template v-else>
+                    <q-icon name="login" class="q-mr-xs" size="20px" />
+                    <span>Entrar</span>
+                  </template>
+                </q-btn>
+
+                <!-- Botão secundário -->
+                <q-btn
+                  outline
+                  color="green-10"
+                  rounded
+                  size="lg"
+                  class="full-width"
+                  no-caps
+                  :disable="loading"
+                  @click="showCustomerLogin = true"
+                >
+                  <q-icon name="person" class="q-mr-xs" size="20px" />
+                  <span>Painel do Mutuário</span>
+                </q-btn>
+
+                <!-- Link criar conta -->
+                <div class="text-center">
+                  <q-btn
+                    flat
+                    no-caps
+                    dense
+                    color="green-10"
+                    class="register-link"
+                    :disable="loading"
+                    @click="openRegister"
+                  >
+                    <q-icon name="person_add" size="16px" class="q-mr-xs" />
+                    <span class="text-underline">Criar conta de mutuário</span>
+                  </q-btn>
+                </div>
+              </q-form>
+
+              <q-separator class="q-my-md" style="opacity: 0.4" />
+
+              <!-- Rodapé: selo de segurança + copyright -->
+              <div class="column items-center q-gutter-xs">
+                <q-chip outline color="green-9" text-color="green-10" icon="lock" size="12px" class="security-chip">
+                  UUIDv7 • SHA-256 • QR Code AT
+                </q-chip>
+                <div class="text-caption text-grey-6" style="font-size: 11px">
+                  © {{ currentYear }} Mais Mola
+                </div>
+              </div>
+            </q-card>
+          </div>
+
+        </div>
       </div>
     </div>
-
-    <!-- Painel do formulário -->
-    <div class="auth-form-side">
-      <div class="auth-card">
-        <!-- Logo & Header -->
-        <div class="text-center q-mb-md">
-          <img
-            src="@/assets/logo.png"
-            alt="Mais Mola Logo"
-            width="52"
-            height="52"
-            style="border-radius: 10px; object-fit: contain"
-          />
-          <div class="text-h6 text-weight-bold q-mt-sm">Bem-vindo</div>
-          <div class="text-caption text-grey-5">Aceda com as suas credenciais de equipa</div>
-        </div>
-
-        <!-- Form -->
-        <q-form @submit="handleSubmit" class="q-gutter-sm">
-          <q-input
-            v-model="form.email"
-            label="E-mail ou nº de telemóvel"
-            outlined
-            dense
-            :rules="[val => !!val || 'Campo obrigatório']"
-            :disable="loading"
-          >
-            <template v-slot:prepend>
-              <q-icon name="mail" color="grey-6" size="18px" />
-            </template>
-          </q-input>
-
-          <q-input
-            v-model="form.password"
-            :type="showPassword ? 'text' : 'password'"
-            label="Senha"
-            outlined
-            dense
-            :rules="[val => !!val || 'Campo obrigatório']"
-            :disable="loading"
-            @keyup.enter="handleSubmit"
-          >
-            <template v-slot:prepend>
-              <q-icon name="lock" color="grey-6" size="18px" />
-            </template>
-            <template v-slot:append>
-              <q-icon
-                :name="showPassword ? 'visibility_off' : 'visibility'"
-                class="cursor-pointer text-grey-6"
-                size="18px"
-                @click="showPassword = !showPassword"
-              />
-            </template>
-          </q-input>
-
-          <q-banner v-if="error" class="bg-negative text-white" rounded dense>
-            <template v-slot:avatar>
-              <q-icon name="error" size="16px" />
-            </template>
-            <span style="font-size: 12px">{{ error }}</span>
-          </q-banner>
-
-          <q-btn
-            type="submit"
-            color="primary"
-            class="full-width"
-            size="md"
-            no-caps
-            :loading="loading"
-            :disable="loading"
-          >
-            <template v-if="loading">
-              <q-spinner-dots class="q-mr-xs" size="16px" />
-              <span style="font-size: 13px">Carregando...</span>
-            </template>
-            <template v-else>
-              <q-icon name="login" class="q-mr-xs" size="18px" />
-              <span style="font-size: 13px">Entrar</span>
-            </template>
-          </q-btn>
-
-          <q-separator class="q-my-xs" />
-
-          <!-- Login do mutuário -->
-          <q-btn
-            outline
-            color="secondary"
-            class="full-width"
-            size="md"
-            no-caps
-            :disable="loading"
-            @click="showCustomerLogin = true"
-          >
-            <q-icon name="person" class="q-mr-xs" size="18px" />
-            <span style="font-size: 13px">Painel do Mutuário</span>
-          </q-btn>
-
-          <!-- Gaveta de auto-cadastro -->
-          <q-btn
-            flat
-            color="primary"
-            class="full-width"
-            size="md"
-            no-caps
-            :disable="loading"
-            @click="openRegister"
-          >
-            <q-icon name="person_add" class="q-mr-xs" size="18px" />
-            <span style="font-size: 13px">Criar conta de mutuário</span>
-          </q-btn>
-          <!-- REMOVIDO: botão de cadastro de empresa -->
-        </q-form>
-
-        <div class="text-center q-mt-sm auth-copyright" style="font-size: 10px">
-          © {{ currentYear }} Mais Mola
-        </div>
-      </div>
-    </div>
-
-    <!-- Theme Toggle -->
-    <q-btn
-      round
-      :icon="isDark ? 'light_mode' : 'dark_mode'"
-      :color="isDark ? 'grey-8' : 'grey-7'"
-      text-color="white"
-      size="sm"
-      style="position: fixed; bottom: 16px; right: 16px; z-index: 1000"
-      @click="uiStore.toggleDark()"
-    />
 
     <!-- Customer Login Dialog -->
     <q-dialog v-model="showCustomerLogin" persistent>
@@ -589,7 +577,6 @@
         </q-card-section>
       </q-card>
     </q-dialog>
-  </div>
 </template>
 
 <script setup>
@@ -597,16 +584,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
-import { useUiStore } from '@/stores/ui'
 import { api } from '@/boot/axios'
 
 const router = useRouter()
 const route = useRoute()
 const $q = useQuasar()
 const authStore = useAuthStore()
-const uiStore = useUiStore()
-
-const isDark = computed(() => uiStore.isDark)
 
 const form = ref({ email: '', password: '' })
 const showPassword = ref(false)
@@ -803,6 +786,14 @@ async function submitRegistration() {
 
 const currentYear = computed(() => new Date().getFullYear())
 
+// Limites de datas do auto-cadastro (adulto + não-futuro)
+const todayDate = computed(() => new Date().toISOString().slice(0, 10))
+const adultBirthDate = computed(() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - 18)
+  return d.toISOString().slice(0, 10)
+})
+
 onMounted(() => {
   if (authStore.isLoggedIn) {
     router.push(route.query.redirect || authStore.defaultRoute)
@@ -870,207 +861,151 @@ async function handleCustomerLogin() {
 </script>
 
 <style>
-.auth-bg {
-  min-height: 100vh;
-  display: flex;
-  align-items: stretch;
-  /* Fundo cinza azul claro suave */
-  background: linear-gradient(135deg, #e8eef5 0%, #dde7f0 50%, #d5e2ee 100%);
-  box-sizing: border-box;
-  position: relative;
-}
-
-/* Textos do painel esquerdo adaptados ao fundo claro */
-.auth-bg .hero-brand .text-weight-bold,
-.auth-bg .hero-tagline .text-h4 {
-  color: #0b3d2e !important;
-}
-.auth-bg .hero-brand-caption {
-  color: #4a5b68 !important;
-}
-.auth-bg .auth-copyright {
-  color: #4a5b68 !important;
-}
-.auth-bg .hero-tagline p {
-  color: #4a5b68 !important;
-}
-.auth-bg .benefit-title { color: #0b3d2e; }
-.auth-bg .benefit-desc { color: #5b6b78; }
-.auth-bg .hero-portal {
-  background: rgba(11, 61, 46, 0.06);
-  border: 1px solid rgba(11, 61, 46, 0.15);
-}
-.auth-bg .hero-portal .text-weight-medium { color: #0b3d2e !important; }
-.auth-bg .hero-portal .text-caption { color: #5b6b78 !important; }
-
-body.body--dark .auth-bg {
-  background: linear-gradient(135deg, #0b1e16 0%, #12352a 30%, #0f3d46 55%, #123a63 80%, #14294f 100%);
-}
-
-/* No dark mode, restaurar textos claros */
-body.body--dark .auth-bg .hero-brand .text-weight-bold,
-body.body--dark .auth-bg .hero-tagline .text-h4,
-body.body--dark .auth-bg .benefit-title {
-  color: #ffffff !important;
-}
-body.body--dark .auth-bg .hero-brand-caption {
-  color: rgba(255,255,255,0.65) !important;
-}
-body.body--dark .auth-copyright {
-  color: rgba(255,255,255,0.5) !important;
-}
-body.body--dark .auth-bg .hero-tagline p,
-body.body--dark .auth-bg .benefit-desc,
-body.body--dark .auth-bg .hero-portal .text-caption {
-  color: rgba(255,255,255,0.75) !important;
-}
-body.body--dark .auth-bg .hero-portal {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-/* ============ Painel esquerdo (marketing) ============ */
-.auth-hero {
-  flex: 1 1 55%;
-  max-width: 55%;
-  /* Transparente: o gradiente da página atravessa o painel inteiro */
-  background: transparent;
+/* ============ Secção de login (abaixo da navbar glass) ============ */
+.login-section {
+  min-height: calc(100vh - 64px);
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 40px;
+}
+
+.login-container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
   box-sizing: border-box;
 }
 
-.hero-inner {
-  max-width: 520px;
-  width: 100%;
+/* ============ Marketing (esquerda) ============ */
+.hero-copy {
+  max-width: 560px;
 }
 
-.hero-tagline {
-  margin-top: 40px;
+.cert-badge {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  box-shadow: 0 4px 14px rgba(11, 61, 46, 0.18);
 }
 
-.hero-benefits {
+.hero-title {
+  color: #0b3d2e;
+  line-height: 1.15 !important;
+  /* text-h2 é enorme em ecrãs pequenos — clamp mantém o peso visual sem quebrar */
+  font-size: clamp(28px, 4.2vw, 48px);
+}
+
+.hero-title-accent {
+  color: #2e7d32;
+}
+
+body.body--dark .hero-title { color: #ffffff; }
+body.body--dark .hero-title-accent { color: #bfff00; }
+
+.hero-sub {
+  color: #4a5b68;
+  font-size: 15px;
+  line-height: 1.65;
+  max-width: 480px;
+}
+
+body.body--dark .hero-sub { color: rgba(255, 255, 255, 0.72); }
+
+.features {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
-.benefit-item {
+.feature-item {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
 }
 
-.benefit-icon {
-  color: #4ade80;
+.feature-item .q-avatar {
   flex-shrink: 0;
-  margin-top: 2px;
+  box-shadow: 0 6px 16px rgba(11, 61, 46, 0.22);
 }
 
-.benefit-title {
-  font-size: 14px;
-  font-weight: 600;
+.feature-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0b3d2e;
+  line-height: 1.3;
+}
+
+.feature-desc {
+  font-size: 12.5px;
+  color: #5b6b78;
+  line-height: 1.5;
+  margin-top: 2px;
+  max-width: 420px;
+}
+
+body.body--dark .feature-title { color: #ffffff; }
+body.body--dark .feature-desc { color: rgba(255, 255, 255, 0.68); }
+
+/* ============ Cartão de login (direita) ============ */
+.login-glass-card {
+  box-shadow: 0 24px 60px rgba(11, 61, 46, 0.18) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  max-width: 460px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+body.body--dark .login-glass-card {
+  background: rgba(15, 32, 25, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45) !important;
+}
+
+body.body--dark .login-glass-card .text-caption,
+body.body--dark .login-glass-card .text-grey-6 {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+body.body--dark .login-glass-card .text-h6 {
   color: #ffffff;
 }
 
-.benefit-desc {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.5;
-  margin-top: 2px;
+.login-main-btn {
+  box-shadow: 0 10px 26px rgba(11, 61, 46, 0.35);
 }
 
-.hero-portal {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+.register-link .text-underline {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.security-chip {
+  border-radius: 20px;
+}
+
+.login-error {
   border-radius: 12px;
-  padding: 14px 16px;
-  display: flex;
-  align-items: center;
-}
-
-body.body--dark .hero-portal {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
-}
-
-/* ============ Painel direito (formulário) ============ */
-.auth-form-side {
-  flex: 1 1 45%;
-  max-width: 45%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  box-sizing: border-box;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 360px;
-  background: white;
-  border-radius: 14px;
-  padding: 24px 28px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-}
-
-body.body--dark .auth-card {
-  background: #1f2937;
-}
-
-.register-card {
-  border-radius: 12px;
-}
-
-body.body--dark .register-card {
-  background: #1f2937;
 }
 
 /* ============ Responsivo ============ */
-@media (max-width: 900px) {
-  .auth-bg {
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
+@media (max-width: 1023px) {
+  .login-section {
+    min-height: auto;
+    padding-top: 8px;
   }
 
-  .auth-hero {
+  .login-container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .hero-copy {
     max-width: 100%;
-    width: 100%;
-    flex: none;
-    padding: 24px 20px;
-    border-radius: 14px;
-    margin-bottom: 16px;
   }
 
-  .hero-tagline {
-    margin-top: 16px;
-  }
-
-  .hero-tagline .text-h4 {
-    font-size: 22px !important;
-  }
-
-  .hero-benefits {
-    gap: 10px;
-  }
-
-  .hero-portal {
-    margin-top: 12px;
-  }
-
-  .auth-form-side {
-    max-width: 100%;
-    width: 100%;
-    flex: none;
-    padding: 0;
-  }
-
-  .auth-card {
-    max-width: 400px;
+  .login-glass-card {
+    max-width: 480px;
   }
 }
 </style>

@@ -69,4 +69,9 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         type: sequelize_1.DataTypes.TEXT,
         allowNull: true,
     },
+    walletId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Carteira de financiamento (analítica) de origem do capital deste crédito",
+    },
 });

@@ -48,6 +48,16 @@
             <div class="text-h4 text-weight-bold text-primary">{{ (rate.tax * 100).toFixed(1) }}<span style="font-size: 18px">%</span></div>
             <div class="text-caption text-grey-6 q-mt-xs">{{ rate.name || 'Taxa de juro' }}</div>
 
+            <!-- Carteira de financiamento associada (origem do capital) -->
+            <div class="q-mt-xs">
+              <q-badge
+                v-if="carteiraDaTaxa(rate)"
+                :color="carteiraDaTaxa(rate).cor_badge || 'blue'"
+                :label="`${carteiraDaTaxa(rate).codigo}${carteiraDaTaxa(rate).parceiro_nome ? ' · ' + carteiraDaTaxa(rate).parceiro_nome : ''}`"
+              />
+              <q-badge v-else color="grey-5" label="Sem carteira de financiamento" />
+            </div>
+
             <div class="text-caption text-grey-5 q-mt-xs" v-if="rate.administrativeFee">
               <q-icon name="receipt" size="12px" class="q-mr-xs" />
               Taxa administrativa: {{ (rate.administrativeFee * 100).toFixed(1) }}%
@@ -77,6 +87,28 @@
             <q-input v-model.number="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="number" step="0.1" input-style="font-size: 13px">
               <template v-slot:prepend><q-icon name="receipt" size="16px" color="grey-5" /></template>
             </q-input>
+            <!-- OBRIGATÓRIO: cada taxa pertence a uma carteira de financiamento -->
+            <q-select
+              v-model="form.walletId"
+              :options="walletOptions"
+              dense outlined emit-value map-options
+              label="Carteira de Financiamento *"
+              hint="Origem do capital (parceria/fundo). O crédito herda esta carteira."
+              :rules="[val => !!val || 'Seleccione a carteira de financiamento']"
+            >
+              <template v-slot:prepend><q-icon name="savings" size="16px" color="grey-5" /></template>
+              <template v-slot:option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section avatar>
+                    <q-badge :color="scope.opt.cor || 'blue'" :label="scope.opt.codigo" />
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label style="font-size: 13px">{{ scope.opt.label }}</q-item-label>
+                    <q-item-label caption v-if="scope.opt.parceiro">Parceiro: {{ scope.opt.parceiro }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
             <div class="row justify-end q-gutter-sm q-mt-md">
               <q-btn flat label="Cancelar" color="grey" @click="closeForm" no-caps />
               <q-btn type="submit" unelevated :label="editingRate ? 'Salvar' : 'Criar'" color="primary" :loading="saving" no-caps rounded />
@@ -107,11 +139,17 @@ import { ref, computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
+import { useWalletsStore } from '@/stores/wallets'
 import { logUpdateRates } from '@/utils/logger'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
 const settingsStore = useSettingsStore()
+const walletsStore = useWalletsStore()
+
+// Carteiras de financiamento (obrigatórias em cada taxa de juro)
+const walletOptions = computed(() => walletsStore.walletOptions)
+const carteiraDaTaxa = (rate) => walletsStore.walletById(rate.walletId)
 
 const loading = computed(() => settingsStore.loadingRates)
 const saving = computed(() => settingsStore.saving)
@@ -121,11 +159,11 @@ const showForm = ref(false)
 const showDeleteConfirm = ref(false)
 const editingRate = ref(null)
 const deletingRate = ref(null)
-const form = ref({ name: '', taxPercent: '', adminFeePercent: 0 })
+const form = ref({ name: '', taxPercent: '', adminFeePercent: 0, walletId: null })
 
 function openCreate() {
   editingRate.value = null
-  form.value = { name: '', taxPercent: '', adminFeePercent: 0 }
+  form.value = { name: '', taxPercent: '', adminFeePercent: 0, walletId: null }
   showForm.value = true
 }
 
@@ -134,7 +172,8 @@ function openEdit(rate) {
   form.value = {
     name: rate.name || '',
     taxPercent: rate.tax * 100,
-    adminFeePercent: (rate.administrativeFee || 0) * 100
+    adminFeePercent: (rate.administrativeFee || 0) * 100,
+    walletId: rate.walletId || null
   }
   showForm.value = true
 }
@@ -143,12 +182,17 @@ function closeForm() { showForm.value = false; editingRate.value = null }
 function confirmDelete(rate) { deletingRate.value = rate; showDeleteConfirm.value = true }
 
 async function saveRate() {
+  if (!form.value.walletId) {
+    $q.notify({ type: 'warning', message: 'Seleccione a carteira de financiamento da taxa', position: 'top' })
+    return
+  }
   try {
     const payload = {
       name: form.value.name,
       tax: form.value.taxPercent / 100,
       administrativeFee: (form.value.adminFeePercent || 0) / 100,
-      companyId: authStore.companyId
+      companyId: authStore.companyId,
+      walletId: form.value.walletId
     }
     if (editingRate.value) {
       await settingsStore.updateRate(editingRate.value.id, payload)
@@ -176,7 +220,11 @@ async function deleteRateConfirmed() {
   }
 }
 
-onMounted(() => { settingsStore.fetchRates(authStore.companyId) })
+onMounted(() => {
+  settingsStore.fetchRates(authStore.companyId)
+  // Carteiras para o select obrigatório (fonte do capital de cada taxa)
+  walletsStore.fetchWallets(authStore.companyId, { onlyActive: true })
+})
 </script>
 
 <style lang="scss" scoped>

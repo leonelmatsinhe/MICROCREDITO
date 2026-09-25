@@ -12,11 +12,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteDocument = exports.updateDocument = exports.createDocument = exports.getCustomerDocuments = exports.findAllDocuments = void 0;
+exports.deleteDocument = exports.updateDocument = exports.createDocument = exports.getDocumentChecklist = exports.getCustomerDocuments = exports.findAllDocuments = void 0;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
+const kycDocuments_1 = require("../utils/kycDocuments");
 const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.default.sep) ||
     __dirname.endsWith(path_1.default.sep + "build");
 const projectRoot = isCompiled
@@ -41,6 +42,48 @@ const deleteLocalDocumentFile = (fileUrl) => {
         fs_1.default.unlinkSync(filePath);
     }
 };
+/**
+ * GET /api/document/checklist/:accountNumber — estado da checklist KYC.
+ * Retorna { complete, missing, documents, checklist } para a aba
+ * "Documentos & KYC" e para auditoria antes do desembolso.
+ */
+const getDocumentChecklist = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { accountNumber } = req.params;
+        const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+        if (!accountNumber) {
+            return res.status(400).json({ success: false, message: "accountNumber é obrigatório." });
+        }
+        const documents = yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll({
+            where: Object.assign({ accountNumber: Number(accountNumber) }, (companyId ? { companyId } : {})),
+            order: [["id", "DESC"]],
+        });
+        const evaluation = (0, kycDocuments_1.evaluateKyc)((documents || []).map((d) => d.toJSON ? d.toJSON() : d));
+        return res.status(200).json({
+            success: true,
+            result: {
+                accountNumber: Number(accountNumber),
+                complete: evaluation.complete,
+                missing: evaluation.missing,
+                present: evaluation.present,
+                total: evaluation.total,
+                documents: evaluation.documents,
+                checklist: kycDocuments_1.KYC_FULL_DOCUMENTS.map((name) => ({
+                    name,
+                    uploaded: evaluation.present.includes(name),
+                })),
+            },
+        });
+    }
+    catch (error) {
+        console.error("Erro ao calcular checklist KYC:", error);
+        return res.status(500).json({
+            success: false,
+            message: (error === null || error === void 0 ? void 0 : error.message) || "Erro interno ao calcular checklist KYC.",
+        });
+    }
+});
+exports.getDocumentChecklist = getDocumentChecklist;
 const findAllDocuments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const documents = yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll();
     return documents.length > 0

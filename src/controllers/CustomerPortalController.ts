@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
 import { Op } from "sequelize";
 import { db } from "../database/db";
+import { ReciboModel } from "../database/models/ReciboModel";
+import { getReciboDetalhe, renderReciboPdf } from "../services/reciboService";
 import { hashPasswordIfNeeded } from "../utils/password";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { LoanModel } from "../database/models/LoanModel";
@@ -171,11 +175,36 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
       where: { companyId: companyIdNum, customerId },
       order: [["createdAt", "DESC"]],
     });
+    // Recibos já emitidos para os pagamentos deste cliente (mapa tranzactionId →
+    // recibo), para o histórico mostrar o comprovativo de cada pagamento.
+    const reciboByTranzaction: Record<number, any> = {};
+    try {
+      const txIds = transactions.map((t: any) => toNumber((t as any).id)).filter(Boolean);
+      if (txIds.length > 0) {
+        const recibosRows: any[] = (await ReciboModel.findAll({
+          where: { companyId: companyIdNum, tranzactionId: { [Op.in]: txIds } },
+          attributes: ["id", "tranzactionId", "numero", "pdf_url"],
+          raw: true,
+        })) as any[];
+        (recibosRows || []).forEach((row: any) => {
+          reciboByTranzaction[Number(row.tranzactionId)] = row;
+        });
+      }
+    } catch (error: any) {
+      // A tabela pode ainda não existir numa base antiga — o portal funciona sem recibos.
+      console.error("[Portal Mutuário] Recibos indisponíveis:", error?.message || error);
+    }
+
     const payments = transactions.map((t: any) => {
       const tx = t.toJSON();
+      const recibo = reciboByTranzaction[Number(tx.id)] || null;
       return {
         id: tx.id,
         amount: toNumber(tx.amount),
+        // Comprovativo do pagamento (recibo com numeração sequencial legal)
+        reciboId: recibo ? Number(recibo.id) : null,
+        reciboNumero: recibo ? recibo.numero : null,
+        reciboPdf: recibo ? recibo.pdf_url : null,
         // As transacções registadas no portal já se encontram concluídas
         status: "completed",
         reference: tx.tranzactionReference || null,
@@ -671,6 +700,21 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       console.error("[CAIXA] Falha ao registar pagamento do portal no caixa (pagamento mantido):", cashError?.message || cashError);
     }
 
+    // ── RECIBO: emite o comprovativo do pagamento (numeração legal AT) ──
+    // Best-effort: uma falha na emissão não desfaz o pagamento; o portal do
+    // mutuário emite o recibo à primeira abertura do comprovativo.
+    let recibo: any = null;
+    try {
+      const { generateReciboForTranzaction } = await import("../services/reciboService");
+      recibo = await generateReciboForTranzaction({
+        tranzactionId: Number((tranzaction as any).id),
+        companyId: companyIdNum,
+        createdBy: null,
+      });
+    } catch (reciboError: any) {
+      console.error("[Recibo] Falha ao emitir o recibo do pagamento do portal:", reciboError?.message || reciboError);
+    }
+
     return res.status(201).json({
       success: true,
       message: isFullPayment
@@ -678,6 +722,10 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
         : `Pagamento parcial de ${paymentAmount.toLocaleString("pt-MZ")} MZN registado. Saldo em falta: ${debtAmount.toLocaleString("pt-MZ")} MZN.`,
       reference: txReference,
       isPartial: !isFullPayment,
+      tranzactionId: Number((tranzaction as any).id) || null,
+      recibo: recibo
+        ? { id: Number(recibo.id), numero: recibo.numero, pdf_url: recibo.pdf_url || null }
+        : null,
     });
   } catch (error: any) {
     console.error("Erro ao registar pagamento do portal:", error);
@@ -849,6 +897,99 @@ export const requestCustomerLoan = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Erro ao solicitar novo crédito:", error);
     return res.status(500).json({ success: false, message: error.message || "Erro interno." });
+  }
+};
+
+// ============================================================
+// Recibo (comprovativo) de um pagamento, a partir do portal do mutuário.
+// O recibo tem numeração sequencial legal (AT) e é emitido UMA vez por
+// pagamento — se ainda não existir (pagamentos anteriores à numeração de
+// recibos), é emitido agora, de forma idempotente.
+// A rota vive na zona pública do portal, mas o recibo só é devolvido se o
+// pagamento pertencer mesmo ao cliente/empresa indicados no caminho.
+// ============================================================
+export const getCustomerPaymentReciboPdf = async (req: Request, res: Response) => {
+  try {
+    const companyIdNum = parseInt(String(req.params.companyId), 10);
+    const customerIdNum = parseInt(String(req.params.customerId), 10);
+    const tranzactionIdNum = parseInt(String(req.params.tranzactionId), 10);
+
+    if (
+      Number.isNaN(companyIdNum) ||
+      Number.isNaN(customerIdNum) ||
+      Number.isNaN(tranzactionIdNum)
+    ) {
+      return res.status(400).json({ success: false, message: "Parâmetros inválidos." });
+    }
+
+    // O pagamento tem de pertencer a este cliente desta empresa.
+    const tranzaction: any = (await TranzactionModel.findOne({
+      where: {
+        id: tranzactionIdNum,
+        companyId: companyIdNum,
+        customerId: customerIdNum,
+      },
+      raw: true,
+    })) as any;
+    if (!tranzaction) {
+      return res.status(404).json({ success: false, message: "Pagamento não encontrado." });
+    }
+
+    // Um recibo por pagamento (idempotente).
+    let recibo: any = (await ReciboModel.findOne({
+      where: { companyId: companyIdNum, tranzactionId: tranzactionIdNum },
+      raw: true,
+    })) as any;
+    if (!recibo) {
+      const { generateReciboForTranzaction } = await import("../services/reciboService");
+      recibo = await generateReciboForTranzaction({
+        tranzactionId: tranzactionIdNum,
+        companyId: companyIdNum,
+        createdBy: null,
+      });
+    }
+    if (!recibo) {
+      return res.status(500).json({ success: false, message: "Não foi possível emitir o recibo." });
+    }
+
+    const reciboId = toNumber(recibo.id);
+    const detalhe = await getReciboDetalhe(reciboId);
+    if (!detalhe) {
+      return res.status(404).json({ success: false, message: "Recibo não encontrado." });
+    }
+    // O recibo pode ter sido emitido antes de o pagamento trazer o cliente —
+    // confirma-se sempre pelo crédito/pagamento, nunca apenas pelo caminho.
+    const reciboCustomerId = toNumber(detalhe.recibo.customerId);
+    if (reciboCustomerId && reciboCustomerId !== customerIdNum) {
+      return res.status(403).json({ success: false, message: "Acesso negado." });
+    }
+
+    // PDF: reutiliza o ficheiro em disco; gera na primeira chamada.
+    const docDir = path.join(process.cwd(), "uploads", "docs");
+    let pdfUrl = detalhe.recibo.pdf_url;
+    let filePath = pdfUrl ? path.join(docDir, path.basename(String(pdfUrl))) : "";
+    if (!pdfUrl || !fs.existsSync(filePath)) {
+      pdfUrl = await renderReciboPdf(reciboId);
+      filePath = pdfUrl ? path.join(docDir, path.basename(String(pdfUrl))) : "";
+      if (pdfUrl) {
+        await ReciboModel.update({ pdf_url: pdfUrl }, { where: { id: reciboId } });
+      }
+    }
+    if (!filePath || !fs.existsSync(filePath)) {
+      return res.status(500).json({ success: false, message: "Não foi possível gerar o PDF do recibo." });
+    }
+
+    const numero = String(detalhe.recibo.numero || `recibo-${reciboId}`);
+    const disposition = String(req.query.download || "") === "1" ? "attachment" : "inline";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `${disposition}; filename="Recibo-${numero.replace(/[^A-Za-z0-9-]/g, "")}.pdf"`
+    );
+    return res.sendFile(filePath);
+  } catch (error: any) {
+    console.error("[Portal Mutuário] Erro no recibo do pagamento:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao obter o recibo do pagamento." });
   }
 };
 

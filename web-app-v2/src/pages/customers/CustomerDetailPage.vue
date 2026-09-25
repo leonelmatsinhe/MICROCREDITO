@@ -1,1556 +1,360 @@
 <template>
-  <div class="q-pa-md">
-    <!-- Loading -->
-    <div v-if="loading" class="text-center q-pa-xl">
-      <q-spinner-dots size="40px" color="primary" />
-      <div class="text-caption text-grey-5 q-mt-sm">A carregar dados do mutuário...</div>
+  <div>
+    <!-- ===================== HEADER FIXO (sticky — sem conflito com o QLayout do MainLayout) ===================== -->
+    <div class="mutuario-header sticky-header">
+      <q-toolbar>
+        <q-btn flat round dense icon="arrow_back" @click="goBack">
+          <q-tooltip>Voltar à lista</q-tooltip>
+        </q-btn>
+
+        <!-- Identidade do mutuário -->
+        <q-avatar size="38px" :color="statusColor" text-color="white" style="cursor: pointer" @click="openPassportPhoto">
+          <img v-if="store.customer?.passportPhotoUrl" :src="store.customer.passportPhotoUrl" alt="Foto" style="width: 100%; height: 100%; object-fit: cover" />
+          <q-icon v-else name="person" size="18px" />
+        </q-avatar>
+        <div class="q-ml-sm col">
+          <div class="row items-center no-wrap">
+            <div class="text-weight-bold" style="font-size: 15px">{{ store.customer?.customerName || '...' }}</div>
+            <q-badge :color="statusColor" :label="statusText" rounded class="q-ml-sm" style="font-size: 9px" />
+            <q-badge v-if="Number(store.customer?.isSelfRegistered) === 1" color="teal" outline rounded class="q-ml-xs" style="font-size: 9px">Auto-cadastro</q-badge>
+          </div>
+          <div class="text-caption" style="opacity: 0.85; font-size: 10px">
+            Conta {{ store.customer?.accountNumber || '—' }} · {{ store.customer?.customerPhone || 'Sem telefone' }}
+          </div>
+        </div>
+
+        <!-- KPIs do header (escondidos em mobile) -->
+        <div class="gt-xs row q-gutter-lg header-kpis">
+          <div class="text-right">
+            <div class="header-kpi-label">Rendimento</div>
+            <div class="text-weight-bold" style="font-size: 13px">{{ formatMoney(store.customer?.customerMonthlySalary || 0) }}</div>
+          </div>
+          <div class="text-right">
+            <div class="header-kpi-label">Total Dívida</div>
+            <div class="text-weight-bold" style="font-size: 13px" :class="store.saldoRemanescente > 0 ? 'text-orange' : ''">
+              {{ formatMoney(store.saldoRemanescente) }}
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="header-kpi-label">Capacidade Disp.</div>
+            <div class="text-weight-bold" style="font-size: 13px">
+              {{ formatMoney(Math.max(0, store.maxCapacity - currentInstallmentShare)) }}
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="header-kpi-label">KYC</div>
+            <q-chip :color="store.isKycComplete ? 'positive' : 'negative'" text-color="white" dense style="font-size: 10px">
+              {{ store.isKycComplete ? 'Completo' : 'Incompleto' }}
+            </q-chip>
+          </div>
+        </div>
+
+        <!-- Acções -->
+        <q-btn flat round dense icon="lock_open" color="warning" @click="showCredentialsModal = true">
+          <q-tooltip>Enviar Credenciais</q-tooltip>
+        </q-btn>
+        <q-btn flat round dense icon="edit" color="white" @click="showEditModal = true">
+          <q-tooltip>Editar mutuário</q-tooltip>
+        </q-btn>
+      </q-toolbar>
+
+      <!-- TABS -->
+      <q-tabs
+        v-model="tab"
+        dense
+        align="left"
+        class="mutuario-tabs text-white"
+        active-color="white"
+        indicator-color="white"
+        :breakpoint="0"
+      >
+        <q-tab name="visao" icon="dashboard" label="Visão Geral" no-caps />
+        <q-tab name="creditos" icon="payments" label="Créditos" no-caps />
+        <q-tab name="amortizacao" icon="table_chart" label="Plano de Amortização" no-caps />
+        <q-tab name="docs" icon="folder_shared" no-caps>
+          <q-badge v-if="!store.isKycComplete" color="negative" rounded floating style="font-size: 8px">!</q-badge>
+          <div class="q-ml-xs">Documentos &amp; KYC</div>
+        </q-tab>
+        <q-tab name="legais" icon="gavel" label="Documentos Legais" no-caps />
+        <q-tab name="garantias" icon="security" label="Garantias & Recibos" no-caps />
+      </q-tabs>
     </div>
 
-    <!-- Not Found -->
-    <q-card v-else-if="!customer" flat bordered style="border-radius: 12px">
-      <q-card-section class="text-center q-pa-xl">
-        <q-icon name="person_off" size="64px" color="grey-4" />
-        <div class="text-h6 text-grey-6 q-mt-md">Mutuário não encontrado</div>
-        <q-btn flat color="primary" label="Voltar à lista" icon="arrow_back" class="q-mt-md" @click="goBack" />
-      </q-card-section>
-    </q-card>
-
-    <!-- Customer Details -->
-    <template v-else>
-      <!-- ===================== HEADER ===================== -->
-      <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
-        <q-card-section>
-          <div class="row items-center">
-            <!-- Fotografia tipo passe destacada (auto-cadastro) → clicar abre em tamanho real -->
-            <q-avatar
-              :color="getStatusColor(customer.customerStatus)"
-              text-color="white"
-              size="64px"
-              class="q-mr-md"
-              style="cursor: pointer; flex-shrink: 0"
-              @click="openPassportPhoto"
-            >
-              <img
-                v-if="customer.passportPhotoUrl"
-                :src="customer.passportPhotoUrl"
-                alt="Foto tipo passe"
-                style="width: 100%; height: 100%; object-fit: cover"
-              />
-              <q-icon v-else name="person" size="28px" />
-            </q-avatar>
-            <div class="col">
-              <div class="row items-center no-wrap">
-                <div class="text-h6 text-weight-bold">{{ customer.customerName }}</div>
-                <q-badge
-                  v-if="Number(customer.isSelfRegistered) === 1"
-                  color="teal"
-                  outline
-                  rounded
-                  class="q-ml-sm"
-                  style="font-size: 10px"
-                >
-                  Auto-cadastro
-                </q-badge>
-              </div>
-              <div class="text-caption text-grey-5">
-                <q-icon name="credit_card" size="12px" class="q-mr-xs" />
-                Conta: <strong>{{ customer.accountNumber }}</strong>
-              </div>
-              <div class="row items-center q-gutter-sm q-mt-xs">
-                <q-badge :color="getStatusColor(customer.customerStatus)" :label="getStatusText(customer.customerStatus)" rounded style="font-size: 10px" />
-                <span class="text-caption text-grey-5">
-                  <q-icon name="phone" size="10px" class="q-mr-xs app-phone-color" />
-                  <span class="app-phone-color">{{ customer.customerPhone || 'Sem telefone' }}</span>
-                </span>
-                <span class="text-caption text-grey-5">
-                  <q-icon name="email" size="10px" class="q-mr-xs" />{{ customer.customerEmail || 'Sem e-mail' }}
-                </span>
-              </div>
-            </div>
-            <div class="col-auto text-right">
-              <div class="text-caption text-grey-5">Rendimento mensal</div>
-              <div class="text-weight-bold text-primary text-h6">{{ formatMoney(customer.customerMonthlySalary || 0) }}</div>
-              <div class="text-caption text-grey-5 q-mt-xs">
-                <q-icon name="work" size="10px" class="q-mr-xs" />
-                {{ customer.customerProfession || 'Profissão não informada' }}
-              </div>
-            </div>
-            <!-- Action icons -->
-            <div class="col-auto">
-              <q-btn flat round dense icon="lock_open" color="warning" size="md" @click="showCredentialsModal = true">
-                <q-tooltip>Enviar Credenciais</q-tooltip>
-              </q-btn>
-              <q-btn flat round dense icon="description" color="primary" size="md" @click="showDocsModal = true">
-                <q-tooltip>Documentos</q-tooltip>
-              </q-btn>
-              <q-btn flat round dense icon="edit" color="blue" size="md" @click="showEditModal = true">
-                <q-tooltip>Editar mutuário</q-tooltip>
-              </q-btn>
-            </div>
-          </div>
-
-
-        </q-card-section>
-      </q-card>
-
-      <!-- ===================== LAYOUT ===================== -->
-      <div class="row q-col-gutter-md">
-        <!-- Full Width: Simulation + History -->
-        <div class="col-12">
-          <!-- Simulation Card -->
-          <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
-            <q-card-section>
-              <div class="row items-center q-mb-md">
-                <div class="col">
-                  <div class="text-subtitle1 text-weight-bold"><q-icon name="calculate" size="18px" class="q-mr-xs" />Simulação de Crédito</div>
-                  <div class="text-caption text-grey-5">Defina valor, prazo e taxa para validar capacidade de pagamento.</div>
-                </div>
-                <q-btn color="primary" icon="play_arrow" label="Simular" unelevated no-caps rounded size="sm" @click="simulateLoan" />
-              </div>
-              <div class="row q-col-gutter-sm">
-                <div class="col-12 col-sm-4">
-                  <q-input v-model.number="loanForm.capital" dense outlined label="Montante (MZN)" type="number" input-style="font-size: 13px">
-                    <template v-slot:prepend><q-icon name="attach_money" size="14px" color="grey-5" /></template>
-                  </q-input>
-                </div>
-                <div class="col-6 col-sm-4">
-                  <q-select v-model="loanForm.prestacoes" dense outlined :options="numeroPrestacoes" label="Nº de prestações" emit-value map-options input-style="font-size: 13px" />
-                </div>
-                <div class="col-6 col-sm-4">
-                  <q-select v-model="loanForm.juros" dense outlined :options="rateOptions" label="Taxa de juros" emit-value map-options input-style="font-size: 13px" />
-                </div>
-              </div>
-              <div class="row q-col-gutter-sm q-mt-md capacity-strip">
-                <div class="col-4">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">Capacidade (1/3)</div>
-                  <div class="text-weight-bold text-positive">{{ formatMoney(maxCapacity) }}</div>
-                </div>
-                <div class="col-6" v-if="Number(currentPaymentInstallment?.latePaymentInterest) > 0">
-                  <div class="text-caption text-grey-5">Juros de mora</div>
-                  <div class="text-weight-bold text-negative">{{ formatMoney(currentPaymentInstallment.latePaymentInterest) }}</div>
-                </div>
-                <div class="col-6" v-if="Number(currentPaymentInstallment?.latePaymentInterest) > 0">
-                  <div class="text-caption text-grey-5">Total a pagar</div>
-                  <div class="text-weight-bold text-negative">{{ formatMoney(paymentRemaining + Number(currentPaymentInstallment.latePaymentInterest || 0)) }}</div>
-                </div>
-                <div class="col-4">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">Prestação</div>
-                  <div class="text-weight-bold text-primary">{{ estimatedInstallment > 0 ? formatMoney(estimatedInstallment) : '—' }}</div>
-                </div>
-                <div class="col-4">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">Margem</div>
-                  <div class="text-weight-bold" :class="capacityExceeded ? 'text-negative' : 'text-positive'">
-                    {{ estimatedInstallment > 0 ? formatMoney(Math.abs(installmentDelta)) : '—' }}
-                  </div>
-                </div>
-              </div>
-            </q-card-section>
-          </q-card>
-
-          <!-- Loan History -->
-          <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
-            <q-card-section>
-              <div class="row items-center q-mb-md">
-                <div class="col">
-                  <div class="text-subtitle1 text-weight-bold"><q-icon name="history" size="18px" class="q-mr-xs" />Histórico de Empréstimos</div>
-                </div>
-                <q-badge color="grey-6" rounded>{{ customerLoans.length }} registo(s)</q-badge>
-              </div>
-              <div v-if="customerLoans.length === 0" class="text-center q-pa-lg text-grey-5">
-                <q-icon name="receipt_long" size="40px" />
-                <div class="text-caption q-mt-sm">Ainda não há créditos registados.</div>
-              </div>
-              <div v-else class="loan-card-list">
-                <q-card v-for="loan in customerLoans" :key="loan.id" flat bordered class="loan-history-card">
-                  <q-card-section class="loan-card-header text-center">
-                    <div class="loan-card-amount">{{ formatMoney(loan.amount) }}</div>
-                    <q-badge :color="getLoanStatusColor(loan.status)" :label="getLoanStatusText(loan.status)" rounded style="font-size: 10px" />
-                  </q-card-section>
-
-                  <q-card-section class="loan-card-body">
-                    <div class="loan-card-debt">
-                      <span>Total da dívida</span>
-                      <strong>{{ formatMoney((loanMetrics[Number(loan.id)]?.contractTotal || loan.amount) + (loanAppliedLateInterest[Number(loan.id)] || 0)) }}</strong>
-                      <small v-if="Number(loanAppliedLateInterest[Number(loan.id)]) > 0">
-                        Inclui {{ formatMoney(loanAppliedLateInterest[Number(loan.id)]) }} de juros de mora aplicados
-                      </small>
-                    </div>
-                    <div class="loan-card-dates">
-                      <div><span>Desembolso</span><strong>{{ formatDate(loan.disbursementDate || loan.dateCreated) }}</strong></div>
-                      <div class="text-right"><span>Data fim</span><strong>{{ formatDate(loanMetrics[Number(loan.id)]?.finalDueDate) || '—' }}</strong></div>
-                    </div>
-                  </q-card-section>
-
-                  <q-card-actions class="loan-card-footer justify-center">
-                    <div class="row q-gutter-xs items-center">
-                      <!-- Ver Plano (apenas aprovado ou terminado) -->
-                      <q-btn v-if="Number(loan.status) === 1 || Number(loan.status) === 3" flat round dense icon="table_chart" size="sm" color="teal" @click.stop="openAmortization(loan)">
-                        <q-tooltip>Plano de Amortização</q-tooltip>
-                      </q-btn>
-                      <!-- Documentos (apenas aprovado ou terminado) -->
-                      <q-btn v-if="Number(loan.status) === 1 || Number(loan.status) === 3" flat round dense icon="description" size="sm" color="primary" @click.stop="goToDocuments(loan.id)">
-                        <q-tooltip>Documentos</q-tooltip>
-                      </q-btn>
-                      <!-- Garantias -->
-                      <q-btn flat round dense icon="security" size="sm" color="orange" @click.stop="openGuarantees(loan.id)">
-                        <q-tooltip>Garantias</q-tooltip>
-                      </q-btn>
-                      <!-- Informação do Mutuário (para contrato) -->
-                      <q-btn v-if="Number(loan.status) === 1 || Number(loan.status) === 3" flat round dense icon="info" size="sm" color="teal" @click.stop="openBorrowerInfo(loan)">
-                        <q-tooltip>Info. Mutuário (Contrato)</q-tooltip>
-                      </q-btn>
-                    </div>
-                  </q-card-actions>
-                </q-card>
-              </div>
-            </q-card-section>
-          </q-card>
+    <!-- ===================== CONTEÚDO DAS ABAS ===================== -->
+    <div class="mutuario-page">
+        <!-- Loading inicial -->
+        <div v-if="store.loading && !store.customer" class="q-pa-md">
+          <q-skeleton type="rect" height="120px" class="q-mb-md" style="border-radius: 12px" />
+          <q-skeleton type="rect" height="300px" style="border-radius: 12px" />
         </div>
+
+        <!-- Não encontrado -->
+        <q-card v-else-if="!store.loading && !store.customer" flat bordered style="border-radius: 12px" class="q-ma-md">
+          <q-card-section class="text-center q-pa-xl">
+            <q-icon name="person_off" size="64px" color="grey-4" />
+            <div class="text-h6 text-grey-6 q-mt-md">Mutuário não encontrado</div>
+            <q-btn flat color="primary" label="Voltar à lista" icon="arrow_back" class="q-mt-md" @click="goBack" />
+          </q-card-section>
+        </q-card>
+
+        <q-tab-panels v-else v-model="tab" animated keep-alive>
+          <q-tab-panel name="visao" class="q-pa-none">
+            <TabVisaoGeral />
+          </q-tab-panel>
+          <q-tab-panel name="creditos" class="q-pa-none">
+            <TabCreditos
+              @go-to-tab="tab = 'docs'"
+              @view-plan="onViewPlan"
+              @view-guarantees="onViewGuarantees"
+              @loan-info="onLoanInfo"
+              @approve-loan="openApproval"
+            />
+          </q-tab-panel>
+          <q-tab-panel name="amortizacao" class="q-pa-none">
+            <TabAmortizacao @print-receipt="onPrintReceipt" />
+          </q-tab-panel>
+          <q-tab-panel name="docs" class="q-pa-none">
+            <TabDocumentosKyc />
+          </q-tab-panel>
+          <q-tab-panel name="legais" class="q-pa-none">
+            <TabDocumentosLegais />
+          </q-tab-panel>
+          <q-tab-panel name="garantias" class="q-pa-none">
+            <TabGarantiasRecibos />
+          </q-tab-panel>
+        </q-tab-panels>
       </div>
 
-      <!-- ===================== MODAL: PLANO DE AMORTIZAÇÃO ===================== -->
-      <q-dialog v-model="showAmortizationModal" persistent maximized>
-        <q-card class="amort-modal-card">
-          <!-- HEADER MODERNO -->
-          <div class="amort-header">
-            <div class="amort-header-content">
-              <div class="amort-header-left">
-                <q-icon name="account_balance_wallet" size="28px" color="white" class="q-mr-sm" />
-                <div>
-                  <div class="amort-header-title">Plano de Amortização</div>
-                  <div class="amort-header-subtitle">{{ customer?.customerName || '' }} — Conta {{ customer?.accountNumber || '' }}</div>
-                </div>
-              </div>
-              <q-btn flat round dense icon="close" color="white" @click="showAmortizationModal = false" size="md" />
-            </div>
-            <!-- Progress Bar -->
-            <div class="amort-progress-section">
-              <div class="amort-progress-info">
-                <span class="text-white text-caption">Progresso do financiamento</span>
-                <span class="text-white text-weight-bold">{{ amortInstallments.length > 0 ? Math.round((paidInstallments.length / amortInstallments.length) * 100) : 0 }}%</span>
-              </div>
-              <q-linear-progress :value="amortInstallments.length > 0 ? paidInstallments.length / amortInstallments.length : 0" color="white" rounded size="8px" track-color="rgba(255,255,255,0.2)" />
-              <div class="amort-progress-labels">
-                <span class="text-white-7">{{ paidInstallments.length }} de {{ amortInstallments.length }} prestações</span>
-                <span class="text-white-7">{{ formatMoney(amortTotalPaid) }} pago</span>
-              </div>
-            </div>
+    <!-- ===================== MODAIS COMPARTILHADOS ===================== -->
+    <CustomerFormModal v-model="showEditModal" :customer="store.customer" @saved="onCustomerSaved" />
+    <BorrowerInfoModal v-model="showBorrowerInfoModal" :loan="selectedLoanForInfo" :customer="store.customer" />
+    <LoanApprovalModal v-model="showApprovalModal" :loan="approvalLoan" @approved="onLoanApproved" />
+
+    <!-- ===================== MODAL: ENVIO DE CREDENCIAIS ===================== -->
+    <q-dialog v-model="showCredentialsModal" persistent @show="generateNewPassword">
+      <q-card style="border-radius: 16px; min-width: 380px; max-width: 95vw">
+        <q-card-section class="row items-center bg-warning text-white">
+          <q-icon name="lock_open" size="24px" class="q-mr-sm" />
+          <div class="text-h6">Enviar Credenciais</div>
+          <q-space />
+          <q-btn flat round dense icon="close" @click="showCredentialsModal = false" />
+        </q-card-section>
+
+        <q-card-section class="q-pa-md">
+          <div class="text-body2 text-grey-6 q-mb-md">
+            Envie as credenciais de acesso ao portal para o mutuário.
           </div>
-
-          <q-card-section class="amort-body">
-            <!-- KPIs MODERNOS -->
-            <div class="amort-kpi-grid">
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(16,185,129,0.1); color: #10b981">
-                  <q-icon name="payments" size="20px" />
+          <q-card flat bordered class="q-mb-md" style="border-radius: 8px">
+            <q-card-section>
+              <div class="row q-col-gutter-sm">
+                <div class="col-12">
+                  <div class="text-caption text-grey-5">Mutuário</div>
+                  <div class="text-weight-bold">{{ store.customer?.customerName }}</div>
                 </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Capital Financiado</div>
-                  <div class="amort-kpi-value">{{ formatMoney(amortLoan?.amount || 0) }}</div>
+                <div class="col-6">
+                  <div class="text-caption text-grey-5">Telefone</div>
+                  <div class="text-weight-bold">{{ store.customer?.customerPhone || 'Não informado' }}</div>
                 </div>
-              </div>
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(59,130,246,0.1); color: #3b82f6">
-                  <q-icon name="percent" size="20px" />
+                <div class="col-6">
+                  <div class="text-caption text-grey-5">Conta</div>
+                  <div class="text-weight-bold">{{ store.customer?.accountNumber }}</div>
                 </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Taxa de Juros</div>
-                  <div class="amort-kpi-value">{{ ((amortLoan?.interestRate || 0) * 100).toFixed(1) }}%</div>
+                <div class="col-12">
+                  <div class="text-caption text-grey-5">Nova Senha</div>
+                  <div class="text-weight-bold text-warning" style="font-size: 18px; letter-spacing: 2px">{{ generatedPassword }}</div>
                 </div>
               </div>
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(245,158,11,0.1); color: #f59e0b">
-                  <q-icon name="trending_up" size="20px" />
-                </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Total Juros</div>
-                  <div class="amort-kpi-value">{{ formatMoney(amortTotalInterest) }}</div>
-                </div>
-              </div>
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(239,68,68,0.1); color: #ef4444">
-                  <q-icon name="account_balance" size="20px" />
-                </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Total da Dívida</div>
-                  <div class="amort-kpi-value amort-kpi-danger">{{ formatMoney(amortTotalDebt) }}</div>
-                </div>
-              </div>
-            </div>
+            </q-card-section>
+          </q-card>
 
-            <!-- SEGUNDA ROW: Pagos e Remanescente -->
-            <div class="amort-kpi-grid q-mt-sm">
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(34,197,94,0.1); color: #22c55e">
-                  <q-icon name="check_circle" size="20px" />
-                </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Total Pago</div>
-                  <div class="amort-kpi-value" style="color: #22c55e">{{ formatMoney(amortTotalPaid) }}</div>
-                </div>
-              </div>
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" :style="{ background: amortRemainingDebt > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)', color: amortRemainingDebt > 0 ? '#ef4444' : '#22c55e' }">
-                  <q-icon :name="amortRemainingDebt > 0 ? 'savings' : 'celebration'" size="20px" />
-                </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Saldo Remanescente</div>
-                  <div class="amort-kpi-value" :style="{ color: amortRemainingDebt > 0 ? '#ef4444' : '#22c55e' }">{{ formatMoney(amortRemainingDebt) }}</div>
-                </div>
-              </div>
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(99,102,241,0.1); color: #6366f1">
-                  <q-icon name="assignment_turned_in" size="20px" />
-                </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Prestações Pagas</div>
-                  <div class="amort-kpi-value">{{ paidInstallments.length }} <span class="amort-kpi-sub">/ {{ amortInstallments.length }}</span></div>
-                </div>
-              </div>
-              <div class="amort-kpi">
-                <div class="amort-kpi-icon" style="background: rgba(249,115,22,0.1); color: #f97316">
-                  <q-icon name="pending" size="20px" />
-                </div>
-                <div class="amort-kpi-info">
-                  <div class="amort-kpi-label">Prestações Pendentes</div>
-                  <div class="amort-kpi-value" style="color: #f97316">{{ pendingInstallments.length }}</div>
-                </div>
-              </div>
-            </div>
+          <div class="text-subtitle2 text-grey-6 q-mb-sm">Canal de Envio</div>
+          <q-btn-toggle
+            v-model="credentialsChannel"
+            :options="[
+              { label: 'SMS', value: 'sms', icon: 'sms' },
+              { label: 'WhatsApp', value: 'whatsapp', icon: 'chat' }
+            ]"
+            push glossy no-caps
+            class="q-mb-md full-width"
+            toggle-color="warning"
+          />
 
-            <!-- BOTÕES DE ACÇÃO -->
-            <div class="amort-actions q-mt-lg">
-              <q-btn v-if="canRegisterPayment(authStore.userRole)" unelevated color="positive" icon="paid" label="Liquidar Dívida Total" no-caps rounded class="amort-action-btn" :disable="pendingInstallments.length === 0" @click="showGlobalPaymentModal = true" />
-              <q-btn outline color="grey-7" icon="download" label="Extracto do Crédito" no-caps rounded class="amort-action-btn" :disable="amortInstallments.length === 0" @click="printCreditExtract" />
-            </div>
+          <q-banner v-if="smsDisabled && credentialsChannel === 'sms'" class="bg-negative text-white q-mb-md" rounded>
+            <template v-slot:avatar><q-icon name="sms_failed" size="24px" /></template>
+            <div class="text-weight-bold">SMS indisponível</div>
+            <div class="text-caption">O envio de SMS está desactivado nas configurações da empresa.</div>
+          </q-banner>
 
-            <!-- Loading -->
-            <div v-if="amortLoading" class="text-center q-pa-lg">
-              <q-spinner-dots size="30px" color="primary" />
-            </div>
+          <q-card flat bordered style="border-radius: 8px">
+            <q-card-section class="q-py-sm">
+              <div class="text-caption text-grey-5">Preview da Mensagem</div>
+            </q-card-section>
+            <q-card-section class="q-pt-none">
+              <div style="white-space: pre-wrap; font-size: 13px">Ola {{ store.customer?.customerName }}. Sua senha de acesso ao portal da {{ companyName }} e: {{ generatedPassword }}. Telefone: {{ store.customer?.customerPhone }}. Altere apos o primeiro acesso.</div>
+            </q-card-section>
+          </q-card>
+        </q-card-section>
 
-            <template v-else>
-              <!-- Pending Installments (shown first) -->
-              <div v-if="pendingInstallments.length > 0" class="q-mb-lg">
-                <div class="amort-section-title text-orange">
-                  <q-icon name="schedule" size="16px" class="q-mr-xs" />Prestações pendentes ({{ pendingInstallments.length }})
-                </div>
-                <q-table :rows="pendingInstallments" :columns="pendingAmortColumns" row-key="id" flat dense hide-bottom :rows-per-page-options="[0]" class="amort-table">
-                  <template v-slot:body-cell-amortization="props">
-                    <q-td :props="props" class="text-right">{{ formatMoney(props.row.amortization) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-rateAmount="props">
-                    <q-td :props="props" class="text-right">{{ formatMoney(props.row.rateAmount) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-installment="props">
-                    <q-td :props="props" class="text-right text-weight-bold">{{ formatMoney(props.row.installment) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-paidAmount="props">
-                    <q-td :props="props" class="text-right">
-                      <span v-if="props.row.paidAmount > 0" class="text-positive text-weight-bold">
-                        {{ formatMoney(props.row.paidAmount) }}
-                      </span>
-                      <span v-else class="text-grey-4">—</span>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-status="props">
-                    <q-td :props="props" class="text-center">
-                      <q-badge v-if="Number(props.row.status) === -1" color="warning" text-color="white" rounded>Pago Parcial</q-badge>
-                      <q-badge v-else color="grey-4" text-color="grey-7" rounded>Pendente</q-badge>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-remainingBalance="props">
-                    <q-td :props="props" class="text-right">
-                      <span :class="((props.row.installment || 0) - (props.row.paidAmount || 0)) > 0 ? 'text-negative text-weight-bold' : 'text-positive'">
-                        {{ formatMoney((props.row.installment || 0) - (props.row.paidAmount || 0)) }}
-                      </span>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-lateDays="props">
-                    <q-td :props="props" class="text-center">
-                      <q-badge v-if="props.row.lateDays > 0" color="negative" rounded>{{ props.row.lateDays }} dias</q-badge>
-                      <span v-else class="text-grey-5">0</span>
-                    </q-td>
-                  </template>                   <template v-slot:body-cell-latePaymentInterest="props">
-                    <q-td :props="props" class="text-right" :class="props.row.latePaymentInterest > 0 ? 'text-negative text-weight-bold' : ''">{{ formatMoney(props.row.latePaymentInterest || 0) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-totalToPay="props">
-                    <q-td :props="props" class="text-right text-weight-bold">{{ formatMoney(installmentTotalDue(props.row)) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-dueDate="props">
-                    <q-td :props="props" class="text-right">{{ formatDateShort(props.row.dueDate) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-actions="props">
-                    <q-td :props="props" class="text-center">
-                      <q-btn v-if="Number(amortLoan?.status) === 1 && canRegisterPayment(authStore.userRole)" round dense icon="credit_card" size="sm" color="orange" class="amort-pay-btn" @click="openPaymentModal(props.row)" />
-                    </q-td>
-                  </template>
-                </q-table>
-              </div>
-
-              <!-- Paid Installments -->
-              <div v-if="paidInstallments.length > 0">
-                <div class="amort-section-title text-positive">
-                  <q-icon name="check_circle" size="16px" class="q-mr-xs" />Prestações pagas ({{ paidInstallments.length }})
-                </div>
-                <q-table :rows="paidInstallments" :columns="paidAmortColumns" row-key="id" flat dense hide-bottom :rows-per-page-options="[0]" class="amort-table">
-                  <template v-slot:body-cell-amortization="props">
-                    <q-td :props="props" class="text-right">{{ formatMoney(props.row.amortization) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-rateAmount="props">
-                    <q-td :props="props" class="text-right">{{ formatMoney(props.row.rateAmount) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-installment="props">
-                    <q-td :props="props" class="text-right text-weight-bold">{{ formatMoney(props.row.installment) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-paidAmount="props">
-                    <q-td :props="props" class="text-right">
-                      <span class="text-positive text-weight-bold">{{ formatMoney(props.row.paidAmount || props.row.installment) }}</span>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-chargedLatePaymentInterest="props">
-                    <q-td :props="props" class="text-right">
-                      <span :class="props.row.chargedLatePaymentInterest > 0 ? 'text-negative text-weight-bold' : 'text-grey-5'">
-                        {{ formatMoney(props.row.chargedLatePaymentInterest || 0) }}
-                      </span>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-chargedLateDays="props">
-                    <q-td :props="props" class="text-center">
-                      <span :class="props.row.chargedLateDays > 0 ? 'text-negative text-weight-bold' : 'text-grey-5'">
-                        {{ props.row.chargedLateDays || 0 }}
-                      </span>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-discount="props">
-                    <q-td :props="props" class="text-right">
-                      <span v-if="props.row.paidAmount && props.row.paidAmount < props.row.installment" class="text-orange">
-                        -{{ formatMoney(props.row.installment - props.row.paidAmount) }}
-                      </span>
-                      <span v-else class="text-grey-4">—</span>
-                    </q-td>
-                  </template>
-                  <template v-slot:body-cell-dueDate="props">
-                    <q-td :props="props" class="text-right">{{ formatDateShort(props.row.dueDate) }}</q-td>
-                  </template>
-                  <template v-slot:body-cell-actions="props">
-                    <q-td :props="props" class="text-center">
-                      <q-btn flat round dense icon="visibility" size="xs" color="primary" @click="viewReceipt(props.row)" v-if="props.row.receiptUrl" />
-                      <q-btn flat round dense icon="receipt" size="xs" color="positive" @click="previewReceipt(props.row)" />
-                    </q-td>
-                  </template>
-                </q-table>
-              </div>
-
-              <!-- Empty state -->
-              <div v-if="pendingInstallments.length === 0 && paidInstallments.length === 0" class="text-center q-pa-lg text-grey-5">
-                <q-icon name="info" size="40px" />
-                <div class="text-caption q-mt-sm">Sem prestações registadas.</div>
-                <q-btn v-if="Number(amortLoan?.status) === 0 && canApproveLoan(authStore.userRole)" color="positive" icon="check_circle" label="Aprovar Crédito" unelevated no-caps rounded class="q-mt-md" @click="openLoanApproval(amortLoan); showAmortizationModal = false" />
-              </div>
-            </template>
-          </q-card-section>
-        </q-card>
-      </q-dialog>
-
-      <!-- ===================== MODAL: SIMULAÇÃO + SUBMISSÃO ===================== -->
-      <q-dialog v-model="showSimModal" persistent maximized>
-        <q-card style="border-radius: 16px">
-          <q-card-section class="row items-center q-pb-none bg-primary text-white">
-            <q-icon name="table_chart" size="24px" class="q-mr-sm" />
-            <div class="text-h6">Plano de Amortização — Simulação</div>
-            <q-space />
-            <q-btn flat round dense icon="close" @click="showSimModal = false" />
-          </q-card-section>
-          <q-card-section>
-            <!-- Summary -->
-            <div class="row q-col-gutter-sm q-mb-md">
-              <div class="col-6 col-sm-3" v-for="item in simSummary" :key="item.label">
-                <div class="summary-card">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">{{ item.label }}</div>
-                  <div class="text-weight-bold" :class="item.class">{{ item.value }}</div>
-                </div>
-              </div>
-            </div>
-            <!-- Capacity -->
-            <div class="capacity-check-box q-mb-md" :class="capacityExceeded ? 'warning' : 'success'">
-              <q-icon :name="capacityExceeded ? 'warning' : 'check_circle'" :color="capacityExceeded ? 'orange' : 'positive'" size="20px" class="q-mr-sm" />
-              <div>
-                <div class="text-weight-medium" style="font-size: 13px">
-                  {{ capacityExceeded ? 'Prestação acima da capacidade' : 'Dentro da capacidade' }}
-                </div>
-                <div class="text-caption text-grey-6">
-                  Prestação: {{ formatMoney(estimatedInstallment) }} | Limite: {{ formatMoney(maxCapacity) }}
-                </div>
-              </div>
-            </div>
-            <!-- Table -->
-            <q-table :rows="simulationResult" :columns="simColumns" row-key="installmentOrder" flat dense hide-bottom :rows-per-page-options="[0]" class="q-mb-md" style="font-size: 12px">
-              <template v-slot:body-cell-amortization="props">
-                <q-td :props="props" class="text-right">{{ formatMoney(props.row.amortization) }}</q-td>
-              </template>
-              <template v-slot:body-cell-rateAmount="props">
-                <q-td :props="props" class="text-right">{{ formatMoney(props.row.rateAmount) }}</q-td>
-              </template>
-              <template v-slot:body-cell-installment="props">
-                <q-td :props="props" class="text-right text-weight-bold">{{ formatMoney(props.row.installment) }}</q-td>
-              </template>
-              <template v-slot:body-cell-remainingBalance="props">
-                <q-td :props="props" class="text-right">{{ formatMoney(props.row.remainingBalance) }}</q-td>
-              </template>
-              <template v-slot:body-cell-dueDate="props">
-                <q-td :props="props" class="text-right">{{ formatDateShort(props.row.dueDate) }}</q-td>
-              </template>
-            </q-table>
-            <!-- Submission -->
-            <q-separator class="q-mb-md" />
-            <div class="text-subtitle1 text-weight-bold q-mb-md"><q-icon name="send" size="18px" class="q-mr-xs" />Submissão do Crédito</div>
-            <div class="row q-col-gutter-md">
-              <div class="col-12 col-sm-6">
-                <q-select
-                  v-model="loanForm.loanDescription"
-                  dense
-                  outlined
-                  use-input
-                  fill-input
-                  hide-selected
-                  input-debounce="0"
-                  label="Finalidade do crédito"
-                  :options="filteredPurposeOptions"
-                  @filter="filterPurposeOptions"
-                  input-style="font-size: 13px"
-                />
-              </div>
-              <div class="col-6 col-sm-3">
-                <q-input v-model="loanForm.dateCreated" dense outlined label="Data" type="date" :min="sixMonthsAgo" :max="todayDate" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6 col-sm-3">
-                  <q-select v-model="loanForm.creditManager" dense outlined :options="managerOptions" label="Gestor" emit-value map-options input-style="font-size: 13px" />
-              </div>
-              <div class="col-12" v-if="!elegibility">
-                <q-input v-model="loanForm.capacityExcessObservation" dense outlined label="Observação de excesso (mín. 10 caracteres)" type="textarea" rows="2" input-style="font-size: 13px" />
-              </div>
-            </div>
-          </q-card-section>
-          <q-card-actions align="right" class="q-pa-md">
-            <q-btn flat label="Cancelar" color="grey" no-caps @click="showSimModal = false" />
-            <q-btn unelevated label="Submeter Crédito" color="positive" icon="send" no-caps rounded :loading="submitting" :disable="!canSubmit" @click="submitLoan" />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-
-      <!-- ===================== MODAL: PAGAMENTO ===================== -->
-      <q-dialog v-model="showPaymentModal" persistent>
-        <q-card style="border-radius: 16px; min-width: 500px; max-width: 650px">
-          <q-card-section class="row items-center q-pb-none">
-            <q-icon name="payment" size="24px" color="positive" class="q-mr-sm" />
-            <div class="text-h6">Registar Pagamento</div>
-            <q-space />
-            <q-btn flat round dense icon="close" @click="showPaymentModal = false" />
-          </q-card-section>
-
-          <q-card-section>
-            <!-- Payment Summary -->
-            <div class="row q-col-gutter-sm q-mb-md">
-              <div class="col-6 col-sm-3" v-for="item in paymentSummary" :key="item.label">
-                <div class="summary-card">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">{{ item.label }}</div>
-                  <div class="text-weight-bold" :class="item.class">{{ item.value }}</div>
-                </div>
-              </div>
-            </div>
-
-            <q-separator class="q-mb-md" />
-
-            <!-- Payment Form -->
-            <div class="row q-col-gutter-md">
-              <div class="col-6">
-                <q-input v-model="paymentForm.paymentDate" dense outlined label="Data de pagamento" type="date" :max="todayDate" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-select v-model="paymentForm.paymentMethod" dense outlined :options="paymentMethods" label="Meio de pagamento" emit-value map-options input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-input v-model="paymentForm.paymentReference" dense outlined label="Referência" input-style="font-size: 13px" />
-              </div>
-              <!-- TESOURARIA: caixa (cash/conta) do movimento -->
-              <div class="col-6">
-                <q-select v-model="treasuryMethod" dense outlined :options="[
-                  { label: 'Caixa físico (CASH)', value: 'CASH' },
-                  { label: 'Transferência bancária', value: 'BANK' },
-                  { label: 'M-Pesa', value: 'MPESA' },
-                  { label: 'e-Mola', value: 'EMOLA' }
-                ]" label="Caixa de entrada *" emit-value map-options input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-select
-                  v-if="treasuryMethod !== 'CASH'"
-                  v-model="treasuryAccountId"
-                  dense
-                  outlined
-                  :options="treasuryAccountOptions"
-                  label="Conta de destino *"
-                  emit-value
-                  map-options
-                  input-style="font-size: 13px"
-                />
-                <q-input v-else dense outlined disable value="Dinheiro na gaveta" label="Conta de destino" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-input v-model.number="paymentForm.amountReceived" dense outlined label="Valor a pagar" type="number" input-style="font-size: 13px" @update:model-value="markPaymentAmountAsManual" />
-              </div>
-              <div class="col-6">
-                <q-input v-model="paymentForm.phoneNumber" dense outlined label="Telefone do cliente" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-input v-model="paymentForm.staffName" dense outlined disable label="Funcionário responsável" input-style="font-size: 13px" hint="Utilizador da sessão actual" />
-              </div>
-              <div class="col-12">
-                <q-file v-model="paymentForm.receiptFile" dense outlined label="Comprovativo de pagamento" accept=".pdf,.jpg,.jpeg,.png" input-style="font-size: 13px">
-                  <template v-slot:prepend><q-icon name="attach_file" size="16px" /></template>
-                </q-file>
-              </div>
-              <div v-if="paymentForm.amountReceived > 0 && paymentForm.amountReceived < (currentPaymentInstallment?.installment - (currentPaymentInstallment?.paidAmount || 0))" class="col-12">
-                <q-banner class="bg-warning text-white" rounded>
-                  <template v-slot:avatar><q-icon name="warning" /></template>
-                  Pagamento parcial: ficará um saldo devedor de {{ formatMoney(Math.max(0, installmentTotalDue(currentPaymentInstallment) - paymentForm.amountReceived)) }}
-                </q-banner>
-              </div>
-              <q-banner v-if="paymentExcessAmount > 0" class="col-12 bg-info text-white payment-excess-banner" rounded>
-                <template v-slot:avatar><q-icon name="forward" size="24px" /></template>
-                O valor excede o total desta prestação em {{ formatMoney(paymentExcessAmount) }}.
-                <span v-if="nextPaymentInstallment"> O excedente será aplicado à prestação seguinte.</span>
-                <span v-else> Não existe prestação seguinte para receber o troco.</span>
-              </q-banner>
-            </div>
-          </q-card-section>
-
-          <q-card-actions align="right" class="q-pa-md">
-            <q-btn flat label="Cancelar" color="grey" no-caps @click="showPaymentModal = false" />
-            <q-btn unelevated label="Confirmar Pagamento" color="positive" icon="check_circle" no-caps rounded :loading="paymentSaving" :disable="!canPay" @click="submitPayment" />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-
-      <!-- ===================== MODAL: PAGAMENTO GLOBAL ===================== -->
-      <q-dialog v-model="showGlobalPaymentModal" persistent>
-        <q-card style="border-radius: 16px; min-width: 550px; max-width: 700px">
-          <q-card-section class="row items-center q-pb-none">
-            <q-icon name="paid" size="24px" color="positive" class="q-mr-sm" />
-            <div class="text-h6">Liquidar Dívida Total</div>
-            <q-space />
-            <q-btn flat round dense icon="close" @click="showGlobalPaymentModal = false" />
-          </q-card-section>
-
-          <q-card-section>
-            <!-- Summary -->
-            <div class="row q-col-gutter-sm q-mb-md">
-              <div class="col-6">
-                <div class="summary-card" style="border-left: 3px solid #f57c00">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">Total Pendente</div>
-                  <div class="text-weight-bold text-orange">{{ formatMoney(totalPendingAmount) }}</div>
-                </div>
-              </div>
-              <div class="col-6">
-                <div class="summary-card" style="border-left: 3px solid #388e3c">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">Prestações Pendentes</div>
-                  <div class="text-weight-bold text-positive">{{ pendingInstallments.length }}</div>
-                </div>
-              </div>
-            </div>
-
-            <q-separator class="q-mb-md" />
-
-            <!-- Discount Options -->
-            <div class="text-subtitle2 q-mb-sm">Opções de Desconto</div>
-            <div class="row q-col-gutter-md">
-              <div class="col-12">
-                <q-toggle v-model="globalPaymentForm.applyDiscount" label="Aplicar desconto por liquidação antecipada" color="positive" />
-              </div>
-              <div v-if="globalPaymentForm.applyDiscount" class="col-12">
-                <q-select v-model="globalPaymentForm.discountType" dense outlined :options="discountOptions" label="Tipo de desconto" emit-value map-options input-style="font-size: 13px" />
-              </div>
-              <div v-if="globalPaymentForm.applyDiscount && globalPaymentForm.discountType === 'percentage'" class="col-6">
-                <q-input v-model.number="globalPaymentForm.discountPercentage" dense outlined label="Percentagem de desconto (%)" type="number" min="0" max="100" input-style="font-size: 13px" />
-              </div>
-              <div v-if="globalPaymentForm.applyDiscount && globalPaymentForm.discountType === 'fixed'" class="col-6">
-                <q-input v-model.number="globalPaymentForm.discountFixed" dense outlined label="Valor fixo de desconto (MZN)" type="number" min="0" input-style="font-size: 13px" />
-              </div>
-              <div v-if="globalPaymentForm.applyDiscount" class="col-6">
-                <div class="summary-card" style="border-left: 3px solid #388e3c">
-                  <div class="text-caption text-grey-5" style="font-size: 10px">Valor com Desconto</div>
-                  <div class="text-weight-bold text-positive">{{ formatMoney(globalTotalWithDiscount) }}</div>
-                </div>
-              </div>
-            </div>
-
-            <q-separator class="q-mb-md" />
-
-            <!-- Payment Form -->
-            <div class="row q-col-gutter-md">
-              <div class="col-6">
-                <q-input v-model="globalPaymentForm.paymentDate" dense outlined label="Data de pagamento" type="date" :max="todayDate" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-select v-model="globalPaymentForm.paymentMethod" dense outlined :options="paymentMethods" label="Meio de pagamento" emit-value map-options input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-input v-model="globalPaymentForm.paymentReference" dense outlined label="Referência" input-style="font-size: 13px" />
-              </div>
-              <!-- TESOURARIA: caixa (cash/conta) do movimento -->
-              <div class="col-6">
-                <q-select v-model="treasuryMethod" dense outlined :options="[
-                  { label: 'Caixa físico (CASH)', value: 'CASH' },
-                  { label: 'Transferência bancária', value: 'BANK' },
-                  { label: 'M-Pesa', value: 'MPESA' },
-                  { label: 'e-Mola', value: 'EMOLA' }
-                ]" label="Caixa de entrada *" emit-value map-options input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-select
-                  v-if="treasuryMethod !== 'CASH'"
-                  v-model="treasuryAccountId"
-                  dense
-                  outlined
-                  :options="treasuryAccountOptions"
-                  label="Conta de destino *"
-                  emit-value
-                  map-options
-                  input-style="font-size: 13px"
-                />
-                <q-input v-else dense outlined disable value="Dinheiro na gaveta" label="Conta de destino" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-input v-model="globalPaymentForm.phoneNumber" dense outlined label="Telefone do cliente" input-style="font-size: 13px" />
-              </div>
-              <div class="col-6">
-                <q-input v-model="globalPaymentForm.staffName" dense outlined disable label="Funcionário responsável" input-style="font-size: 13px" hint="Utilizador da sessão actual" />
-              </div>
-              <div class="col-12">
-                <q-input 
-                  v-model="globalPaymentForm.observation" 
-                  dense 
-                  outlined 
-                  :label="globalPaymentForm.applyDiscount ? 'Nota/Parecer (obrigatório) *' : 'Nota/Parecer'" 
-                  type="textarea" 
-                  rows="2" 
-                  input-style="font-size: 13px"
-                  :rules="globalPaymentForm.applyDiscount ? [val => !!val || 'Nota/Parecer é obrigatório quando há desconto'] : []"
-                />
-              </div>
-              <div class="col-12">
-                <q-file v-model="globalPaymentForm.receiptFile" dense outlined label="Comprovativo de pagamento" accept=".pdf,.jpg,.jpeg,.png" input-style="font-size: 13px">
-                  <template v-slot:prepend><q-icon name="attach_file" size="16px" /></template>
-                </q-file>
-              </div>
-            </div>
-          </q-card-section>
-
-          <q-card-actions align="right" class="q-pa-md">
-            <q-btn flat label="Cancelar" color="grey" no-caps @click="showGlobalPaymentModal = false" />
-            <q-btn unelevated label="Confirmar Liquidação" color="positive" icon="check_circle" no-caps rounded :loading="globalPaymentSaving" :disable="!canPayGlobal" @click="submitGlobalPayment" />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-
-      <!-- ===================== MODAL: EDITAR CRÉDITO ===================== -->
-      <q-dialog v-model="showEditLoanModal" persistent>
-        <q-card style="border-radius: 16px; min-width: 450px">
-          <q-card-section class="row items-center q-pb-none">
-            <q-icon name="edit" size="24px" color="blue" class="q-mr-sm" />
-            <div class="text-h6">Editar Crédito</div>
-            <q-space />
-            <q-btn flat round dense icon="close" @click="showEditLoanModal = false" />
-          </q-card-section>
-          <q-card-section>
-            <div class="q-gutter-md">
-              <q-input v-model.number="editLoanForm.amount" dense outlined label="Montante (MZN)" type="number" input-style="font-size: 13px" />
-              <q-input v-model.number="editLoanForm.numberOfInstallments" dense outlined label="Nº de Prestações" type="number" input-style="font-size: 13px" />
-              <q-select v-model="editLoanForm.interestRateId" dense outlined :options="rateOptions" label="Taxa de juros" emit-value map-options input-style="font-size: 13px" />
-              <q-input v-model="editLoanForm.loanDescription" dense outlined label="Descrição" type="textarea" rows="2" input-style="font-size: 13px" />
-            </div>
-          </q-card-section>
-          <q-card-actions align="right" class="q-pa-md">
-            <q-btn flat label="Cancelar" color="grey" no-caps @click="showEditLoanModal = false" />
-            <q-btn unelevated label="Guardar" color="primary" icon="save" no-caps rounded :loading="savingLoan" @click="saveEditLoan" />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-
-      <!-- ===================== MODAL: DOCUMENTOS ===================== -->
-      <q-dialog v-model="showDocsModal" persistent maximized>
-        <q-card style="border-radius: 16px">
-          <q-card-section class="row items-center q-pb-none bg-primary text-white">
-            <q-icon name="description" size="24px" class="q-mr-sm" />
-            <div class="text-h6">Documentos — {{ customer.customerName }}</div>
-            <q-space />
-            <q-btn flat round dense icon="close" @click="showDocsModal = false" />
-          </q-card-section>
-          <q-card-section>
-            <!-- Upload Form -->
-            <div class="row q-col-gutter-sm items-end q-mb-lg">
-              <div class="col-12 col-sm-4">
-                <q-select v-model="docForm.documentName" dense outlined :options="documentTypeOptions" label="Tipo de documento" input-style="font-size: 13px" />
-              </div>
-              <div class="col-12 col-sm-5">
-                <q-file v-model="docForm.file" dense outlined label="Selecionar ficheiro" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" input-style="font-size: 13px">
-                  <template v-slot:prepend><q-icon name="attach_file" size="16px" /></template>
-                </q-file>
-              </div>
-              <div class="col-12 col-sm-3">
-                <q-btn unelevated color="secondary" icon="cloud_upload" label="Salvar" class="full-width" no-caps rounded size="sm" :loading="uploading" :disable="!docForm.documentName || !docForm.file" @click="uploadDocument" />
-              </div>
-            </div>
-            <q-linear-progress v-if="uploadProgress > 0" :value="uploadProgress / 100" color="info" class="q-mb-md" rounded />
-            <!-- Documents List -->
-            <q-table :rows="customerDocuments" :columns="docColumns" row-key="id" flat dense hide-bottom :rows-per-page-options="[0]" style="font-size: 12px">
-              <template v-slot:body-cell-documentName="props">
-                <q-td :props="props">
-                  <div class="row items-center">
-                    <q-icon name="description" color="primary" size="18px" class="q-mr-sm" />
-                    <span>{{ props.row.documentName }}</span>
-                  </div>
-                </q-td>
-              </template>
-              <template v-slot:body-cell-createdAt="props">
-                <q-td :props="props">{{ props.row.createdAt ? formatDate(props.row.createdAt) : '—' }}</q-td>
-              </template>
-              <template v-slot:body-cell-actions="props">
-                <q-td :props="props">
-                  <div class="row q-gutter-xs">
-                    <q-btn flat round dense icon="open_in_new" size="xs" color="grey" @click="openDocument(props.row)" />
-                    <q-btn flat round dense icon="delete" size="xs" color="negative" @click="deleteDocument(props.row)" />
-                  </div>
-                </q-td>
-              </template>
-            </q-table>
-            <div v-if="customerDocuments.length === 0" class="text-center q-pa-lg text-grey-5">
-              <q-icon name="folder_open" size="48px" />
-              <div class="text-caption q-mt-sm">Nenhum documento registado</div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </q-dialog>
-
-      <!-- Other Modals -->
-      <CustomerFormModal v-model="showEditModal" :customer="customer" @saved="onCustomerSaved" />
-      <GuaranteesModal v-model="showGuarantees" :loan-id="selectedLoanId" />
-      <BorrowerInfoModal v-model="showBorrowerInfoModal" :loan="selectedLoanForInfo" :customer="customer" @saved="onBorrowerInfoSaved" />
-      <LoanApprovalModal v-model="showApprovalModal" :loan="approvalLoan" @approved="onLoanApproved" />
-
-      <!-- Modal de Envio de Credenciais -->
-      <q-dialog v-model="showCredentialsModal" persistent @show="generateNewPassword">
-        <q-card style="border-radius: 16px; min-width: 380px; max-width: 95vw">
-          <q-card-section class="row items-center bg-warning text-white">
-            <q-icon name="lock_open" size="24px" class="q-mr-sm" />
-            <div class="text-h6">Enviar Credenciais</div>
-            <q-space />
-            <q-btn flat round dense icon="close" @click="showCredentialsModal = false" />
-          </q-card-section>
-
-          <q-card-section class="q-pa-md">
-            <!-- Aviso se já enviado -->
-            <q-banner v-if="credentialsAlreadySent" class="bg-warning text-white q-mb-md" rounded>
-              <template v-slot:avatar>
-                <q-icon name="warning" size="24px" />
-              </template>
-              <div class="text-weight-bold">Credenciais já enviadas</div>
-              <div class="text-caption">Enviadas em {{ credentialsSentAt ? new Date(credentialsSentAt).toLocaleString('pt-MZ') : 'data desconhecida' }}. Enviar novamente?</div>
-            </q-banner>
-
-            <div v-else class="text-body2 text-grey-6 q-mb-md">
-              Envie as credenciais de acesso ao portal para o mutuário.
-            </div>
-
-            <!-- Dados do Mutuário -->
-            <q-card flat bordered class="q-mb-md credentials-card" style="border-radius: 8px">
-              <q-card-section>
-                <div class="row q-col-gutter-sm">
-                  <div class="col-12">
-                    <div class="text-caption credentials-label">Mutuário</div>
-                    <div class="text-weight-bold credentials-value">{{ customer.customerName }}</div>
-                  </div>
-                  <div class="col-6">
-                    <div class="text-caption credentials-label">Telefone</div>
-                    <div class="text-weight-bold credentials-value">{{ customer.customerPhone || 'Não informado' }}</div>
-                  </div>
-                  <div class="col-6">
-                    <div class="text-caption credentials-label">Conta</div>
-                    <div class="text-weight-bold credentials-value">{{ customer.accountNumber }}</div>
-                  </div>
-                  <div class="col-12">
-                    <div class="text-caption credentials-label">Nova Senha</div>
-                    <div class="text-weight-bold text-warning" style="font-size: 18px; letter-spacing: 2px">{{ generatedPassword }}</div>
-                  </div>
-                </div>
-              </q-card-section>
-            </q-card>
-
-            <!-- Canal de Envio -->
-            <div class="text-subtitle2 credentials-label q-mb-sm">Canal de Envio</div>
-            <q-btn-toggle
-              v-model="credentialsChannel"
-              :options="[
-                { label: 'SMS', value: 'sms', icon: 'sms' },
-                { label: 'WhatsApp', value: 'whatsapp', icon: 'chat' }
-              ]"
-              push
-              glossy
-              no-caps
-              class="q-mb-md full-width"
-              toggle-color="warning"
-            />
-
-            <!-- SMS desactivado: mensagem genérica no modal, sem chamada ao servidor -->
-            <q-banner v-if="credentialsSmsBlocked" class="bg-negative text-white q-mb-md" rounded>
-              <template v-slot:avatar>
-                <q-icon name="sms_failed" size="24px" />
-              </template>
-              <div class="text-weight-bold">SMS indisponível</div>
-              <div class="text-caption">O envio de SMS está desactivado nas configurações da empresa. Contacte o Administrador para o activar.</div>
-            </q-banner>
-
-            <!-- Preview da Mensagem -->
-            <q-card flat bordered class="q-mb-md credentials-card" style="border-radius: 8px">
-              <q-card-section class="q-py-sm">
-                <div class="text-caption credentials-label">Preview da Mensagem</div>
-              </q-card-section>
-              <q-card-section class="q-pt-none">
-                <div class="credentials-message" style="white-space: pre-wrap; font-size: 13px">
-Ola {{ customer.customerName }}. Sua senha de acesso ao portal da {{ companyName }} e: {{ generatedPassword }}. Telefone: {{ customer.customerPhone }}. Altere apos o primeiro acesso.</div>
-              </q-card-section>
-            </q-card>
-          </q-card-section>
-
-          <q-card-actions align="right" class="q-pa-md">
-            <q-btn flat label="Cancelar" color="grey" no-caps @click="showCredentialsModal = false" />
-            <q-btn
-              unelevated
-              :label="credentialsChannel === 'sms' ? 'Enviar SMS' : 'Enviar WhatsApp'"
-              :color="credentialsChannel === 'sms' ? 'primary' : 'positive'"
-              :icon="credentialsChannel === 'sms' ? 'sms' : 'chat'"
-              no-caps
-              rounded
-              :loading="sendingCredentials"
-              :disable="!customer.customerPhone || credentialsSmsBlocked"
-              @click="sendCredentials"
-            />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-    </template>
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat label="Cancelar" color="grey" no-caps @click="showCredentialsModal = false" />
+          <q-btn
+            unelevated
+            :label="credentialsChannel === 'sms' ? 'Enviar SMS' : 'Enviar WhatsApp'"
+            :color="credentialsChannel === 'sms' ? 'primary' : 'positive'"
+            :icon="credentialsChannel === 'sms' ? 'sms' : 'chat'"
+            no-caps rounded
+            :loading="sendingCredentials"
+            :disable="!store.customer?.customerPhone || (credentialsChannel === 'sms' && smsDisabled)"
+            @click="sendCredentials"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
-import { useCustomerStore } from '@/stores/customers'
-import { useLoansStore } from '@/stores/loans'
-import { usePaymentsStore } from '@/stores/payments'
-import { useAuthStore } from '@/stores/auth'
-import { useSettingsStore } from '@/stores/settings'
+import { useMutuarioStore } from '@/stores/mutuario'
 import { useCompanyStore } from '@/stores/company'
+import { useAuthStore } from '@/stores/auth'
+import { usePaymentsStore } from '@/stores/payments'
 import { api } from '@/boot/axios'
-import { formatMoney, formatDateShort } from '@/utils/formatters'
+import { formatMoney } from '@/utils/formatters'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
-import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
 import BorrowerInfoModal from '@/components/modals/BorrowerInfoModal.vue'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
-import { canRegisterPayment, canApproveLoan, canDeleteCustomer } from '@/utils/permissions'
-import { generateSixDigitCode } from '@/utils/codeGenerator'
-import { buildCompanyHeader, buildFooterWithSignature, commonStyles, tableLayout, infoTableLayout } from '@/utils/pdfHeader'
-import { getPdfMake } from '@/utils/pdfMake'
-import { logApproveLoan, logPayment, logPartialPayment, logFullPayment, logDeleteDocument, logCreateGuarantee, logDeleteGuarantee, logUploadDocument, logEditCustomer, logRejectLoan } from '@/utils/logger'
-import { generateAmortizationPlan } from '@/utils/amortization'
+import TabVisaoGeral from '@/components/mutuario/TabVisaoGeral.vue'
+import TabCreditos from '@/components/mutuario/TabCreditos.vue'
+import TabAmortizacao from '@/components/mutuario/TabAmortizacao.vue'
+import TabDocumentosKyc from '@/components/mutuario/TabDocumentosKyc.vue'
+import TabDocumentosLegais from '@/components/mutuario/TabDocumentosLegais.vue'
+import TabGarantiasRecibos from '@/components/mutuario/TabGarantiasRecibos.vue'
 
 const $q = useQuasar()
 const route = useRoute()
 const router = useRouter()
-const customerStore = useCustomerStore()
-const loansStore = useLoansStore()
-const paymentsStore = usePaymentsStore()
-const authStore = useAuthStore()
-const settingsStore = useSettingsStore()
+const store = useMutuarioStore()
 const companyStore = useCompanyStore()
+const authStore = useAuthStore()
+const paymentsStore = usePaymentsStore()
 
-// Loading
-const loading = computed(() => customerStore.loading)
-const customer = computed(() => customerStore.currentCustomer)
-const submitting = ref(false)
-const savingLoan = ref(false)
-const uploading = ref(false)
-const uploadProgress = ref(0)
-// Métricas agregadas por crédito (total + juros, pago até agora, última prestação)
-const loanMetrics = ref({})
-const loanAppliedLateInterest = ref({})
-
-// Modals
+const tab = ref('visao')
 const showEditModal = ref(false)
-const showGuarantees = ref(false)
-const showAmortizationModal = ref(false)
-const showSimModal = ref(false)
-const showPaymentModal = ref(false)
-const showEditLoanModal = ref(false)
-const showDocsModal = ref(false)
-const showGlobalPaymentModal = ref(false)
 const showBorrowerInfoModal = ref(false)
+const selectedLoanForInfo = ref(null)
+
+// Aprovação/desembolso de créditos pendentes
+const showApprovalModal = ref(false)
+const approvalLoan = ref(null)
+
+// Credenciais do portal
 const showCredentialsModal = ref(false)
 const credentialsChannel = ref('sms')
 const sendingCredentials = ref(false)
 const generatedPassword = ref('')
-const credentialsAlreadySent = ref(false)
-const credentialsSentAt = ref('')
-const selectedLoanForInfo = ref(null)
-const globalPaymentSaving = ref(false)
 
-// Global payment form
-const globalPaymentForm = ref({
-  paymentDate: new Date().toISOString().split('T')[0],
-  paymentMethod: null,
-  paymentReference: '',
-  phoneNumber: '',
-  staffName: authStore.userName || '',
-  observation: '',
-  receiptFile: null,
-  applyDiscount: false,
-  discountType: 'percentage',
-  discountPercentage: 10,
-  discountFixed: 0
-})
+function generateNewPassword() {
+  // 6 dígitos, igual ao comportamento anterior (utils/codeGenerator)
+  generatedPassword.value = String(Math.floor(100000 + Math.random() * 900000))
+}
 
-// ─── TESOURARIA: método/conta do pagamento (Caixa Central) ───
-// Método de caixa: CASH (gaveta), BANK, MPESA, EMOLA — vai para cash_movements
-// e, quando electrónico, para o saldo real da conta (bank_transactions).
-const treasuryMethod = ref('CASH')
-const treasuryAccountId = ref(null)
-const treasuryAccounts = ref([])
+const companyName = computed(() => companyStore.companyName || 'Mais Mola')
+const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
 
-async function fetchTreasuryAccounts() {
+async function sendCredentials() {
+  sendingCredentials.value = true
   try {
-    const { data } = await api.get('/api/bank-accounts?is_active=1&purpose=REEMBOLSO')
-    if (data.success) {
-      treasuryAccounts.value = data.result || []
-      // Pré-seleccionar a conta default de reembolso.
-      if (!treasuryAccountId.value) {
-        const def = treasuryAccounts.value.find(acc => Number(acc.is_default_reembolso) === 1)
-        treasuryAccountId.value = def ? def.id : null
-      }
+    const { data } = await api.post('/api/portal/send-credentials', {
+      customerId: store.customer?.id,
+      channel: credentialsChannel.value,
+      newPassword: generatedPassword.value
+    })
+    if (data.alreadySent) {
+      $q.notify({ type: 'warning', message: data.message, position: 'top', timeout: 5000 })
+    } else if (data.success) {
+      $q.notify({ type: 'positive', message: data.message || 'Credenciais enviadas com sucesso', position: 'top' })
+      showCredentialsModal.value = false
     }
   } catch (e) {
-    console.error('Erro ao carregar contas de reembolso:', e)
-  }
-}
-
-// Opções do q-select de conta: só contas activas de reembolso, com saldo.
-const treasuryAccountOptions = computed(() =>
-  treasuryAccounts.value
-    .filter(acc => Number(acc.is_active) === 1)
-    .map(acc => ({
-      label: `${acc.bank_name || 'Conta'} - ${acc.accountNumber} - Saldo: ${formatMoney(acc.balance)}`,
-      value: acc.id
-    }))
-)
-
-// Payload comum de tesouraria para os 3 createPayment.
-const treasuryPayload = () => ({
-  payment_method: treasuryMethod.value,
-  bank_account_id: treasuryMethod.value !== 'CASH' ? treasuryAccountId.value : null
-})
-
-const discountOptions = [
-  { label: 'Percentual (%)', value: 'percentage' },
-  { label: 'Valor Fixo (MZN)', value: 'fixed' }
-]
-
-// Watch for global payment modal to auto-fill phone
-watch(showGlobalPaymentModal, (val) => {
-  if (val) {
-    globalPaymentForm.value.phoneNumber = customer.value?.customerPhone || ''
-    globalPaymentForm.value.staffName = authStore.userName || ''
-  }
-})
-
-const selectedLoanId = ref(null)
-
-// Modal de aprovação — taxa de juro definida aqui pelo Admin/Gestor
-const showApprovalModal = ref(false)
-const approvalLoan = ref(null)
-
-// Documents
-const customerDocuments = ref([])
-const docForm = ref({ documentName: null, file: null })
-const documentTypeOptions = ['BI / Passaporte / Carta de condução', 'NUIT', 'Alvará', 'Declaração do bairro', 'Contrato autenticado', 'Comprovativo de rendimentos']
-
-// Loan simulation
-const loanForm = ref({
-  capital: 0, prestacoes: null, juros: null, creditManager: null,
-  loanDescription: '',
-  capacityExcessObservation: '', dateCreated: new Date().toISOString().split('T')[0]
-})
-const simulationResult = ref([])
-const selectedRate = ref(0)
-const maxCapacity = ref(0)
-const estimatedInstallment = ref(0)
-
-// Edit loan
-const editLoan = ref(null)
-const editLoanForm = ref({ amount: 0, numberOfInstallments: 0, interestRateId: null, loanDescription: '' })
-
-// Amortization modal
-const amortLoan = ref(null)
-const amortInstallments = ref([])
-const amortLoading = ref(false)
-
-// Payment modal
-const currentPaymentInstallment = ref(null)
-const paymentSaving = ref(false)
-const paymentAmountIsAutomatic = ref(false)
-const paymentForm = ref({ paymentDate: new Date().toISOString().split('T')[0], paymentMethod: null, paymentReference: '', amountReceived: 0, receiptFile: null, phoneNumber: '', staffName: authStore.userName || '' })
-const todayDate = new Date().toISOString().split('T')[0]
-
-// Global payment computed
-const installmentRemaining = (installment) => Math.max(0, Number(installment?.installment || 0) - Number(installment?.paidAmount || 0))
-const installmentLateInterest = (installment) => Number(installment?.latePaymentInterest || 0)
-const installmentTotalDue = (installment) => installmentRemaining(installment) + installmentLateInterest(installment)
-const installmentHistoricalTotal = (installment) => Number(installment?.status) === 1
-  ? Number(installment?.installment || 0) + Number(installment?.chargedLatePaymentInterest || 0)
-  : installmentTotalDue(installment)
-
-const totalPendingAmount = computed(() =>
-  pendingInstallments.value.reduce((sum, inst) => sum + installmentTotalDue(inst), 0)
-)
-
-const globalTotalWithDiscount = computed(() => {
-  const total = totalPendingAmount.value
-  if (!globalPaymentForm.value.applyDiscount) return total
-  if (globalPaymentForm.value.discountType === 'percentage') {
-    return total * (1 - (globalPaymentForm.value.discountPercentage || 0) / 100)
-  }
-  return Math.max(0, total - (globalPaymentForm.value.discountFixed || 0))
-})
-
-const canPayGlobal = computed(() => {
-  const base = globalPaymentForm.value.paymentDate &&
-    globalPaymentForm.value.paymentMethod &&
-    globalPaymentForm.value.paymentReference &&
-    globalPaymentForm.value.staffName
-  // Se há desconto, nota/parecer é obrigatório
-  if (globalPaymentForm.value.applyDiscount) {
-    return base && globalPaymentForm.value.observation
-  }
-  return base
-})
-
-// Options
-const numeroPrestacoes = [
-  { label: 'Nº Prestações', value: null },
-  ...Array.from({ length: 18 }, (_, i) => ({ label: `${i + 1} prestação${i > 0 ? 's' : ''}`, value: i + 1 }))
-]
-const rateOptions = ref([{ label: 'Taxa de juros', value: null }])
-const managerOptions = ref([{ label: 'Selecionar Gestor', value: null }])
-const purposeOptions = [
-  'Comércio',
-  'Criação de animais',
-  'Educação',
-  'Habitação',
-  'Negócio',
-  'Saúde',
-  'Transporte',
-  'Outro'
-]
-const filteredPurposeOptions = ref([...purposeOptions])
-const sixMonthsAgo = (() => {
-  const date = new Date()
-  date.setMonth(date.getMonth() - 6)
-  return date.toISOString().split('T')[0]
-})()
-
-function filterPurposeOptions(value, update) {
-  update(() => {
-    const needle = String(value || '').toLowerCase()
-    filteredPurposeOptions.value = needle
-      ? purposeOptions.filter(purpose => purpose.toLowerCase().includes(needle))
-      : [...purposeOptions]
-  })
-}
-const paymentMethods = computed(() => {
-  // Buscar meios de pagamento da tabela accounts (Contas Bancárias)
-  const accounts = settingsStore.accounts || []
-  const methods = accounts.map(acc => ({
-    label: acc.accountDescription || acc.accountNumber || `Conta ${acc.id}`,
-    value: acc.id
-  }))
-  // Fallback para meios padrão se não houver contas registadas
-  if (methods.length === 0) {
-    return [
-      { label: 'Seleccionar método', value: null },
-      { label: 'Numerário', value: 1 },
-      { label: 'Cheque', value: 2 },
-      { label: 'Transferência Bancária', value: 3 },
-      { label: 'Depósito Bancário', value: 4 },
-      { label: 'M-Pesa', value: 7 }
-    ]
-  }
-  return [{ label: 'Seleccionar método', value: null }, ...methods]
-})
-
-// Computed
-const customerLoans = computed(() => loansStore.loans)
-
-
-const installmentDelta = computed(() => maxCapacity.value - estimatedInstallment.value)
-const elegibility = computed(() => !capacityExceeded.value)
-const capacityExceeded = computed(() => estimatedInstallment.value > maxCapacity.value && maxCapacity.value > 0)
-
-const totalToPay = computed(() => simulationResult.value.reduce((sum, r) => sum + r.installment, 0))
-
-const canSubmit = computed(() => {
-  if (!loanForm.value.capital || !loanForm.value.prestacoes || !loanForm.value.juros || !loanForm.value.creditManager) return false
-  if (capacityExceeded.value && (!loanForm.value.capacityExcessObservation || loanForm.value.capacityExcessObservation.length < 10)) return false
-  return true
-})
-
-const canPay = computed(() => paymentForm.value.paymentDate && paymentForm.value.paymentMethod && paymentForm.value.amountReceived > 0 && paymentForm.value.paymentReference && paymentForm.value.staffName)
-
-const nextPaymentInstallment = computed(() => {
-  const current = currentPaymentInstallment.value
-  if (!current) return null
-  const installments = [...amortInstallments.value].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-  const index = installments.findIndex(item => Number(item.id) === Number(current.id))
-  return installments.slice(index + 1).find(item => Number(item.status) !== 1) || null
-})
-
-const paymentExcessAmount = computed(() => {
-  const amount = Number(paymentForm.value.amountReceived) || 0
-  const remaining = installmentRemaining(currentPaymentInstallment.value)
-  return Math.max(0, Math.round((amount - remaining - paymentLateInterest.value) * 100) / 100)
-})
-
-// Mora deve respeitar a data efectiva do pagamento, mesmo quando o lançamento
-// é feito posteriormente no sistema.
-const paymentLateInterest = computed(() => {
-  const installment = currentPaymentInstallment.value
-  if (!installment || Number(installment.status) === 1) return 0
-  return calculateLateInterestForDate(installment, paymentForm.value.paymentDate)
-})
-
-function calculateLateInterestForDate(installment, paymentDateValue) {
-  const dueDate = new Date(installment?.dueDate)
-  const paymentDate = new Date(`${paymentDateValue}T00:00:00`)
-  if (Number.isNaN(dueDate.getTime()) || Number.isNaN(paymentDate.getTime())) return 0
-  const dueDay = new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate())
-  const paidDay = new Date(paymentDate.getFullYear(), paymentDate.getMonth(), paymentDate.getDate())
-  const daysLate = Math.max(0, Math.floor((paidDay - dueDay) / 86400000))
-  const forfeit = Number(companyStore.company?.forfeit) || 0
-  return Math.round((Number(installment?.installment || 0) * (forfeit / 100) * daysLate) * 100) / 100
-}
-
-watch(() => paymentForm.value.paymentDate, (paymentDate) => {
-  if (!paymentAmountIsAutomatic.value || !currentPaymentInstallment.value) return
-  const remaining = installmentRemaining(currentPaymentInstallment.value)
-  paymentForm.value.amountReceived = Math.round((remaining + calculateLateInterestForDate(currentPaymentInstallment.value, paymentDate)) * 100) / 100
-})
-
-function markPaymentAmountAsManual() {
-  paymentAmountIsAutomatic.value = false
-}
-
-
-
-// Amortization modal computed
-const paidInstallments = computed(() => amortInstallments.value.filter(a => Number(a.status) === 1))
-const partialInstallments = computed(() => amortInstallments.value.filter(a => Number(a.status) === -1))
-const pendingInstallments = computed(() => amortInstallments.value.filter(a => Number(a.status) === 0 || Number(a.status) === -1))
-
-// Total de juros pela fórmula Price
-const amortTotalInterest = computed(() => {
-  const principal = parseFloat(amortLoan.value?.amount) || 0
-  const rate = parseFloat(amortLoan.value?.interestRate) || 0
-  const n = parseInt(amortLoan.value?.numberOfInstallments) || 1
-  if (principal <= 0 || rate === 0) return 0
-  const factor = Math.pow(1 + rate, n)
-  const pmt = principal * (rate * factor) / (factor - 1)
-  return Math.round(((pmt * n) - principal) * 100) / 100
-})
-
-// Total da dívida = PMT × n
-const amortTotalDebt = computed(() => {
-  const principal = parseFloat(amortLoan.value?.amount) || 0
-  const rate = parseFloat(amortLoan.value?.interestRate) || 0
-  const n = parseInt(amortLoan.value?.numberOfInstallments) || 1
-  if (principal <= 0 || rate === 0) return principal
-  const factor = Math.pow(1 + rate, n)
-  const pmt = principal * (rate * factor) / (factor - 1)
-  return Math.round(pmt * n * 100) / 100
-})
-
-// Total pago = soma do valor realmente pago em todas as prestações
-const amortTotalPaid = computed(() => {
-  return amortInstallments.value.reduce((sum, inst) => sum + (parseFloat(inst.paidAmount) || 0), 0)
-})
-
-const amortTotalLateInterest = computed(() => {
-  return amortInstallments.value.reduce((sum, inst) => sum + installmentLateInterest(inst), 0)
-})
-
-const amortChargedLateInterest = computed(() => {
-  return amortInstallments.value.reduce((sum, inst) => sum + (Number(inst.chargedLatePaymentInterest) || 0), 0)
-})
-
-const amortTotalDebtWithLateInterest = computed(() => {
-  return Math.round((amortTotalDebt.value + amortTotalLateInterest.value + amortChargedLateInterest.value) * 100) / 100
-})
-
-// Saldo remanescente = Total da dívida - Total pago
-const amortRemainingDebt = computed(() => {
-  return Math.round(pendingInstallments.value.reduce((sum, inst) => sum + installmentTotalDue(inst), 0) * 100) / 100
-})
-
-const simSummary = computed(() => [
-  { label: 'Capital', value: formatMoney(loanForm.value.capital), class: 'text-primary' },
-  { label: 'Taxa', value: `${(selectedRate.value * 100).toFixed(1)}%`, class: '' },
-  { label: 'Prestações', value: `${loanForm.value.prestacoes}x`, class: '' },
-  { label: 'Total a pagar', value: formatMoney(totalToPay.value), class: 'text-positive' }
-])
-
-const paymentSummary = computed(() => {
-  const p = currentPaymentInstallment.value || {}
-  const installmentValue = p.installment || 0
-  const alreadyPaid = p.paidAmount || 0
-  const remaining = Math.round(Math.max(0, installmentValue - alreadyPaid) * 100) / 100
-  const isPartial = Number(p.status) === -1 && alreadyPaid > 0
-  
-  const daysOverdue = Number(p.lateDays || 0)
-  const lateFee = paymentLateInterest.value
-  const totalDue = remaining + lateFee
-  
-  const items = [
-    { label: 'Prestação', value: formatMoney(installmentValue), class: 'text-primary' },
-    { label: 'Capital', value: formatMoney(p.amortization || 0), class: '' },
-    { label: 'Juros', value: formatMoney(p.rateAmount || 0), class: '' },
-    { label: 'Vencimento', value: formatDateShort(p.dueDate), class: 'text-grey-7' }
-  ]
-  
-  if (isPartial) {
-    items.push(
-      { label: 'Já Pago', value: formatMoney(alreadyPaid), class: 'text-positive' },
-      { label: 'Em Falta', value: formatMoney(remaining), class: 'text-negative' }
-    )
-  }
-  
-  items.push({ label: 'Juros de Mora', value: formatMoney(lateFee), class: 'text-negative text-weight-bold' })
-  items.push({ label: 'Total a Pagar', value: formatMoney(totalDue), class: 'text-negative text-weight-bold' })
-  
-  return items
-})
-
-// Document columns
-const docColumns = [
-  { name: 'documentName', label: 'Documento', field: 'documentName', align: 'left' },
-  { name: 'createdAt', label: 'Data', field: 'createdAt', align: 'left' },
-  { name: 'actions', label: '', field: 'actions', align: 'center' }
-]
-
-// Amortization table columns — Paid
-const paidAmortColumns = [
-  { name: 'installmentOrder', label: 'Ordem', field: 'installmentOrder', align: 'center', style: 'font-size: 11px' },
-  { name: 'amortization', label: 'Capital', field: 'amortization', align: 'right', style: 'font-size: 11px' },
-  { name: 'rateAmount', label: 'Juros', field: 'rateAmount', align: 'right', style: 'font-size: 11px' },
-  { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', style: 'font-size: 11px' },
-  { name: 'paidAmount', label: 'Valor Pago', field: 'paidAmount', align: 'right', style: 'font-size: 11px' },
-  { name: 'chargedLateDays', label: 'Dias de Mora', field: 'chargedLateDays', align: 'center', style: 'font-size: 11px' },
-  { name: 'chargedLatePaymentInterest', label: 'Juros de Mora', field: 'chargedLatePaymentInterest', align: 'right', style: 'font-size: 11px' },
-  { name: 'discount', label: 'Desconto', field: 'discount', align: 'right', style: 'font-size: 11px' },
-  { name: 'dueDate', label: 'Vencimento', field: 'dueDate', align: 'right', style: 'font-size: 11px' },
-  { name: 'actions', label: 'Acções', field: 'actions', align: 'center', style: 'font-size: 11px' }
-]
-
-// Amortization table columns — Pending
-const pendingAmortColumns = [
-  { name: 'installmentOrder', label: 'Ordem', field: 'installmentOrder', align: 'center', style: 'font-size: 11px' },
-  { name: 'amortization', label: 'Capital', field: 'amortization', align: 'right', style: 'font-size: 11px' },
-  { name: 'rateAmount', label: 'Juros', field: 'rateAmount', align: 'right', style: 'font-size: 11px' },
-  { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', style: 'font-size: 11px' },
-  { name: 'paidAmount', label: 'Valor Pago', field: 'paidAmount', align: 'right', style: 'font-size: 11px' },
-  { name: 'status', label: 'Estado', field: 'status', align: 'center', style: 'font-size: 11px' },
-  { name: 'remainingBalance', label: 'Saldo Devedor', field: 'remainingBalance', align: 'right', style: 'font-size: 11px' },
-  { name: 'lateDays', label: 'Dias em atraso', field: 'lateDays', align: 'center', style: 'font-size: 11px' },
-  { name: 'latePaymentInterest', label: 'Juros de mora', field: 'latePaymentInterest', align: 'right', style: 'font-size: 11px' },
-  { name: 'totalToPay', label: 'Total a pagar', field: 'totalToPay', align: 'right', style: 'font-size: 11px' },
-  { name: 'dueDate', label: 'Vencimento', field: 'dueDate', align: 'right', style: 'font-size: 11px' },
-  { name: 'actions', label: 'Acções', field: 'actions', align: 'center', style: 'font-size: 11px' }
-]
-
-const simColumns = [
-  { name: 'installmentOrder', label: 'Ordem', field: 'installmentOrder', align: 'center', style: 'font-size: 11px' },
-  { name: 'amortization', label: 'Amortização', field: 'amortization', align: 'right', style: 'font-size: 11px' },
-  { name: 'rateAmount', label: 'Juros', field: 'rateAmount', align: 'right', style: 'font-size: 11px' },
-  { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', style: 'font-size: 11px' },
-  { name: 'remainingBalance', label: 'Saldo', field: 'remainingBalance', align: 'right', style: 'font-size: 11px' },
-  { name: 'dueDate', label: 'Vencimento', field: 'dueDate', align: 'right', style: 'font-size: 11px' }
-]
-
-// ===================== FUNCTIONS =====================
-
-import { calculateInstallment as calcInstallment } from '@/utils/amortization'
-
-// Watch juros
-watch(() => loanForm.value.juros, (rateId) => {
-  if (rateId) {
-    const rate = settingsStore.rates.find(r => r.id === rateId)
-    selectedRate.value = rate ? rate.tax : 0
-  } else {
-    selectedRate.value = 0
-  }
-})
-
-// Watch capital/prestacoes
-watch([() => loanForm.value.capital, () => loanForm.value.prestacoes, selectedRate], () => {
-  const { capital, prestacoes } = loanForm.value
-  if (capital > 0 && prestacoes > 0 && selectedRate.value > 0) {
-    estimatedInstallment.value = calcInstallment(capital, selectedRate.value, prestacoes)
-    maxCapacity.value = (customer.value?.customerMonthlySalary || 0) / 3
-  } else {
-    estimatedInstallment.value = 0
-  }
-})
-
-function simulateLoan() {
-  const capital = Number(loanForm.value.capital)
-  const prestacoes = Number(loanForm.value.prestacoes)
-  const rate = Number(selectedRate.value)
-  const dateCreated = loanForm.value.dateCreated
-  if (!(capital > 0) || !Number.isInteger(prestacoes) || prestacoes < 1 || !(rate > 0)) {
-    $q.notify({ type: 'warning', message: 'Preencha montante, prazo e taxa', position: 'top' })
-    return
-  }
-  // Usar função partilhada para garantir consistência com CLÁUSULA QUARTA
-  // Passar data de desembolso para calcular vencimentos (30 dias após desembolso)
-  const plan = generateAmortizationPlan(capital, rate, prestacoes, dateCreated)
-  if (plan.length !== prestacoes) {
-    $q.notify({ type: 'negative', message: 'Não foi possível gerar o plano completo de amortização.', position: 'top' })
-    return
-  }
-  simulationResult.value = plan
-  estimatedInstallment.value = plan[0]?.installment || 0
-  maxCapacity.value = (customer.value?.customerMonthlySalary || 0) / 3
-  showSimModal.value = true
-}
-
-// ===================== LOAN ACTIONS =====================
-
-async function openAmortization(loan) {
-  amortLoan.value = loan
-  amortInstallments.value = []
-  showAmortizationModal.value = true
-  amortLoading.value = true
-  try {
-    const forfeit = companyStore.company?.forfeit || 0.1
-    const result = await loansStore.fetchAmortization(loan.id, forfeit)
-    amortInstallments.value = result.installments || []
-  } catch (e) {
-    console.error('Erro ao buscar amortização:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao carregar plano de amortização', position: 'top' })
+    $q.notify({ type: 'negative', message: e.response?.data?.message || 'Erro ao enviar credenciais', position: 'top' })
   } finally {
-    amortLoading.value = false
+    sendingCredentials.value = false
   }
 }
 
-function viewReceipt(amortization) {
-  if (amortization.receiptUrl) window.open(amortization.receiptUrl, '_blank')
+function onLoanApproved() {
+  approvalLoan.value = null
+  store.fetchLoans()
 }
 
-async function getLogoBase64ForPdf() {
-  const logo = companyStore.companyLogo
-  if (!logo || logo === '/logo.png') return null
-  try {
-    const url = logo.startsWith('http') ? logo : logo.startsWith('/') ? logo : `/documents/${logo}`
-    const token = localStorage.getItem('applicationMicroToken')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
-    const response = await fetch(url, { headers })
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('image/')) return null
-    const blob = await response.blob()
-    return new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result)
-      reader.readAsDataURL(blob)
-    })
-  } catch (e) {
-    console.warn('Erro ao buscar logo:', e)
-    return null
-  }
-}
+const statusColor = computed(() => {
+  const s = Number(store.customer?.customerStatus)
+  return s === 1 ? 'positive' : s === 0 ? 'grey' : 'blue'
+})
+const statusText = computed(() => {
+  const s = Number(store.customer?.customerStatus)
+  return s === 1 ? 'Activo' : s === 0 ? 'Inactivo' : 'Activo'
+})
 
-async function previewReceipt(amortization) {
+// Prestação estimada do crédito activo para "Capacidade Disponível" no header
+const currentInstallmentShare = computed(() => {
+  if (!store.activeLoan) return 0
+  const rate = Number(store.activeLoan.interestRate) || 0
+  const n = Number(store.activeLoan.numberOfInstallments) || 1
+  const principal = Number(store.activeLoan.amount) || 0
+  if (principal <= 0 || rate <= 0) return principal / n
+  const factor = Math.pow(1 + rate, n)
+  return principal * (rate * factor) / (factor - 1)
+})
+
+function goBack() { router.push('/mutuarios') }
+function openPassportPhoto() {
+  if (store.customer?.passportPhotoUrl) window.open(store.customer.passportPhotoUrl, '_blank')
+}
+function onCustomerSaved() {
+  showEditModal.value = false
+  store.fetchAll(route.params.accountNumber)
+}
+function onViewPlan() { tab.value = 'amortizacao' }
+function onViewGuarantees() { tab.value = 'garantias' }
+function onLoanInfo(loan) {
+  selectedLoanForInfo.value = loan
+  showBorrowerInfoModal.value = true
+}
+function openApproval(loan) {
+  approvalLoan.value = loan
+  showApprovalModal.value = true
+}
+defineExpose({ openApproval })
+
+// Recibo de prestação paga (mantém o comportamento do previewReceipt antigo)
+async function onPrintReceipt(installment) {
   try {
+    const { buildCompanyHeader, commonStyles } = await import('@/utils/pdfHeader')
+    const { getPdfMake } = await import('@/utils/pdfMake')
     const pdfMake = await getPdfMake()
-
     const company = companyStore.company || {}
-    const cust = customer.value || {}
-    const logoBase64 = await getLogoBase64ForPdf()
+    const cust = store.customer || {}
 
-    // Buscar transação desta prestação
-    let transaction = null
-    try {
-      const token = localStorage.getItem('applicationMicroToken')
-      const txnResp = await fetch(`/api/tranzaction/customer/${cust.accountNumber}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const txnData = await txnResp.json()
-      if (txnData.success && txnData.result) {
-        const allTxns = Array.isArray(txnData.result) ? txnData.result : []
-        transaction = allTxns.find(t => t.amortizationLoanId === amortization.id) || null
-      }
-    } catch (e) { /* silent */ }
-
-    const methodLabels = { 1: 'Numerário', 2: 'Cheque', 3: 'Transferência Bancária', 4: 'Depósito Bancário', 5: 'TPA', 6: 'E-Mola', 7: 'M-Pesa', 8: 'e-Mola' }
-
-    // Usar cabeçalho comum
-    const companyHeader = buildCompanyHeader(company, logoBase64, 'Recibo de Pagamento')
-
+    const companyHeader = buildCompanyHeader(company, null, 'Recibo de Pagamento')
     const doc = {
       content: [
         ...companyHeader,
-        { text: `Ref: ${amortization.installmentOrder || ''} | ${formatDateShort(new Date())}`, fontSize: 7, alignment: 'center', color: '#888', margin: [0, 0, 0, 15] },
-        { text: 'DADOS DO MUTUÁRIO', fontSize: 8, bold: true, color: '#1a237e', margin: [25, 0, 0, 6] },
-        { table: { widths: ['*', '*'], body: [
-          [{ text: [{ text: 'Nome: ', bold: true, fontSize: 8 }, { text: cust.customerName || '', fontSize: 8 }] }, { text: [{ text: 'Conta: ', bold: true, fontSize: 8 }, { text: String(cust.accountNumber || ''), fontSize: 8 }] }],
-          [{ text: [{ text: 'Telefone: ', bold: true, fontSize: 8 }, { text: cust.customerPhone || '', fontSize: 8 }] }, { text: [{ text: 'NUIT: ', bold: true, fontSize: 8 }, { text: cust.customerNuit || '', fontSize: 8 }] }]
-        ]}, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5, paddingLeft: () => 6, paddingRight: () => 6 }, margin: [25, 0, 25, 12] },
-        { text: 'DETALHES DO PAGAMENTO', fontSize: 8, bold: true, color: '#1a237e', margin: [25, 0, 0, 6] },
-        { table: { widths: ['*', '*'], body: [
-          [{ text: [{ text: 'Prestação: ', bold: true, fontSize: 8 }, { text: amortization.installmentOrder || '', fontSize: 8 }] }, { text: [{ text: 'Vencimento: ', bold: true, fontSize: 8 }, { text: formatDateShort(amortization.dueDate), fontSize: 8 }] }],
-          [{ text: [{ text: 'Capital: ', bold: true, fontSize: 8 }, { text: formatMoney(amortization.amortization), fontSize: 8 }] }, { text: [{ text: 'Juros: ', bold: true, fontSize: 8 }, { text: formatMoney(amortization.rateAmount), fontSize: 8 }] }]
-        ]}, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5, paddingLeft: () => 6, paddingRight: () => 6 }, margin: [25, 0, 25, 12] },
-        // Transacção
-        ...(transaction ? [
-          { text: 'TRANSPACÇÃO', fontSize: 8, bold: true, color: '#1a237e', margin: [25, 0, 0, 6] },
-          { table: { widths: ['*', '*'], body: [
-            [{ text: [{ text: 'Valor: ', bold: true, fontSize: 8 }, { text: formatMoney(transaction.amount), fontSize: 8, bold: true, color: '#2e7d32' }] }, { text: [{ text: 'Data: ', bold: true, fontSize: 8 }, { text: formatDateShort(transaction.paymentDate || transaction.createdAt), fontSize: 8 }] }],
-            [{ text: [{ text: 'Meio: ', bold: true, fontSize: 8 }, { text: methodLabels[transaction.paymentMethod] || 'N/D', fontSize: 8 }] }, { text: [{ text: 'Referência: ', bold: true, fontSize: 8 }, { text: transaction.tranzactionReference || 'N/D', fontSize: 8 }] }],
-            transaction.latePaymentInterest > 0 ? [{ text: [{ text: 'Juros de mora: ', bold: true, fontSize: 8 }, { text: formatMoney(transaction.latePaymentInterest), fontSize: 8, color: '#c62828' }] }, { text: [{ text: 'Funcionário: ', bold: true, fontSize: 8 }, { text: transaction.staffName || '', fontSize: 8 }] }] : [{ text: [{ text: 'Funcionário: ', bold: true, fontSize: 8 }, { text: transaction.staffName || '', fontSize: 8 }] }, { text: '', fontSize: 8 }]
-          ]}, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5, paddingLeft: () => 6, paddingRight: () => 6 }, margin: [25, 0, 25, 12] }
-        ] : []),
-        // Valor total
-        { table: { widths: ['*'], body: [[{ columns: [
-          { text: 'VALOR PAGO', fontSize: 9, bold: true, color: '#fff', margin: [8, 6, 0, 6] },
-          { text: formatMoney(transaction ? transaction.amount : amortization.installment), fontSize: 13, bold: true, color: '#fff', alignment: 'right', margin: [0, 4, 8, 4] }
-        ]}]]}, layout: { hLineWidth: () => 0, vLineWidth: () => 0, fillColor: () => '#1a237e', paddingTop: () => 0, paddingBottom: () => 0 }, margin: [25, 0, 25, 15] },
-        { text: `Estado: ${Number(amortization.status) === 1 ? 'PAGO' : Number(amortization.status) === -1 ? 'PARCIAL' : 'PENDENTE'}`, fontSize: 9, bold: true, alignment: 'center', color: Number(amortization.status) === 1 ? '#2e7d32' : Number(amortization.status) === -1 ? '#f57c00' : '#c62828', margin: [0, 0, 0, 15] },
-        { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 340, y2: 0, lineWidth: 0.5, lineColor: '#e0e0e0' }], margin: [0, 5, 0, 8] },
-        { columns: [
-          { text: 'Documento processado por computador', fontSize: 6, color: '#bbb' },
-          { text: 'Assinatura: ___________________', fontSize: 6, color: '#bbb', alignment: 'right' }
-        ], margin: [25, 0, 25, 0] },
-        { text: `${company.companyName || ''} | ${company.companyAddress || ''}`, fontSize: 5, color: '#ddd', alignment: 'center', margin: [0, 8, 0, 0] }
+        { text: `${cust.customerName || ''} — Conta ${cust.accountNumber || ''}`, fontSize: 10, margin: [25, 8, 0, 4] },
+        { text: `Prestação ${installment.installmentOrder || ''} · Vencimento ${installment.dueDate ? new Date(installment.dueDate).toLocaleDateString('pt-MZ') : ''}`, fontSize: 9, margin: [25, 0, 0, 8] },
+        { table: { widths: ['*', 'auto'], body: [
+          [{ text: 'Capital', fontSize: 9 }, { text: formatMoney(installment.amortization), fontSize: 9, alignment: 'right' }],
+          [{ text: 'Juros', fontSize: 9 }, { text: formatMoney(installment.rateAmount), fontSize: 9, alignment: 'right' }],
+          [{ text: 'Mora cobrada', fontSize: 9 }, { text: formatMoney(installment.chargedLatePaymentInterest || 0), fontSize: 9, alignment: 'right' }],
+          [{ text: 'VALOR PAGO', fontSize: 10, bold: true }, { text: formatMoney(installment.paidAmount || installment.installment), fontSize: 12, bold: true, alignment: 'right', color: '#2e7d32' }]
+        ] }, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0' }, margin: [25, 0, 25, 10] },
+        { text: `Documento processado por computador — ${new Date().toLocaleDateString('pt-MZ')}`, fontSize: 7, color: '#999', margin: [25, 10, 0, 0] }
       ],
       pageSize: 'A5',
-      pageOrientation: 'portrait',
       pageMargins: [0, 0, 0, 0]
-      // header removido — dados da empresa agora estão no content
     }
     pdfMake.createPdf(doc).open()
   } catch (e) {
@@ -1559,1017 +363,60 @@ async function previewReceipt(amortization) {
   }
 }
 
-function openEditLoan(loan) {
-  editLoan.value = loan
-  const rateMatch = settingsStore.rates.find(r => Math.abs(r.tax - loan.interestRate) < 0.001)
-  editLoanForm.value = {
-    amount: loan.amount,
-    numberOfInstallments: loan.numberOfInstallments,
-    interestRateId: rateMatch ? rateMatch.id : null,
-    loanDescription: loan.loanDescription || ''
+// Recarrega dados se a rota mudar de mutuário
+watch(() => route.params.accountNumber, (acc, old) => {
+  if (acc && acc !== old && route.name === 'CustomerDetail') {
+    store.clear()
+    store.fetchAll(acc)
   }
-  showEditLoanModal.value = true
-}
-
-async function saveEditLoan() {
-  if (!editLoan.value) return
-  savingLoan.value = true
-  try {
-    const rate = settingsStore.rates.find(r => r.id === editLoanForm.value.interestRateId)
-    await loansStore.updateLoan(editLoan.value.id, {
-      ...editLoan.value,
-      amount: editLoanForm.value.amount,
-      numberOfInstallments: editLoanForm.value.numberOfInstallments,
-      interestRate: rate ? rate.tax : editLoan.value.interestRate,
-      loanDescription: editLoanForm.value.loanDescription
-    })
-    $q.notify({ type: 'positive', message: 'Crédito actualizado com sucesso', position: 'top' })
-    showEditLoanModal.value = false
-    await fetchLoans()
-  } catch (e) {
-    $q.notify({ type: 'negative', message: 'Erro ao actualizar crédito', position: 'top' })
-  } finally {
-    savingLoan.value = false
-  }
-}
-
-function openLoanApproval(loan) {
-  approvalLoan.value = loan
-  showApprovalModal.value = true
-}
-
-async function onLoanApproved() {
-  logApproveLoan(customer.value?.customerName, approvalLoan.value?.amount)
-  approvalLoan.value = null
-  await fetchLoans()
-}
-
-// Abre a fotografia tipo passe em tamanho real (não há modal próprio)
-function openPassportPhoto() {
-  if (customer.value?.passportPhotoUrl) {
-    window.open(customer.value.passportPhotoUrl, '_blank')
-  }
-}
-
-function rejectLoan(loan) {
-  $q.dialog({
-    title: 'Rejeitar Crédito',
-    message: `Tem certeza que deseja rejeitar o crédito de ${formatMoney(loan.amount)}?`,
-    cancel: 'Não',
-    ok: { label: 'Sim, rejeitar', color: 'negative' },
-    persistent: true
-  }).onOk(async () => {
-    try {
-      await loansStore.updateLoan(loan.id, { ...loan, status: -1 })
-      $q.notify({ type: 'warning', message: 'Crédito rejeitado', position: 'top' })
-      await fetchLoans()
-    } catch (e) {
-      $q.notify({ type: 'negative', message: 'Erro ao rejeitar', position: 'top' })
-    }
-  })
-}
-
-function confirmDeleteLoan(loan) {
-  $q.dialog({
-    title: 'Eliminar Crédito',
-    message: `Esta acção elimina permanentemente o crédito de ${formatMoney(loan.amount)}, todas as prestações, pagamentos, juros, descontos, dívidas e garantias associadas. Os documentos e registos financeiros não poderão ser recuperados. Deseja continuar?`,
-    cancel: 'Não',
-    ok: { label: 'Sim, eliminar', color: 'negative' },
-    persistent: true
-  }).onOk(async () => {
-    try {
-      await loansStore.deleteLoan(loan.id)
-      $q.notify({ type: 'positive', message: 'Crédito eliminado', position: 'top' })
-      await fetchLoans()
-    } catch (e) {
-      $q.notify({ type: 'negative', message: 'Erro ao eliminar', position: 'top' })
-    }
-  })
-}
-
-// ===================== PAYMENT =====================
-
-function openPaymentModal(installment) {
-  currentPaymentInstallment.value = installment
-  // Preencher com o total devido, incluindo juros de mora.
-  const remainingAmount = Math.round(installmentTotalDue(installment) * 100) / 100
-  
-  paymentForm.value = {
-    paymentDate: new Date().toISOString().split('T')[0],
-    paymentMethod: null,
-    paymentReference: '',
-    amountReceived: remainingAmount, // Valor efectivo que vai para a prestação
-    receiptFile: null,
-    phoneNumber: customer.value?.customerPhone || '',
-    staffName: authStore.userName || ''
-  }
-  // Reset da tesouraria + carregar contas de reembolso para o q-select
-  treasuryMethod.value = 'CASH'
-  treasuryAccountId.value = null
-  fetchTreasuryAccounts()
-  paymentAmountIsAutomatic.value = true
-  showPaymentModal.value = true
-}
-
-async function printCreditExtract() {
-  if (!amortLoan.value || amortInstallments.value.length === 0) return
-  try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    const loan = amortLoan.value
-    const comp = companyStore.company || {}
-    const cust = customer.value || {}
-    const allAmorts = amortInstallments.value
-    const logoBase64 = await getLogoBase64ForPdf()
-
-    // Usar cabeçalho comum
-    const companyHeader = buildCompanyHeader(comp, logoBase64, 'Extracto do Crédito')
-
-    // Section: Dados do cliente
-    const clientSection = [
-      { text: 'DADOS DO CLIENTE', fontSize: 9, bold: true, color: '#1a237e', margin: [0, 0, 0, 6] },
-      {
-        table: {
-          widths: ['*', '*', '*', '*'],
-          body: [
-            [
-              { text: [{ text: 'Nome: ', bold: true, fontSize: 8 }, { text: cust.customerName || '', fontSize: 8 }] },
-              { text: [{ text: 'Conta: ', bold: true, fontSize: 8 }, { text: String(cust.accountNumber || ''), fontSize: 8 }] },
-              { text: [{ text: 'Telefone: ', bold: true, fontSize: 8 }, { text: cust.customerPhone || '', fontSize: 8 }] },
-              { text: [{ text: 'NUIT: ', bold: true, fontSize: 8 }, { text: cust.customerNuit || '', fontSize: 8 }] }
-            ]
-          ]
-        },
-        layout: infoTableLayout,
-        margin: [25, 0, 25, 12]
-      }
-    ]
-
-    // Section: Resumo do crédito
-    const summarySection = [
-      { text: 'RESUMO DO CRÉDITO', fontSize: 9, bold: true, color: '#1a237e', margin: [25, 0, 25, 6] },
-      {
-        table: {
-          widths: ['*', '*', '*', '*', '*'],
-          body: [
-            [
-              { text: 'Capital Financiado', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Taxa de Juros', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Nº Prestações', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Total Juros', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Total Dívida', fontSize: 7, bold: true, color: '#666', alignment: 'center' }
-            ],
-            [
-              { text: formatMoney(loan.amount), fontSize: 9, bold: true, alignment: 'center' },
-              { text: `${((parseFloat(loan.interestRate) || 0) * 100).toFixed(1)}%`, fontSize: 9, bold: true, alignment: 'center' },
-              { text: `${loan.numberOfInstallments || 0}`, fontSize: 9, bold: true, alignment: 'center' },
-              { text: formatMoney(amortTotalInterest.value), fontSize: 9, bold: true, alignment: 'center' },
-              { text: formatMoney(amortTotalDebtWithLateInterest.value), fontSize: 9, bold: true, alignment: 'center', color: '#c62828' }
-            ]
-          ]
-        },
-        layout: { hLineWidth: (i) => i === 0 || i === 2 ? 1 : 0.5, vLineWidth: () => 0.5, hLineColor: () => '#1a237e', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5 },
-        margin: [25, 0, 25, 8]
-      }
-    ]
-
-    // Section: Situação actual
-    const statusSection = [
-      { text: 'SITUAÇÃO ACTUAL', fontSize: 9, bold: true, color: '#1a237e', margin: [25, 0, 25, 6] },
-      {
-        table: {
-          widths: ['*', '*', '*', '*'],
-          body: [
-            [
-              { text: 'Total Pago', fontSize: 7, bold: true, color: '#2e7d32', alignment: 'center' },
-              { text: 'Saldo Remanescente', fontSize: 7, bold: true, color: '#c62828', alignment: 'center' },
-              { text: 'Prestações Pagas', fontSize: 7, bold: true, color: '#1a237e', alignment: 'center' },
-              { text: 'Prestações Pendentes', fontSize: 7, bold: true, color: '#f57c00', alignment: 'center' }
-            ],
-            [
-              { text: formatMoney(amortTotalPaid.value), fontSize: 9, bold: true, color: '#2e7d32', alignment: 'center' },
-              { text: formatMoney(amortRemainingDebt.value), fontSize: 9, bold: true, color: '#c62828', alignment: 'center' },
-              { text: `${paidInstallments.value.length} de ${allAmorts.length}`, fontSize: 9, bold: true, alignment: 'center' },
-              { text: `${pendingInstallments.value.length}`, fontSize: 9, bold: true, alignment: 'center' }
-            ]
-          ]
-        },
-        layout: { hLineWidth: (i) => i === 0 || i === 2 ? 1 : 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5 },
-        margin: [25, 0, 25, 12]
-      }
-    ]
-
-    // Section: Plano de amortização
-    const installmentsBody = allAmorts.map(row => {
-      const status = Number(row.status) === 1 ? 'Pago' : Number(row.status) === -1 ? 'Parcial' : 'Pendente'
-      const statusColor = Number(row.status) === 1 ? '#2e7d32' : Number(row.status) === -1 ? '#f57c00' : '#333'
-      const discount = Number(row.discountAmount) || 0
-      
-      const lateFee = Number(row.status) === 1
-        ? Number(row.chargedLatePaymentInterest || 0)
-        : Number(row.latePaymentInterest || 0)
-      const lateDays = Number(row.status) === 1
-        ? Number(row.chargedLateDays || 0)
-        : Number(row.lateDays || 0)
-      const totalToPay = installmentHistoricalTotal(row)
-      
-      return [
-        { text: row.installmentOrder || '', fontSize: 7, alignment: 'center' },
-        { text: formatDateShort(row.dueDate), fontSize: 7, alignment: 'center' },
-        { text: formatMoney(row.installment), fontSize: 7, alignment: 'right', bold: true },
-        { text: `${lateDays}`, fontSize: 7, alignment: 'center', color: lateDays > 0 ? '#c62828' : '#666' },
-        { text: formatMoney(lateFee), fontSize: 7, alignment: 'right', color: lateFee > 0 ? '#c62828' : '#999' },
-        { text: discount > 0 ? '-' + formatMoney(discount) : '—', fontSize: 7, alignment: 'right', color: discount > 0 ? '#f57c00' : '#999' },
-        { text: formatMoney(totalToPay), fontSize: 7, alignment: 'right', bold: true, color: totalToPay > 0 ? '#c62828' : '#2e7d32' },
-        { text: status, fontSize: 7, bold: true, color: statusColor, alignment: 'center' }
-      ]
-    })
-
-    installmentsBody.push([
-      { text: 'TOTAIS', fontSize: 7, bold: true, colSpan: 3, color: '#1a237e' }, {}, {},
-      { text: formatMoney(amortTotalDebtWithLateInterest.value), fontSize: 7, alignment: 'right', bold: true },
-      { text: '', fontSize: 7 },
-      { text: formatMoney(allAmorts.reduce((sum, row) => sum + Number(row.chargedLatePaymentInterest || row.latePaymentInterest || 0), 0)), fontSize: 7, alignment: 'right', bold: true, color: '#c62828' },
-      { text: '', fontSize: 7 },
-      { text: formatMoney(allAmorts.reduce((sum, row) => sum + installmentHistoricalTotal(row), 0)), fontSize: 7, alignment: 'right', bold: true, color: '#c62828' }
-    ])
-
-    const amortSection = [
-      { text: `PLANO DE AMORTIZAÇÃO (${allAmorts.length} prestações)`, fontSize: 9, bold: true, color: '#1a237e', margin: [25, 0, 25, 6] },
-      {
-        table: {
-          headerRows: 1,
-          widths: ['auto', 'auto', '*', 'auto', 'auto', 'auto', '*', 'auto'],
-          body: [
-            [
-              { text: 'Ordem', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
-              { text: 'Vencimento', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
-              { text: 'Prestação', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Dias de mora', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
-              { text: 'Mora', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Desconto', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Total a pagar', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Estado', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' }
-            ],
-            ...installmentsBody
-          ]
-        },
-        layout: tableLayout,
-        margin: [25, 0, 25, 12]
-      }
-    ]
-
-    const docDefinition = {
-      footer: buildFooterWithSignature(comp),
-      content: [
-        ...companyHeader,
-        clientSection,
-        summarySection,
-        statusSection,
-        amortSection
-      ].flat(),
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      pageMargins: [25, 15, 25, 15]
-    }
-    pdfMake.createPdf(docDefinition).open()
-  } catch (e) {
-    console.error('Erro ao gerar extracto:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar extracto', position: 'top' })
-  }
-}
-
-async function submitPayment() {
-  if (!currentPaymentInstallment.value || !amortLoan.value) return
-  // Tesouraria: movimento electrónico exige conta bancária seleccionada.
-  if (treasuryMethod.value !== 'CASH' && !treasuryAccountId.value) {
-    $q.notify({ type: 'negative', message: 'Seleccione a conta bancária de destino do pagamento.', position: 'top' })
-    return
-  }
-  if (paymentExcessAmount.value > 0 && !nextPaymentInstallment.value) {
-    $q.notify({ type: 'negative', message: 'Pagamento rejeitado: não existe prestação seguinte para receber o troco.', position: 'top' })
-    return
-  }
-  if (paymentExcessAmount.value > 0 && paymentExcessAmount.value > installmentRemaining(nextPaymentInstallment.value)) {
-    $q.notify({ type: 'negative', message: 'Pagamento rejeitado: o troco excede o saldo da prestação seguinte.', position: 'top' })
-    return
-  }
-  paymentSaving.value = true
-  try {
-    let receiptUrl = ''
-    if (paymentForm.value.receiptFile) {
-      const formData = new FormData()
-      formData.append('file', paymentForm.value.receiptFile)
-      const token = localStorage.getItem('applicationMicroToken')
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      })
-      const uploadData = await uploadRes.json()
-      if (uploadData.success) receiptUrl = uploadData.documentFileUrl || uploadData.imageUrl || ''
-    }
-
-    const latePaymentInterest = paymentLateInterest.value
-    const amountReceived = Math.min(
-      Math.max(0, Number(paymentForm.value.amountReceived) || 0),
-      installmentRemaining(currentPaymentInstallment.value)
-    )
-
-    await paymentsStore.createPayment({
-      companyId: authStore.companyId,
-      accountNumber: amortLoan.value.accountNumber,
-      amortizationLoanId: currentPaymentInstallment.value.id,
-      loanId: amortLoan.value.id,
-      amount: amountReceived,
-      latePaymentInterest,
-      interestRateAmount: currentPaymentInstallment.value.rateAmount || 0,
-      phoneNumber: paymentForm.value.phoneNumber || customer.value?.customerPhone || '',
-      tranzactionReference: paymentForm.value.paymentReference,
-      paymentMethod: paymentForm.value.paymentMethod,
-      description: `Pagamento prestação ${currentPaymentInstallment.value.installmentOrder}`,
-      receiptUrl,
-      staffName: paymentForm.value.staffName || '',
-      paymentDate: paymentForm.value.paymentDate,
-      ...treasuryPayload()
-    })
-
-    const carryAmount = paymentExcessAmount.value
-    if (carryAmount > 0 && nextPaymentInstallment.value) {
-      const next = nextPaymentInstallment.value
-      const nextAmount = Math.min(carryAmount, installmentRemaining(next))
-      await paymentsStore.createPayment({
-        companyId: authStore.companyId,
-        accountNumber: amortLoan.value.accountNumber,
-        amortizationLoanId: next.id,
-        loanId: amortLoan.value.id,
-        amount: nextAmount,
-        latePaymentInterest: installmentLateInterest(next),
-        interestRateAmount: next.rateAmount || 0,
-        phoneNumber: paymentForm.value.phoneNumber || customer.value?.customerPhone || '',
-        tranzactionReference: paymentForm.value.paymentReference,
-        paymentMethod: paymentForm.value.paymentMethod,
-        description: `Troco aplicado na prestação ${next.installmentOrder}`,
-        receiptUrl,
-        staffName: paymentForm.value.staffName || '',
-        paymentDate: paymentForm.value.paymentDate,
-        ...treasuryPayload()
-      })
-    }
-
-    const installmentOrder = currentPaymentInstallment.value.installmentOrder
-    const isPartial = paymentForm.value.amountReceived < installmentTotalDue(currentPaymentInstallment.value)
-    const remaining = Math.max(0, installmentTotalDue(currentPaymentInstallment.value) - paymentForm.value.amountReceived)
-    
-    if (isPartial) {
-      logPartialPayment(customer.value?.customerName, paymentForm.value.amountReceived, installmentOrder, remaining)
-    } else {
-      logPayment(customer.value?.customerName, paymentForm.value.amountReceived, installmentOrder)
-    }
-    
-    $q.notify({ type: 'positive', message: 'Pagamento registado com sucesso', position: 'top' })
-    showPaymentModal.value = false
-
-    // Refresh amortization
-    const forfeit = companyStore.company?.forfeit || 0.1
-    const result = await loansStore.fetchAmortization(amortLoan.value.id, forfeit)
-    amortInstallments.value = result.installments || []
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e.response?.data?.message || 'Erro ao registar pagamento', position: 'top' })
-  } finally {
-    paymentSaving.value = false
-  }
-}
-
-// ===================== SUBMIT GLOBAL PAYMENT =====================
-
-async function submitGlobalPayment() {
-  if (!amortLoan.value || pendingInstallments.value.length === 0) return
-  // Tesouraria: movimento electrónico exige conta bancária seleccionada.
-  if (treasuryMethod.value !== 'CASH' && !treasuryAccountId.value) {
-    $q.notify({ type: 'negative', message: 'Seleccione a conta bancária de destino do pagamento.', position: 'top' })
-    return
-  }
-  globalPaymentSaving.value = true
-  try {
-    let receiptUrl = ''
-    if (globalPaymentForm.value.receiptFile) {
-      const formData = new FormData()
-      formData.append('file', globalPaymentForm.value.receiptFile)
-      const token = localStorage.getItem('applicationMicroToken')
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      })
-      const uploadData = await uploadRes.json()
-      if (uploadData.success) receiptUrl = uploadData.documentFileUrl || uploadData.imageUrl || ''
-    }
-
-    // Pay each pending installment
-    for (const installment of pendingInstallments.value) {
-      // Calculate individual amount with discount
-      let installmentAmount = installmentRemaining(installment)
-      if (globalPaymentForm.value.applyDiscount) {
-        const totalDue = installmentTotalDue(installment)
-        if (globalPaymentForm.value.discountType === 'percentage') {
-          installmentAmount = totalDue * (1 - (globalPaymentForm.value.discountPercentage || 0) / 100)
-        } else {
-          const proportionalDiscount = (globalPaymentForm.value.discountFixed || 0) / pendingInstallments.value.length
-          installmentAmount = Math.max(0, totalDue - proportionalDiscount)
-        }
-        installmentAmount = Math.max(0, installmentAmount - installmentLateInterest(installment))
-        // Arredondar a 2 casas decimais para evitar floating point
-        installmentAmount = Math.round(installmentAmount * 100) / 100
-      }
-
-      const dailyLateInterest = Number(installment.latePaymentInterest || 0)
-
-      await paymentsStore.createPayment({
-        companyId: authStore.companyId,
-        accountNumber: amortLoan.value.accountNumber,
-        amortizationLoanId: installment.id,
-        loanId: amortLoan.value.id,
-        amount: installmentAmount,
-        latePaymentInterest: dailyLateInterest,
-        interestRateAmount: installment.rateAmount || 0,
-        phoneNumber: globalPaymentForm.value.phoneNumber || customer.value?.customerPhone || '',
-        tranzactionReference: globalPaymentForm.value.paymentReference,
-        paymentMethod: globalPaymentForm.value.paymentMethod,
-        description: `Liquidação total - Prestação ${installment.installmentOrder}${globalPaymentForm.value.applyDiscount ? ' (com desconto)' : ''}`,
-        receiptUrl,
-        staffName: globalPaymentForm.value.staffName || '',
-        paymentDate: globalPaymentForm.value.paymentDate,
-        notes: globalPaymentForm.value.observation || null,
-        discountApplied: globalPaymentForm.value.applyDiscount || false,
-        ...treasuryPayload()
-      })
-    }
-
-    $q.notify({ type: 'positive', message: `Liquidação de ${pendingInstallments.value.length} prestações registada com sucesso`, position: 'top' })
-    showGlobalPaymentModal.value = false
-
-    // Refresh amortization
-    const forfeit = companyStore.company?.forfeit || 0.1
-    const result = await loansStore.fetchAmortization(amortLoan.value.id, forfeit)
-    amortInstallments.value = result.installments || []
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e.response?.data?.message || 'Erro ao registar liquidação', position: 'top' })
-  } finally {
-    globalPaymentSaving.value = false
-  }
-}
-
-// ===================== SUBMIT LOAN =====================
-
-async function submitLoan() {
-  submitting.value = true
-  try {
-    await loansStore.createLoan({
-      accountNumber: customer.value.accountNumber,
-      companyId: authStore.companyId,
-      amount: loanForm.value.capital,
-      numberOfInstallments: loanForm.value.prestacoes,
-      interestRate: selectedRate.value,
-      creditManager: loanForm.value.creditManager,
-      loanDescription: loanForm.value.loanDescription || 'Crédito registado via sistema',
-      capacityExcessObservation: loanForm.value.capacityExcessObservation || '',
-      dateCreated: loanForm.value.dateCreated,
-      status: 0
-    })
-    $q.notify({ type: 'positive', message: 'Crédito registado com sucesso', position: 'top' })
-    showSimModal.value = false
-    simulationResult.value = []
-    loanForm.value.capital = 0
-    loanForm.value.prestacoes = null
-    loanForm.value.juros = null
-    selectedRate.value = 0
-    estimatedInstallment.value = 0
-    await fetchLoans()
-  } catch (e) {
-    $q.notify({ type: 'negative', message: e.response?.data?.message || 'Erro ao registar', position: 'top' })
-  } finally {
-    submitting.value = false
-  }
-}
-
-// ===================== DOCUMENTS =====================
-
-async function uploadDocument() {
-  if (!docForm.value.file || !docForm.value.documentName) return
-  uploading.value = true
-  try {
-    // Send file directly to /api/document via multipart/form-data
-    const formData = new FormData()
-    formData.append('file', docForm.value.file)
-    formData.append('documentName', docForm.value.documentName)
-    formData.append('accountNumber', customer.value.accountNumber)
-    formData.append('companyId', authStore.companyId)
-    formData.append('uploadedBy', authStore.userName)
-
-    const token = localStorage.getItem('applicationMicroToken')
-    const res = await fetch('/api/document', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    })
-    const data = await res.json()
-    if (!data.success) throw new Error(data.message || 'Erro ao salvar documento')
-    $q.notify({ type: 'positive', message: 'Documento salvo com sucesso', position: 'top' })
-    docForm.value = { documentName: null, file: null }
-    await fetchDocuments()
-  } catch (e) { $q.notify({ type: 'negative', message: e.message || 'Erro ao salvar', position: 'top' }) }
-  finally { uploading.value = false }
-}
-
-async function fetchDocuments() {
-  try {
-    const api = (await import('@/boot/axios')).default
-    const { data } = await api.get(`/api/document/${customer.value.accountNumber}`)
-    if (data.success) customerDocuments.value = data.result || []
-  } catch { customerDocuments.value = [] }
-}
-
-async function deleteDocument(doc) {
-  $q.dialog({ title: 'Confirmar', message: 'Eliminar este documento?', cancel: 'Não', ok: { label: 'Sim', color: 'negative' }, persistent: true })
-  .onOk(async () => {
-    try {
-      const api = (await import('@/boot/axios')).default
-      await api.delete(`/api/document/${doc.id}`)
-      logDeleteDocument(doc.documentName, customer.value?.customerName)
-      $q.notify({ type: 'positive', message: 'Eliminado', position: 'top' })
-      await fetchDocuments()
-    } catch { $q.notify({ type: 'negative', message: 'Erro ao eliminar', position: 'top' }) }
-  })
-}
-
-function openDocument(doc) { if (doc.documentFileUrl) window.open(doc.documentFileUrl, '_blank') }
-
-// ===================== NAVIGATION =====================
-
-function goBack() { router.push('/mutuarios') }
-function goToDocuments(id) { router.push(`/loans/${id}/documents`) }
-function openGuarantees(loanId) { selectedLoanId.value = loanId; showGuarantees.value = true }
-
-function openBorrowerInfo(loan) {
-  selectedLoanForInfo.value = loan
-  showBorrowerInfoModal.value = true
-}
-
-function onBorrowerInfoSaved(info) {
-  fetchLoans()
-}
-
-function generateNewPassword() {
-  // Verificar se já foram enviadas
-  if (customer.value?.credentialsSent === 1) {
-    credentialsAlreadySent.value = true
-    credentialsSentAt.value = customer.value?.credentialsSentAt || ''
-  } else {
-    credentialsAlreadySent.value = false
-  }
-  // A senha na BD é um hash (bcrypt) — nunca é mostrada nem reutilizada:
-  // gera-se sempre um código novo no modal
-  generatedPassword.value = generateSixDigitCode()
-}
-
-const companyName = computed(() => {
-  return companyStore.companyName || 'Mais Mola'
 })
 
-// SMS desactivado nas configurações da empresa (só o Admin altera)
-const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
-// Com canal SMS e autorização desactivada: não envia nada para o servidor
-const credentialsSmsBlocked = computed(() => credentialsChannel.value === 'sms' && smsDisabled.value)
-
-async function sendCredentials() {
-  // SMS desactivado: não envia nada para o servidor (a mensagem já está no modal)
-  if (credentialsSmsBlocked.value) {
-    $q.notify({ type: 'warning', message: 'O envio de SMS está desactivado nas configurações da empresa.', position: 'top' })
-    return
+// Recarrega o plano do crédito em contexto ao voltar para a aba (dados frescos)
+watch(tab, async (t) => {
+  if (t === 'amortizacao' && store.contextLoan?.id) {
+    await store.fetchPlanFor(store.contextLoan.id, companyStore.company?.forfeit || 0.1)
   }
-
-  sendingCredentials.value = true
-  try {
-    const { data } = await api.post('/api/portal/send-credentials', {
-      customerId: customer.value.id,
-      channel: credentialsChannel.value,
-      newPassword: generatedPassword.value,
-    })
-
-    if (data.alreadySent) {
-      // Já foi enviado - mostrar aviso
-      $q.notify({
-        type: 'warning',
-        message: data.message,
-        position: 'top',
-        timeout: 5000
-      })
-    } else if (data.success) {
-      $q.notify({
-        type: 'positive',
-        message: data.message || 'Credenciais enviadas com sucesso',
-        position: 'top'
-      })
-      showCredentialsModal.value = false
-      // Actualizar dados do cliente
-      await customerStore.fetchCustomer(authStore.companyId, customer.value.accountNumber)
-    }
-  } catch (e) {
-    $q.notify({
-      type: 'negative',
-      message: e.response?.data?.message || 'Erro ao enviar credenciais',
-      position: 'top'
-    })
-  } finally {
-    sendingCredentials.value = false
-  }
-}
-
-
-function getLoanStatusColor(status) { const s = Number(status); return { 0: 'orange', 1: 'positive', '-1': 'negative', 3: 'positive' }[s] || 'grey' }
-function getLoanStatusText(status) { const s = Number(status); return { 0: 'Pendente', 1: 'Activo', '-1': 'Rejeitado', 3: 'Terminado' }[s] || 'Desconhecido' }
-function getStatusColor(status) { return (status === 1 || status === 'ativo') ? 'positive' : (status === 0 || status === 'inativo') ? 'grey' : 'blue' }
-function getStatusText(status) { return (status === 1 || status === 'ativo') ? 'Activo' : (status === 0 || status === 'inativo') ? 'Inactivo' : 'Activo' }
-function formatDate(dateStr) { return dateStr ? new Date(dateStr).toLocaleDateString('pt-MZ') : '' }
-function onCustomerSaved() { showEditModal.value = false; customerStore.fetchCustomerByAccount(route.params.accountNumber) }
-
-async function fetchLoans() {
-  try {
-    const companyId = customer.value?.companyId
-    if (companyId) {
-      await loansStore.fetchLoans(companyId)
-      loansStore.loans = loansStore.loans.filter(l => String(l.accountNumber) === String(route.params.accountNumber))
-      fetchLoanMetrics(companyId)
-      await fetchLoanAppliedLateInterest()
-    }
-  } catch { /* silent */ }
-}
-
-async function fetchLoanAppliedLateInterest() {
-  const metrics = {}
-  await Promise.all(customerLoans.value.map(async (loan) => {
-    try {
-      const { data } = await api.get(`/api/tranzaction/loan/${loan.id}/late-interest`)
-      metrics[Number(loan.id)] = Number(data?.result?.totalLateInterest || 0)
-    } catch { metrics[Number(loan.id)] = 0 }
-  }))
-  loanAppliedLateInterest.value = metrics
-}
-
-// Métricas por crédito a partir do endpoint agregado de créditos: usa o mapa
-// id → { contractTotal, totalPaid, finalDueDate, ... } para as linhas do histórico.
-async function fetchLoanMetrics(companyId) {
-  try {
-    const { data } = await api.get(`/api/loans/overview/${companyId}`)
-    if (data?.success && Array.isArray(data.result)) {
-      const map = {}
-      data.result.forEach(m => { map[Number(m.id)] = m })
-      loanMetrics.value = map
-    }
-  } catch { /* silent — as linhas seguem sem métricas */ }
-}
-
-// ===================== ON MOUNTED =====================
+})
 
 onMounted(async () => {
   const accountNumber = route.params.accountNumber
-  if (accountNumber) {
-    await customerStore.fetchCustomerByAccount(accountNumber)
-    await fetchDocuments()
-    await fetchLoans()
+  if (!accountNumber) return
+  try {
+    await companyStore.fetchCompany(authStore.companyId)
+  } catch { /* silent */ }
+  await store.fetchAll(accountNumber)
+})
 
-    try {
-      await settingsStore.fetchRates(authStore.companyId)
-      rateOptions.value = settingsStore.rates.map(r => ({ label: `${r.name || 'Taxa'} - ${(r.tax * 100).toFixed(1)}%`, value: r.id }))
-    } catch { /* silent */ }
-
-    try {
-      await settingsStore.fetchUsers(authStore.companyId)
-      managerOptions.value = settingsStore.users.filter(u => u.userRole === 1 || u.userRole === 3).map(u => ({ label: u.name, value: u.id }))
-      const currentUser = managerOptions.value.find(manager => Number(manager.value) === Number(authStore.user?.id))
-      if (!loanForm.value.creditManager && currentUser) loanForm.value.creditManager = currentUser.value
-    } catch { /* silent */ }
-
-    try {
-      await companyStore.fetchCompany(authStore.companyId)
-    } catch { /* silent */ }
-
-    // Buscar contas bancárias para meios de pagamento
-    try {
-      await settingsStore.fetchAccounts(authStore.companyId)
-    } catch { /* silent */ }
-  }
+onUnmounted(() => {
+  store.clear()
 })
 </script>
 
 <style lang="scss" scoped>
-.payment-excess-banner {
-  margin: 8px 0 4px;
-  padding: 10px 14px;
-  line-height: 1.45;
-  font-size: 12px;
-  font-weight: 500;
-
-  :deep(.q-banner__avatar) {
-    padding-right: 10px;
-  }
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
 }
 
-.mini-stat { background: rgba(0,0,0,0.02); border-radius: 8px; padding: 8px 12px; border: 1px solid rgba(0,0,0,0.06); }
-body.body--dark .mini-stat { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
-.capacity-strip { background: rgba(0,0,0,0.02); border-radius: 8px; padding: 12px; border: 1px solid rgba(0,0,0,0.06); }
-body.body--dark .capacity-strip { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
-.summary-card { background: rgba(0,0,0,0.02); border-radius: 8px; padding: 8px 12px; border: 1px solid rgba(0,0,0,0.06); }
-body.body--dark .summary-card { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
-.capacity-check-box { display: flex; align-items: center; padding: 12px; border-radius: 8px;
-  &.success { background: rgba(46,125,50,0.06); border: 1px solid rgba(46,125,50,0.2); }
-  &.warning { background: rgba(255,152,0,0.06); border: 1px solid rgba(255,152,0,0.2); }
-}
-.loan-item { border-radius: 8px; margin-bottom: 4px; transition: background 0.15s; &:hover { background: rgba(0,0,0,0.03); } }
-body.body--dark .loan-item:hover { background: rgba(255,255,255,0.04); }
-.loan-card-list { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.loan-history-card { display: flex; flex-direction: column; min-width: 0; border-radius: 10px; overflow: hidden; transition: box-shadow 0.15s, transform 0.15s; &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); } }
-.loan-card-header { padding: 14px 12px 10px; background: linear-gradient(135deg, #eef2f7 0%, #dce5ef 52%, #c5d2df 100%); }
-.loan-card-amount { font-size: 19px; font-weight: 700; line-height: 1.2; margin-bottom: 6px; }
-.loan-card-body { flex: 1; padding: 14px 14px 12px; }
-.loan-card-debt { text-align: center; margin-bottom: 16px; }
-.loan-card-debt span, .loan-card-dates span { display: block; color: #6b7280; font-size: 10px; line-height: 1.2; margin-bottom: 4px; }
-.loan-card-debt strong { display: block; font-size: 18px; line-height: 1.2; color: #b91c1c; }
-.loan-card-debt small { display: block; margin-top: 5px; color: #b45309; font-size: 10px; line-height: 1.25; }
-.loan-card-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.loan-card-dates { text-align: left; border-top: 1px solid rgba(107,114,128,0.16); padding-top: 10px; }
-.loan-card-dates strong { display: block; font-size: 11px; line-height: 1.2; }
-.loan-card-footer { min-height: 46px; padding: 6px 10px; border-top: 1px solid rgba(107,114,128,0.16); }
-@media (min-width: 700px) { .loan-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1100px) { .loan-card-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-body.body--dark .loan-card-header { background: linear-gradient(135deg, #334155 0%, #475569 52%, #64748b 100%); }
-body.body--dark .loan-card-dates { border-color: rgba(255,255,255,0.12); }
-body.body--dark .loan-card-footer { border-color: rgba(255,255,255,0.12); }
-
-// ==================== AMORTIZATION MODAL - MODERN DESIGN ====================
-.amort-modal-card {
-  border-radius: 20px;
-  overflow: hidden;
-  max-height: 100vh;
+.mutuario-header {
+  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
+  color: white;
 }
 
-.amort-header {
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
-  padding: 20px 28px 16px;
+.mutuario-tabs {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.amort-header-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.amort-header-left {
-  display: flex;
-  align-items: center;
-}
-
-.amort-header-title {
-  color: #fff;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.amort-header-subtitle {
-  color: rgba(255,255,255,0.6);
-  font-size: 0.78rem;
-  margin-top: 2px;
-}
-
-.amort-progress-section {
-  margin-top: 4px;
-}
-
-.amort-progress-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: 0.75rem;
-}
-
-.amort-progress-labels {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 0.7rem;
-  color: rgba(255,255,255,0.5);
-}
-
-.amort-body {
-  padding: 24px 28px;
-  background: #f8fafc;
-}
-
-body.body--dark .amort-body {
-  background: #1a1a2e;
-}
-
-// KPI Grid - Modern Card Design
-.amort-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-@media (max-width: 900px) {
-  .amort-kpi-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-.amort-kpi {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.04);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: all 0.2s ease;
-  &:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    transform: translateY(-1px);
-  }
-}
-
-body.body--dark .amort-kpi {
-  background: #252540;
-  border-color: rgba(255,255,255,0.06);
-  &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-}
-
-.amort-kpi-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.amort-kpi-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.amort-kpi-label {
-  font-size: 0.7rem;
-  color: #94a3b8;
+.header-kpi-label {
+  font-size: 9px;
+  opacity: 0.8;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-bottom: 2px;
+  letter-spacing: 0.4px;
 }
 
-.amort-kpi-value {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #1e293b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-body.body--dark .amort-kpi-value { color: #e2e8f0; }
-
-.amort-kpi-danger { color: #ef4444 !important; }
-.amort-kpi-sub { font-weight: 400; color: #94a3b8; font-size: 0.8rem; }
-
-// Action Buttons
-.amort-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.amort-action-btn {
-  padding: 8px 20px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-// Section Titles
-.amort-section-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #e8ecef;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-// Modern Table Design
-.amort-table {
-  font-size: 0.75rem;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  max-height: 350px;
-  overflow-y: auto;
-  &::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  &::-webkit-scrollbar-track {
-    background: rgba(0,0,0,0.03);
-    border-radius: 3px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(0,0,0,0.15);
-    border-radius: 3px;
-    &:hover { background: rgba(0,0,0,0.25); }
-  }
-  :deep(th) {
-    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-    color: #fff;
-    font-weight: 600;
-    font-size: 0.72rem;
-    padding: 10px 12px;
-    white-space: nowrap;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-  }
-  :deep(td) {
-    padding: 8px 12px;
-    vertical-align: middle;
-    border-bottom: 1px solid #f1f5f9;
-  }
-  :deep(tr:nth-child(even)) {
-    background: #f8fafc;
-  }
-  :deep(tr:hover) {
-    background: #f1f5f9;
-  }
-}
-
-body.body--dark .amort-table {
-  :deep(th) { background: linear-gradient(135deg, #1a1a2e 0%, #2d2d4a 100%); }
-  :deep(td) { border-color: rgba(255,255,255,0.06); }
-  :deep(tr:nth-child(even)) { background: rgba(255,255,255,0.02); }
-  :deep(tr:hover) { background: rgba(255,255,255,0.04); }
-}
-
-.amort-pay-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  transition: all 0.2s ease;
-  &:hover { transform: scale(1.08); box-shadow: 0 2px 8px rgba(249,115,22,0.3); }
-}
-
-/* Credentials Modal */
-.credentials-card {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-}
-
-.credentials-label {
-  color: #6c757d;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.credentials-value {
-  color: #212529;
-  font-size: 14px;
-}
-
-.credentials-message {
-  background: #e8f5e9;
-  border-radius: 8px;
-  padding: 12px;
-  color: #2e7d32;
-  font-family: monospace;
-}
-
-body.body--dark {
-  .credentials-card {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-  }
-  .credentials-label {
-    color: rgba(255, 255, 255, 0.6);
-  }
-  .credentials-value {
-    color: rgba(255, 255, 255, 0.87);
-  }
-  .credentials-message {
-    background: rgba(76, 175, 80, 0.15);
-    color: #81c784;
-  }
+.mutuario-page {
+  max-width: 1400px;
+  margin: 0 auto;
 }
 </style>

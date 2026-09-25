@@ -89,4 +89,15 @@ exports.TranzactionModel = db_1.db.define("tranzactions", {
         allowNull: true,
         defaultValue: 0,
     },
+    walletId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Carteira de financiamento do crédito (copiada do customer_loans no pagamento)",
+    },
+    mora_amount: {
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Juros de mora efectivamente recebidos neste pagamento",
+    },
 });

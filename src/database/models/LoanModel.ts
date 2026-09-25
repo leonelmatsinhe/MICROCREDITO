@@ -67,4 +67,9 @@ export const LoanModel = db.define("customer_loans", {
     type: DataTypes.TEXT,
     allowNull: true,
   },
+  walletId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Carteira de financiamento (analítica) de origem do capital deste crédito",
+  },
 });

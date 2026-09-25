@@ -4,6 +4,8 @@ import bcryptjs from "bcryptjs";
 import * as jwt from "jsonwebtoken";
 import { hashPasswordIfNeeded } from "../utils/password";
 import { db } from "../database/db";
+import { FinancingWalletModel } from "../database/models/FinancingWalletModel";
+import { FINANCING_PARTNER_ROLE, getCurrentUser } from "../middlewares/roles";
 
 // Remove o hash da senha antes de devolver o utilizador ao frontend — a BD é a
 // única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
@@ -52,13 +54,40 @@ const findOne = async (req: Request, res: Response) => {
 
 const create = async (req: Request, res: Response) => {
   try {
-    let { name, email, password, phone, status, companyId, userRole } = req.body;
+    let { name, email, password, phone, status, companyId, userRole, walletId } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
         message: "Campos obrigatórios: name, email e password.",
       });
+    }
+
+    // PARCEIRO FINANCIADOR (userRole 4): só o Admin da empresa pode criar e a
+    // conta TEM de ficar ligada a uma carteira de financiamento com portal
+    // activo — é essa a única carteira que o parceiro verá.
+    let isParceiro = false;
+    let parceiroWalletId: number | null = null;
+    if (Number(userRole) === FINANCING_PARTNER_ROLE) {
+      const currentUser = getCurrentUser(req);
+      const effectiveCompany = Number(companyId || currentUser?.companyId);
+      if (!currentUser || ![0, 1].includes(Number(currentUser.userRole))) {
+        return res.status(403).json({
+          success: false,
+          message: "Apenas o Administrador da empresa pode criar acessos de parceiro financiador.",
+        });
+      }
+      if (!walletId) {
+        return res.status(400).json({
+          success: false,
+          message: "Selecione a carteira de financiamento do parceiro (perfil Parceiro Financiador).",
+        });
+      }
+      const wallet = await validatePartnerWallet(effectiveCompany, Number(walletId), res);
+      if (!wallet) return;
+      parceiroWalletId = Number(wallet.id);
+      isParceiro = true;
+      companyId = effectiveCompany;
     }
 
     // Hash bcrypt — mas nunca voltar a encriptar um valor que já seja hash
@@ -72,6 +101,9 @@ const create = async (req: Request, res: Response) => {
       status,
       companyId,
       userRole,
+      ...(isParceiro
+        ? { walletId: parceiroWalletId, is_parceiro: 1, is_active: 1, credentialsSent: 0 }
+        : {}),
     });
     return user != null
       ? res.status(201).send(
@@ -92,6 +124,124 @@ const create = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * PARCEIRO FINANCIADOR (userRole 4) — só o Admin da empresa cria/edita.
+ * A conta fica obrigatoriamente ligada a UMA carteira de financiamento
+ * (financing_wallets) com portal activo: é essa a única carteira que o
+ * parceiro verá no portal do financiador.
+ */
+const validatePartnerWallet = async (companyId: number, walletId: number, res: Response) => {
+  const wallet: any = await FinancingWalletModel.findOne({
+    where: { id: walletId, companyId },
+    raw: true,
+  });
+  if (!wallet) {
+    res.status(400).json({
+      success: false,
+      message: "Carteira de financiamento não encontrada nesta empresa.",
+    });
+    return null;
+  }
+  if (!wallet.tem_portal || !wallet.portal_ativo) {
+    res.status(400).json({
+      success: false,
+      message: `A carteira ${wallet.codigo} não tem portal activo. Active o portal na carteira antes de criar o acesso.`,
+    });
+    return null;
+  }
+  return wallet;
+};
+
+const createPartner = async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    const companyId = Number(req.body.companyId || currentUser?.companyId);
+    const { name, email, password, phone, walletId, nuit } = req.body;
+
+    if (!companyId || !name || !email || !password || !walletId) {
+      return res.status(400).json({
+        success: false,
+        message: "Campos obrigatórios: name, email, password e walletId (carteira de financiamento).",
+      });
+    }
+
+    const wallet = await validatePartnerWallet(companyId, Number(walletId), res);
+    if (!wallet) return;
+
+    const existing: any = await UserModel.findOne({
+      where: { email: String(email).trim(), companyId },
+      raw: true,
+    });
+    if (existing) {
+      return res.status(409).json({ success: false, message: "Já existe um utilizador com este e-mail nesta empresa." });
+    }
+
+    const user: any = await UserModel.create({
+      name: String(name).trim(),
+      email: String(email).trim(),
+      password: hashPasswordIfNeeded(String(password)),
+      updatedPassword: 0,
+      phone: phone ? String(phone) : null,
+      status: 1,
+      companyId,
+      userRole: FINANCING_PARTNER_ROLE,
+      walletId: Number(walletId),
+      is_parceiro: true,
+      is_active: true,
+      credentialsSent: 0,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Parceiro financiador criado e associado à carteira ${wallet.codigo}.`,
+      result: stripPassword(user),
+      carteira: { id: Number(wallet.id), codigo: wallet.codigo, nome: wallet.nome },
+      nuit: nuit || null,
+    });
+  } catch (err: any) {
+    console.error("Erro ao criar parceiro financiador:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro ao criar o parceiro financiador." });
+  }
+};
+
+const updatePartner = async (req: Request, res: Response) => {
+  try {
+    const currentUser = getCurrentUser(req);
+    const id = Number(req.params.id);
+    const partner: any = await UserModel.findByPk(id);
+    if (!partner) {
+      return res.status(404).json({ success: false, message: "Parceiro não encontrado." });
+    }
+    if (Number(partner.getDataValue("userRole")) !== FINANCING_PARTNER_ROLE) {
+      return res.status(400).json({ success: false, message: "Este utilizador não é um parceiro financiador." });
+    }
+
+    const companyId = Number(partner.getDataValue("companyId"));
+    const userCompany = Number(currentUser?.companyId);
+    if (userCompany && userCompany !== companyId) {
+      return res.status(403).json({ success: false, message: "Não tem acesso a utilizadores desta empresa." });
+    }
+
+    const data: any = {};
+    if (req.body.name) data.name = String(req.body.name).trim();
+    if (req.body.phone !== undefined) data.phone = req.body.phone ? String(req.body.phone) : null;
+    if (req.body.is_active !== undefined) data.is_active = req.body.is_active ? true : false;
+    if (req.body.password) data.password = hashPasswordIfNeeded(String(req.body.password));
+    if (req.body.walletId) {
+      const wallet = await validatePartnerWallet(companyId, Number(req.body.walletId), res);
+      if (!wallet) return;
+      data.walletId = Number(req.body.walletId);
+    }
+
+    await UserModel.update(data, { where: { id } });
+    const updated = stripPassword(await UserModel.findByPk(id));
+    return res.status(200).json({ success: true, message: "Parceiro financiador actualizado.", result: updated });
+  } catch (err: any) {
+    console.error("Erro ao actualizar parceiro financiador:", err?.message || err);
+    return res.status(500).json({ success: false, message: "Erro ao actualizar o parceiro financiador." });
+  }
+};
+
 const update = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -103,6 +253,32 @@ const update = async (req: Request, res: Response) => {
     const data = { ...rest };
     if (password) {
       data.password = hashPasswordIfNeeded(password);
+    }
+
+    // Promover/rebaixar um utilizador para Parceiro Financiador (ou trocar-lhe a
+    // carteira) exige sempre uma carteira com portal activo na mesma empresa.
+    const current: any = await UserModel.findByPk(id, { raw: true });
+    if (!current) {
+      return res.status(404).json({ success: false, message: "Utilizador não encontrado." });
+    }
+    const targetRole = data.userRole === undefined ? Number(current.userRole) : Number(data.userRole);
+    const targetWalletId =
+      data.walletId === undefined ? Number(current.walletId) || null : Number(data.walletId) || null;
+    if (targetRole === FINANCING_PARTNER_ROLE) {
+      if (!targetWalletId) {
+        return res.status(400).json({
+          success: false,
+          message: "Selecione a carteira de financiamento do parceiro (perfil Parceiro Financiador).",
+        });
+      }
+      const wallet = await validatePartnerWallet(Number(current.companyId), targetWalletId, res);
+      if (!wallet) return;
+      data.walletId = Number(wallet.id);
+      data.is_parceiro = 1;
+    } else if (data.userRole !== undefined && Number(data.userRole) !== FINANCING_PARTNER_ROLE) {
+      // Deixou de ser parceiro: limpa a ligação à carteira.
+      data.walletId = null;
+      data.is_parceiro = 0;
     }
 
     const userUpdation = await UserModel.update(data, {
@@ -213,8 +389,16 @@ const loginUser = async (req: Request, res: Response) => {
     }
 
     // Token com expiração longa (24h) - a expiração por inactividade é controlada pelo frontend
+    // O payload leva userRole/companyId/walletId para o frontend encaminhar o
+    // parceiro financiador (userRole 4) para o portal do financiador. As rotas
+    // do portal revalidam sempre estes dados na base de dados.
     const token = jwt.sign(
-      { id: user.getDataValue("id") },
+      {
+        id: user.getDataValue("id"),
+        companyId: user.getDataValue("companyId"),
+        userRole: userRole,
+        walletId: user.getDataValue("walletId") || null,
+      },
       process.env.APP_SECRET + "",
       {
         expiresIn: "24h",
@@ -229,6 +413,8 @@ const loginUser = async (req: Request, res: Response) => {
         email: user.getDataValue("email"),
         phone: user.getDataValue("phone"),
         userRole: user.getDataValue("userRole"),
+        walletId: user.getDataValue("walletId") || null,
+        isParceiro: !!user.getDataValue("is_parceiro"),
         updatedPassword: user.getDataValue("updatedPassword"),
         status: user.getDataValue("status"),
         is_active: user.getDataValue("is_active"),
@@ -342,6 +528,8 @@ export {
   findAll,
   findOne,
   create,
+  createPartner,
+  updatePartner,
   destroy,
   update,
   loginUser,

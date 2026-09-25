@@ -39,6 +39,18 @@ export const UserModel = db.define("user", {
   userRole: {
     type: DataTypes.INTEGER,
     allowNull: false,
+    comment: "0=Super Admin, 1=Admin, 2=Operador, 3=Gestor de Crédito, 4=Parceiro Financiador",
+  },
+  walletId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Carteira de financiamento do parceiro (obrigatório quando userRole = 4)",
+  },
+  is_parceiro: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+    comment: "Parceiro financiador externo com acesso ao portal do financiador",
   },
   credentialsSent: {
     type: DataTypes.INTEGER,

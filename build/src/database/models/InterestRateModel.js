@@ -26,4 +26,16 @@ exports.InterestRateModel = db_1.db.define("interest_rates", {
         type: sequelize_1.DataTypes.DECIMAL(15, 2),
         allowNull: false,
     },
+    walletId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Carteira de financiamento (FINANCIAMENTO) associada a esta taxa",
+    },
+    // Alternativa à carteira analítica: ligar a taxa a uma conta de desembolso
+    // (dinheiro REAL). walletId e accountId são mutuamente exclusivos.
+    accountId: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Conta de desembolso (accounts.purpose DESEMBOLSO/MISTO) da taxa",
+    },
 });

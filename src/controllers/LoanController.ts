@@ -13,6 +13,11 @@ import { calculateFrenchAmortizationInstallment } from "../utils/loanAmortizatio
 import { db } from "../database/db";
 import { DebtModel } from "../database/models/DebtModel";
 import { GuarateeAssessmentModel } from "../database/models/GuarateeAssessmentModel";
+import { FinancingWalletModel } from "../database/models/FinancingWalletModel";
+import { ReciboModel } from "../database/models/ReciboModel";
+import { resolvePaymentMethod } from "../services/reciboService";
+import { evaluateKyc } from "../utils/kycDocuments";
+import { simulator } from "../utils/loanAmortization";
 
 const toNumber = (value: any) => {
   const parsed = Number(value);
@@ -106,6 +111,85 @@ const validateCapacityRule = async (params: {
     isExceeded,
     normalizedObservation: observation || null,
   };
+};
+
+/**
+ * Verifica a checklist KYC do mutuário antes de criar/desembolsar crédito.
+ * Regra: nenhum crédito avança sem os 3 documentos base (BI, NUIT,
+ * Comprovativo de rendimentos).
+ */
+const validateKycForLoan = async (accountNumber: any, companyId: any) => {
+  const documents = await CustomerDocumentsModel.findAll({
+    where: {
+      accountNumber: Number(accountNumber),
+      companyId: Number(companyId),
+    },
+    raw: true,
+  });
+  return evaluateKyc(documents as any[]);
+};
+
+/**
+ * POST /api/loan/simulate — plano Price calculado no BACKEND.
+ * Garante paridade total entre o simulador do frontend e o plano gravado no
+ * desembolso (mesma função `simulator` usada por createInstallmentsLoan).
+ * Body: { amount, installments, monthlyRate, dateCreated? }
+ */
+const simulateLoan = async (req: Request, res: Response) => {
+  try {
+    const { amount, installments, monthlyRate, dateCreated } = req.body || {};
+
+    const principal = Number(amount);
+    const periods = parseInt(String(installments), 10);
+    const rate = Number(monthlyRate);
+
+    if (!Number.isFinite(principal) || principal <= 0) {
+      return res.status(400).json({ success: false, message: "O montante deve ser maior que zero." });
+    }
+    if (!Number.isInteger(periods) || periods < 1 || periods > 60) {
+      return res.status(400).json({ success: false, message: "O número de prestações deve estar entre 1 e 60." });
+    }
+    if (!Number.isFinite(rate) || rate < 0) {
+      return res.status(400).json({ success: false, message: "A taxa mensal deve ser um número positivo (ex: 0.10 = 10% a.m.)." });
+    }
+
+    const dueDate = dateCreated ? String(dateCreated).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+      return res.status(400).json({ success: false, message: "Data inválida (formato YYYY-MM-DD)." });
+    }
+
+    const plan = simulator({
+      amount: String(principal),
+      numberOfInstallments: String(periods),
+      interestRate: String(rate),
+      dueDate,
+      loanId: 0,
+      accountNumber: 0,
+      companyId: 0,
+      status: 0,
+    } as any);
+
+    const installmentValue = plan.length > 0 ? Number(plan[0].installment) : 0;
+    const totalToPay = plan.reduce((sum: number, row: any) => sum + Number(row.installment || 0), 0);
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        plan,
+        installment: Math.round(installmentValue * 100) / 100,
+        totalToPay: Math.round(totalToPay * 100) / 100,
+        totalInterest: Math.round((totalToPay - principal) * 100) / 100,
+        monthlyRate: rate,
+        annualRate: Math.round(rate * 12 * 10000) / 10000,
+      },
+    });
+  } catch (error: any) {
+    console.error("Erro na simulação de crédito:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Erro interno ao simular crédito.",
+    });
+  }
 };
 
 const findLoanByCustomer = async (req: Request, res: Response) => {
@@ -231,6 +315,17 @@ const createLoan = async (req: Request, res: Response) => {
     status,
   } = req.body;
 
+  // ── Validações de entrada (sem Joi — inline) ──
+  if (!loanDescription || !String(loanDescription).trim()) {
+    return res.status(400).json({ success: false, message: "A finalidade/descrição do crédito é obrigatória." });
+  }
+  if (!dateCreated || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateCreated).slice(0, 10))) {
+    return res.status(400).json({ success: false, message: "A data do crédito é obrigatória (YYYY-MM-DD)." });
+  }
+  if (!creditManager) {
+    return res.status(400).json({ success: false, message: "O gestor de crédito é obrigatório." });
+  }
+
   const capacityValidation = await validateCapacityRule({
     accountNumber,
     companyId,
@@ -256,6 +351,31 @@ const createLoan = async (req: Request, res: Response) => {
     return res.status(404).json({ success: false, message: "Mutuário não encontrado." });
   }
 
+  // ── KYC BLOQUEANTE: sem os 3 documentos base, nenhum crédito é criado ──
+  const kyc = await validateKycForLoan(accountNumber, companyId);
+  if (!kyc.complete) {
+    return res.status(400).json({
+      success: false,
+      error: "KYC_INCOMPLETE",
+      message: `Checklist KYC incompleta. Documentos em falta: ${kyc.missing.join(", ")}.`,
+      missing: kyc.missing,
+    });
+  }
+
+  // Carteira de financiamento (analítica): a que veio no pedido ou, se não veio,
+  // a derivada da taxa de juro escolhida (`interest_rates.walletId`). É sempre
+  // confirmada/alterada no desembolso, onde o saldo analítico e real são validados.
+  let walletId = (req.body as any)?.walletId ? Number((req.body as any).walletId) : null;
+  if (!walletId) {
+    try {
+      const { resolveWalletFromRate } = await import("../services/financingWalletService");
+      const derivada = await resolveWalletFromRate(Number(companyId), interestRate);
+      if (derivada?.walletId) walletId = Number(derivada.walletId);
+    } catch (deriveError: any) {
+      console.error("[Carteiras] Falha ao derivar a carteira da taxa:", deriveError?.message || deriveError);
+    }
+  }
+
   const loan = await LoanModel.create({
     accountNumber,
     customerId: customer.getDataValue("id"),
@@ -269,6 +389,7 @@ const createLoan = async (req: Request, res: Response) => {
     capacityExcessObservation: capacityValidation.normalizedObservation,
     dateCreated,
     status,
+    walletId,
   });
 
   // Criar notificação para admin/gestor sobre nova solicitação
@@ -892,14 +1013,241 @@ const updateLoanInstallmentDates = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * GET /api/loan/:id/detail
+ * DOSSIÊ DO CRÉDITO — alimenta a página de detalhe (`/loans/:id`):
+ * crédito + mutuário + carteira de financiamento, pagamentos com o recibo de
+ * cada um (ou sem recibo, para permitir emiti-lo), recibos emitidos e totais.
+ *
+ * As instalações (prestações) ficam em `GET /api/loan/amortization/:id`, que já
+ * calcula mora e plano completo — aqui só se resume o essencial.
+ */
+const loanDetail = async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ success: false, message: "Crédito inválido." });
+    }
+
+    const loan: any = (await LoanModel.findByPk(id, { raw: true })) as any;
+    if (!loan) {
+      return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+    }
+    const companyId = Number(loan.companyId);
+
+    const [cliente, carteira, pagamentos, recibos, prestacoes] = await Promise.all([
+      loan.customerId
+        ? (CustomerModel.findByPk(Number(loan.customerId), { raw: true }) as any)
+        : Promise.resolve(null),
+      loan.walletId
+        ? (FinancingWalletModel.findByPk(Number(loan.walletId), { raw: true }) as any)
+        : Promise.resolve(null),
+      TranzactionModel.findAll({ where: { loanId: id }, order: [["id", "DESC"]], raw: true }) as any,
+      ReciboModel.findAll({ where: { loanId: id }, order: [["id", "DESC"]], raw: true }) as any,
+      AmorizationLoanModel.findAll({ where: { loanId: id }, raw: true }) as any,
+    ]);
+
+    const reciboByTranzaction = new Map<number, any>();
+    (recibos || []).forEach((r: any) => reciboByTranzaction.set(Number(r.tranzactionId), r));
+
+    const round2 = (value: number) => Math.round(value * 100) / 100;
+    const metodoCache = new Map<string, string>();
+    const metodoLegivel = async (value: any) => {
+      const chave = String(value ?? "");
+      if (!metodoCache.has(chave)) {
+        const { description } = await resolvePaymentMethod(value, companyId);
+        metodoCache.set(chave, description);
+      }
+      return metodoCache.get(chave) || "—";
+    };
+
+    let totalPago = 0;
+    let totalCapital = 0;
+    let totalJuros = 0;
+    let totalMora = 0;
+    let totalDesconto = 0;
+
+    const listaPagamentos = [];
+    for (const tx of pagamentos || []) {
+      const valor = round2(toNumber(tx.amount));
+      const juros = round2(toNumber(tx.interestRateAmount));
+      const mora = round2(toNumber(tx.mora_amount) || toNumber(tx.latePaymentInterest));
+      const desconto = round2(toNumber(tx.discountAmount));
+      const capital = round2(Math.max(0, valor - juros));
+      const recibo = reciboByTranzaction.get(Number(tx.id));
+
+      totalPago += valor;
+      totalCapital += capital;
+      totalJuros += juros;
+      totalMora += mora;
+      totalDesconto += desconto;
+
+      listaPagamentos.push({
+        id: Number(tx.id),
+        amortizationLoanId: Number(tx.amortizationLoanId) || null,
+        paymentDate: tx.paymentDate || null,
+        amount: valor,
+        capitalAmount: capital,
+        interestAmount: juros,
+        lateInterestAmount: mora,
+        discountAmount: desconto,
+        totalAmount: round2(valor + mora - desconto),
+        reference: tx.tranzactionReference || "",
+        paymentMethod: tx.paymentMethod,
+        paymentMethodLabel: await metodoLegivel(tx.paymentMethod),
+        staffName: tx.staffName || "",
+        notes: tx.notes || null,
+        receiptUrl: tx.receiptUrl || null,
+        walletId: Number(tx.walletId) || null,
+        recibo: recibo
+          ? {
+              id: Number(recibo.id),
+              numero: recibo.numero,
+              sequencia: Number(recibo.sequencia),
+              ano: Number(recibo.ano),
+              valor_pago: round2(toNumber(recibo.valor_pago)),
+              hash_at: recibo.hash_at || null,
+              at_validation_code: recibo.at_validation_code || null,
+              pdf_url: recibo.pdf_url || null,
+              emitido_em: recibo.created_at || recibo.createdAt || null,
+            }
+          : null,
+      });
+    }
+
+    // Prestações: valor em falta = valor da prestação - já pago (a tabela guarda
+    // o saldo devedor acumulado em `remainingBalance`, que não serve para isto).
+    const hoje = new Date();
+    let saldoDevedor = 0;
+    let pagas = 0;
+    let pendentes = 0;
+    let emAtraso = 0;
+    let moraGerada = 0;
+    let proximoVencimento: string | null = null;
+    (prestacoes || []).forEach((item: any) => {
+      const falta = Math.max(0, toNumber(item.installment) - toNumber(item.paidAmount));
+      const status = Number(item.status);
+      const vencimento = item.dueDate ? new Date(String(item.dueDate).slice(0, 10)) : null;
+      const vencida = vencimento instanceof Date && !Number.isNaN(vencimento.getTime()) && vencimento < hoje;
+
+      if (status === 1) {
+        pagas += 1;
+        return;
+      }
+      saldoDevedor += falta;
+      pendentes += 1;
+      moraGerada += toNumber(item.mora_amount);
+      if (vencida) emAtraso += 1;
+      if (vencimento && !vencida) {
+        const iso = String(item.dueDate).slice(0, 10);
+        if (!proximoVencimento || iso < proximoVencimento) proximoVencimento = iso;
+      }
+    });
+
+    const ultimoPagamento = listaPagamentos.length
+      ? listaPagamentos
+          .map((p) => String(p.paymentDate || ""))
+          .filter(Boolean)
+          .sort()
+          .pop() || null
+      : null;
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        credito: {
+          id: Number(loan.id),
+          companyId,
+          accountNumber: loan.accountNumber,
+          amount: round2(toNumber(loan.amount)),
+          interestRate: toNumber(loan.interestRate),
+          administrativeFee: toNumber(loan.administrativeFee),
+          numberOfInstallments: Number(loan.numberOfInstallments) || 0,
+          status: Number(loan.status),
+          dateCreated: loan.dateCreated || null,
+          disbursementDate: loan.disbursementDate || null,
+          finalDueDate: loan.finalDueDate || null,
+          creditManager: loan.creditManager || null,
+          walletId: Number(loan.walletId) || null,
+        },
+        cliente: cliente
+          ? {
+              id: Number(cliente.id),
+              accountNumber: cliente.accountNumber,
+              name: cliente.customerName || cliente.name || "",
+              nuit: cliente.customerNuit || null,
+              phone: cliente.customerPhone || null,
+              email: cliente.customerEmail || null,
+              photoUrl: cliente.passportPhotoUrl || null,
+            }
+          : null,
+        carteira: carteira
+          ? {
+              id: Number(carteira.id),
+              codigo: carteira.codigo,
+              nome: carteira.nome,
+              cor_badge: carteira.cor_badge || "blue",
+              parceiro_nome: carteira.parceiro_nome || null,
+              allocated_amount:
+                carteira.allocated_amount === null || carteira.allocated_amount === undefined
+                  ? null
+                  : round2(toNumber(carteira.allocated_amount)),
+            }
+          : null,
+        resumo: {
+          total_pago: round2(totalPago),
+          total_capital: round2(totalCapital),
+          total_juros: round2(totalJuros),
+          total_mora: round2(totalMora),
+          total_desconto: round2(totalDesconto),
+          saldo_devedor: round2(saldoDevedor),
+          mora_gerada: round2(moraGerada),
+          prestacoes_pagas: pagas,
+          prestacoes_pendentes: pendentes,
+          prestacoes_atraso: emAtraso,
+          num_pagamentos: listaPagamentos.length,
+          pagamentos_sem_recibo: listaPagamentos.filter((p) => !p.recibo).length,
+          ultimo_pagamento: ultimoPagamento,
+          proximo_vencimento: proximoVencimento,
+        },
+        pagamentos: listaPagamentos,
+        recibos: (recibos || []).map((r: any) => ({
+          id: Number(r.id),
+          numero: r.numero,
+          sequencia: Number(r.sequencia),
+          ano: Number(r.ano),
+          tranzactionId: Number(r.tranzactionId) || null,
+          valor_pago: round2(toNumber(r.valor_pago)),
+          valor_capital: round2(toNumber(r.valor_capital)),
+          valor_juros: round2(toNumber(r.valor_juros)),
+          valor_mora: round2(toNumber(r.valor_mora)),
+          metodo_pagamento_desc: r.metodo_pagamento_desc || null,
+          hash_at: r.hash_at || null,
+          at_validation_code: r.at_validation_code || null,
+          pdf_url: r.pdf_url || null,
+          emitido_em: r.created_at || r.createdAt || null,
+        })),
+      },
+    });
+  } catch (error: any) {
+    console.error("[Crédito] Erro no dossiê:", error?.message || error);
+    return res.status(500).json({
+      success: false,
+      message: "Não foi possível carregar os dados do crédito.",
+    });
+  }
+};
+
 export {
   findAllLoans,
   findAllLoansOverview,
   findLoanByCustomer,
   getLoanAmortization,
+  loanDetail,
   createLoan,
   updateLoan,
   destroyLoan,
   invalidateDisbursedLoan,
   updateLoanInstallmentDates,
+  simulateLoan,
 };

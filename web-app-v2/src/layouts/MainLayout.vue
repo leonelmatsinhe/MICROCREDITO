@@ -21,12 +21,7 @@
     <!-- Content -->
     <q-page-container>
       <q-page class="page-content">
-        <!-- Breadcrumb -->
-        <div class="q-px-md q-pt-sm q-pb-xs bg-grey-1">
-          <AppBreadcrumb />
-        </div>
-
-        <!-- Page Content via Slot -->
+        <!-- Page Content via Slot (breadcrumbs vivem no header) -->
         <slot />
       </q-page>
     </q-page-container>
@@ -37,7 +32,6 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
-import AppBreadcrumb from '@/components/layout/AppBreadcrumb.vue'
 import { useUiStore } from '@/stores/ui'
 
 const uiStore = useUiStore()

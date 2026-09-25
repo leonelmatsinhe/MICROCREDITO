@@ -3,7 +3,7 @@
     <div class="settings-layout row no-wrap q-col-gutter-md">
       <!-- Sidebar de Navegação -->
       <div class="col-auto settings-nav">
-        <q-card flat bordered style="border-radius: 12px; overflow: hidden">
+        <q-card flat class="nav-card">
           <q-list>
             <q-item-label header class="text-grey-5 q-pb-xs" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em">
               Configurações
@@ -27,29 +27,38 @@
                 <q-item-label caption style="font-size: 10px">{{ section.description }}</q-item-label>
               </q-item-section>
             </q-item>
+
+            <!-- Atalhos para as páginas dedicadas (saíram de Configurações) -->
+            <q-separator class="q-my-sm" />
+            <q-item-label header class="text-grey-5 q-pb-xs" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em">
+              Páginas dedicadas
+            </q-item-label>
+            <q-item clickable v-ripple class="settings-nav-item" to="/equipe">
+              <q-item-section avatar><q-icon name="groups" color="grey-6" size="20px" /></q-item-section>
+              <q-item-section>
+                <q-item-label style="font-size: 13px">Equipa e Parceiros</q-item-label>
+                <q-item-label caption style="font-size: 10px">Utilizadores e parceiros financiadores</q-item-label>
+              </q-item-section>
+              <q-item-section side><q-icon name="chevron_right" size="18px" color="grey-5" /></q-item-section>
+            </q-item>
+            <q-item clickable v-ripple class="settings-nav-item" to="/financiamento?tab=taxas">
+              <q-item-section avatar><q-icon name="percent" color="grey-6" size="20px" /></q-item-section>
+              <q-item-section>
+                <q-item-label style="font-size: 13px">Taxas de Juro</q-item-label>
+                <q-item-label caption style="font-size: 10px">Vinculadas às carteiras de financiamento</q-item-label>
+              </q-item-section>
+              <q-item-section side><q-icon name="chevron_right" size="18px" color="grey-5" /></q-item-section>
+            </q-item>
           </q-list>
         </q-card>
       </div>
 
       <!-- Conteúdo -->
       <div class="col settings-content">
-        <!-- Empresa -->
         <transition name="fade" mode="out-in">
           <CompanySection v-if="activeSection === 'company'" key="company" />
-
-          <!-- Utilizadores -->
-          <UsersSection v-else-if="activeSection === 'users'" key="users" />
-
-          <!-- Taxas de Juro -->
-          <RatesSection v-else-if="activeSection === 'rates'" key="rates" />
-
-          <!-- Contas Bancárias -->
           <AccountsSection v-else-if="activeSection === 'accounts'" key="accounts" />
-
-          <!-- Permissões -->
           <RolesSection v-else-if="activeSection === 'roles'" key="roles" />
-
-          <!-- Aparência -->
           <AppearanceSection v-else-if="activeSection === 'appearance'" key="appearance" />
         </transition>
       </div>
@@ -60,18 +69,20 @@
 <script setup>
 import { ref } from 'vue'
 import CompanySection from '@/components/settings/CompanySection.vue'
-import UsersSection from '@/components/settings/UsersSection.vue'
-import RatesSection from '@/components/settings/RatesSection.vue'
 import AccountsSection from '@/components/settings/AccountsSection.vue'
 import RolesSection from '@/components/settings/RolesSection.vue'
 import AppearanceSection from '@/components/settings/AppearanceSection.vue'
 
+/**
+ * CONFIGURAÇÕES — apenas o que é do sistema/empresa.
+ * Utilizadores e Taxas de Juro saíram daqui: utilizadores vivem em
+ * "Equipa e Parceiros" (/equipe) e as taxas em "Financiamento" (/financiamento),
+ * onde ficam vinculadas à origem do capital (carteira ou conta de desembolso).
+ */
 const activeSection = ref('company')
 
 const sections = [
   { id: 'company', icon: 'business', label: 'Empresa', description: 'Dados gerais' },
-  { id: 'users', icon: 'people', label: 'Utilizadores', description: 'Gestão de equipa' },
-  { id: 'rates', icon: 'percent', label: 'Taxas de Juro', description: 'Configurar taxas' },
   { id: 'accounts', icon: 'account_balance', label: 'Contas Bancárias', description: 'Dados bancários' },
   { id: 'roles', icon: 'admin_panel_settings', label: 'Permissões', description: 'Roles e acessos' },
   { id: 'appearance', icon: 'palette', label: 'Aparência', description: 'Tema e cores' }
@@ -83,9 +94,17 @@ const sections = [
   min-height: calc(100vh - 120px);
 }
 
+.nav-card {
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
 .settings-nav {
-  width: 240px;
-  min-width: 240px;
+  width: 250px;
+  min-width: 250px;
   flex-shrink: 0;
 }
 
@@ -94,7 +113,6 @@ const sections = [
 }
 
 .settings-nav-item {
-  border-radius: 0;
   margin: 0 8px;
   border-radius: 8px;
 

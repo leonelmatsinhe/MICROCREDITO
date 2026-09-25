@@ -213,7 +213,7 @@ const $q = useQuasar()
 const authStore = useAuthStore()
 const {
   customer, loans, allInstallments, collectAccount,
-  formatMoney, formatDate, ordinalNumber, normalizeMpesaPhone
+  formatMoney, formatDate, ordinalNumber, normalizeMpesaPhone, downloadPaymentRecibo
 } = usePortalData()
 
 const inst = computed(() => props.installment)
@@ -336,7 +336,24 @@ async function processPayment() {
       phone: paymentPhone.value
     })
     if (data.success) {
-      $q.notify({ type: 'positive', message: data.message || 'Pagamento registado com sucesso', position: 'top' })
+      // Comprovativo emitido pelo backend no acto do pagamento — o mutuário
+      // pode descarregá-lo de imediato (ou mais tarde no Histórico).
+      const recibo = data.recibo || null
+      const paymentId = data.tranzactionId || null
+      $q.notify({
+        type: 'positive',
+        message: data.message || 'Pagamento registado com sucesso',
+        position: 'top',
+        timeout: recibo && paymentId ? 12000 : undefined,
+        actions: recibo && paymentId
+          ? [{
+              label: 'Recibo',
+              color: 'white',
+              noDismiss: true,
+              handler: () => downloadPaymentRecibo(paymentId, recibo.numero)
+            }]
+          : []
+      })
       emit('update:modelValue', false)
       emit('paid')
     }

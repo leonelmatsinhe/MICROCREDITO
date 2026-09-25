@@ -23,6 +23,8 @@ const InterestRateController_1 = require("./controllers/InterestRateController")
 const CustomerDocumentController_1 = require("./controllers/CustomerDocumentController");
 const LogsController_1 = require("./controllers/LogsController");
 const LoanController_1 = require("./controllers/LoanController");
+// LIQUIDAÇÃO TOTAL ATÓMICA — todas as prestações numa única sequelize.transaction
+const TranzactionBulkController_1 = require("./controllers/TranzactionBulkController");
 const GuaranteesController_1 = require("./controllers/GuaranteesController");
 const MpesaPaymentController_1 = require("./controllers/MpesaPaymentController");
 const multer_2 = require("./config/multer");
@@ -35,6 +37,7 @@ const SmsGatewayController_1 = require("./controllers/SmsGatewayController");
 const WhatsAppController_1 = require("./controllers/WhatsAppController");
 const CustomerPortalController_1 = require("./controllers/CustomerPortalController");
 const PdfController_1 = require("./controllers/PdfController");
+const LegalDocsController_1 = require("./controllers/LegalDocsController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
 // FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
 const SuperAdminController_1 = require("./controllers/SuperAdminController");
@@ -48,6 +51,15 @@ const NotificationController_1 = require("./controllers/NotificationController")
 const DashboardController_1 = require("./controllers/DashboardController");
 const checkCashRegisterOpen_1 = require("./middlewares/checkCashRegisterOpen");
 const BMReportController_1 = require("./controllers/BMReportController");
+// CARTEIRAS DE FINANCIAMENTO (dinheiro analítico) — CRUD + KPIs
+const FinancingWalletController_1 = require("./controllers/FinancingWalletController");
+// PORTAL DO PARCEIRO FINANCIADOR (userRole 4) — só leitura, só a sua carteira
+const PartnerPortalController_1 = require("./controllers/PartnerPortalController");
+// RELATÓRIOS DE FINANCIADOR + desagregação interna das carteiras
+const FinancierReportController_1 = require("./controllers/FinancierReportController");
+// RECIBOS com numeração sequencial legal (AT Moçambique)
+const ReciboController_1 = require("./controllers/ReciboController");
+const roles_1 = require("./middlewares/roles");
 const ExcelExportController_1 = require("./controllers/ExcelExportController");
 const routes = express_1.default.Router();
 exports.routes = routes;
@@ -91,6 +103,9 @@ routes.post("/api/customer/changePassword", CustomerController_1.changeCustomerP
 routes.get("/api/portal/:companyId/:customerId/dashboard", CustomerPortalController_1.getCustomerDashboard);
 routes.get("/api/portal/:companyId/:customerId/loan/:loanId", CustomerPortalController_1.getCustomerLoanDetail);
 routes.post("/api/portal/:companyId/:customerId/payments", CustomerPortalController_1.registerPortalPayment);
+// Comprovativo (recibo) de um pagamento — mesmo recibo legal usado pelo Admin.
+// Emitido sob procura, para que TODOS os pagamentos tenham comprovativo.
+routes.get("/api/portal/:companyId/:customerId/payments/:tranzactionId/recibo/pdf", CustomerPortalController_1.getCustomerPaymentReciboPdf);
 routes.post("/api/portal/send-credentials", CustomerPortalController_1.sendCustomerCredentials);
 routes.post("/api/portal/:companyId/:customerId/loans/request", CustomerPortalController_1.requestCustomerLoan);
 // Customer Contrats
@@ -163,6 +178,9 @@ routes.get("/api/provinces", ProvinceController_1.findAllProvinces);
 routes.get("/api/districts", ProvinceController_1.findAllDistricts);
 // TEMPORÁRIO: debug de empresas sem auth (remover em produção)
 routes.get("/api/debug/companies", SuperAdminController_1.debugCompanies);
+// VALIDAÇÃO PÚBLICA DO RECIBO — é o destino do QR Code impresso no documento,
+// por isso não pode exigir sessão (tem de vir antes do middleware auth).
+routes.get("/api/recibos/validar", ReciboController_1.validar);
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth_1.auth);
 // SUPER ADMIN — aprovação de empresas (apenas userRole = 0)
@@ -198,7 +216,15 @@ routes.get("/api/users/:id", UserController_1.findOne);
 routes.put("/api/users/:id", UserController_1.update);
 routes.delete("/api/users/:id", UserController_1.destroy);
 // Loans Route
+// SIMULAÇÃO NO BACKEND — plano Price com a mesma função do desembolso
+// (paridade garantida entre o simulador do frontend e o plano gravado).
+routes.post("/api/loan/simulate", LoanController_1.simulateLoan);
 routes.get("/api/loan/:id", LoanController_1.findLoanByCustomer);
+// DOSSIÊ DO CRÉDITO (página de detalhe: pagamentos + recibos + prestações)
+// DOCUMENTOS LEGAIS DO CRÉDITO (pdfkit no backend, layout do PDF oficial):
+// contrato | termo | garantias | extracto
+routes.get("/api/loans/:loanId/documents/:tipo/pdf", LegalDocsController_1.downloadLegalDoc);
+routes.get("/api/loan/:id/detail", roles_1.isStaff, LoanController_1.loanDetail);
 routes.get("/api/loan/amortization/:id", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", LoanController_1.getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", LoanController_1.findAllLoans);
@@ -209,6 +235,8 @@ routes.put("/api/loan/:id/update-dates", LoanController_1.updateLoanInstallmentD
 routes.delete("/api/loan/:id", LoanController_1.destroyLoan);
 routes.post("/api/loan", LoanController_1.createLoan);
 // Documents Route
+// CHECKLIST KYC — antes de /api/document/:id (mesmo nº de segmentos)
+routes.get("/api/document/checklist/:accountNumber", CustomerDocumentController_1.getDocumentChecklist);
 routes.get("/api/document", CustomerDocumentController_1.findAllDocuments);
 routes.get("/api/document/:id", CustomerDocumentController_1.getCustomerDocuments);
 routes.put("/api/document/:id", documentUpload, CustomerDocumentController_1.updateDocument);
@@ -273,6 +301,9 @@ routes.put("/api/tranzaction/:id", TranzactionController_1.updateTranzaction);
 // Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA
 // (REEMBOLSO / JUROS_MORA / TAXA_ADMIN) são criados no controller.
 routes.post("/api/tranzaction", checkCashRegisterOpen_1.checkCashRegisterOpen, TranzactionController_1.addTranzaction);
+// LIQUIDAÇÃO TOTAL ATÓMICA — todas as prestações pendentes numa única
+// transacção SQL; falha a uma → rollback de todas. Também exige caixa aberto.
+routes.post("/api/tranzaction/bulk", checkCashRegisterOpen_1.checkCashRegisterOpen, TranzactionBulkController_1.addTranzactionBulk);
 // Installments Routes
 // POST createInstallmentsLoan = desembolso do crédito (cria plano + activa).
 // Exige caixa ABERTO hoje — o movimento SAIDA/DESEMBOLSO é criado no controller.
@@ -309,3 +340,68 @@ routes.post("/api/export/customers/excel", ExcelExportController_1.exportCustome
 routes.post("/api/export/loans/excel", ExcelExportController_1.exportLoansExcel);
 routes.post("/api/export/payments/excel", ExcelExportController_1.exportPaymentsExcel);
 routes.post("/api/export/installments/excel", ExcelExportController_1.exportInstallmentsExcel);
+// ==================== CARTEIRAS DE FINANCIAMENTO (ANALÍTICAS) ====================
+// Dinheiro ANALÍTICO (valores base + separação de relatórios por parceiro).
+// O dinheiro REAL continua nas contas de tesouraria (accounts DESEMBOLSO/MISTO).
+// Rotas específicas ANTES de /:id (evita "options"/"dashboard" como id).
+routes.get("/api/wallets/:companyId/dashboard", FinancingWalletController_1.dashboard);
+routes.get("/api/wallets/:companyId/options", FinancingWalletController_1.options);
+routes.get("/api/wallets/:companyId/rates", FinancingWalletController_1.listRatesWithWallet);
+routes.get("/api/wallets/:companyId/partner-users", roles_1.isAdmin, FinancingWalletController_1.listPartnerUsers);
+// Créditos ainda sem carteira (antes de /:companyId/:id).
+routes.get("/api/wallets/:companyId/unclassified-loans", roles_1.isAdmin, FinancingWalletController_1.unclassifiedLoans);
+// Propostas de classificação automática (taxa de juro → carteira). Só propõe.
+routes.get("/api/wallets/:companyId/classification-proposals", roles_1.isAdmin, FinancingWalletController_1.classificationProposals);
+// Carteiras sem movimento que podem ser limpas (TESTE_* ou criadas há <7 dias).
+routes.get("/api/wallets/:companyId/test-candidates", roles_1.isAdmin, FinancingWalletController_1.testCandidates);
+// Dependências de UMA carteira — antes de /:companyId/:id (mesmo nº de segmentos).
+routes.get("/api/wallets/:id/dependencies", roles_1.isAdmin, FinancingWalletController_1.dependencies);
+routes.get("/api/wallets/:companyId/:id", FinancingWalletController_1.findOne);
+routes.get("/api/wallets/:companyId", FinancingWalletController_1.findAll);
+routes.post("/api/wallets", roles_1.isAdmin, FinancingWalletController_1.create);
+// Limpar em lote as carteiras de teste (só Admin).
+routes.post("/api/wallets/purge-test", roles_1.isAdmin, FinancingWalletController_1.purgeTest);
+// Classificação retroativa de créditos antigos numa carteira de financiamento.
+routes.post("/api/wallets/classify-loans", roles_1.isAdmin, FinancingWalletController_1.classifyLoans);
+routes.post("/api/wallets/:id/deactivate", roles_1.isAdmin, FinancingWalletController_1.deactivate);
+routes.put("/api/wallets/:id", roles_1.isAdmin, FinancingWalletController_1.update);
+// DELETE apaga de facto — o controller recusa (409) se a carteira tiver movimento.
+routes.delete("/api/wallets/:id", roles_1.isAdmin, FinancingWalletController_1.destroy);
+// ==================== PARCEIROS FINANCIADORES (userRole 4) ====================
+// Apenas o Admin da empresa cria/edita contas de parceiro, sempre ligadas a
+// UMA carteira de financiamento com portal activo.
+routes.post("/api/users/parceiros", roles_1.isAdmin, UserController_1.createPartner);
+routes.put("/api/users/parceiros/:id", roles_1.isAdmin, UserController_1.updatePartner);
+// ==================== RECIBOS (NUMERAÇÃO SEQUENCIAL LEGAL — AT) ====================
+routes.post("/api/recibos/gerar/:tranzactionId", roles_1.isStaff, ReciboController_1.gerar);
+routes.get("/api/recibos/loan/:loanId", roles_1.isStaff, ReciboController_1.byLoan);
+routes.get("/api/recibos/customer/:customerId", roles_1.isStaff, ReciboController_1.byCustomer);
+// A rota pública de validação (/api/recibos/validar) está registada antes do
+// middleware de autenticação — ver bloco "VALIDAÇÃO PÚBLICA DO RECIBO".
+routes.post("/api/recibos/lookup", roles_1.isStaff, ReciboController_1.lookup);
+routes.post("/api/recibos/:id/enviar", roles_1.isStaff, ReciboController_1.enviar);
+routes.get("/api/recibos/:id/pdf", roles_1.isStaff, ReciboController_1.pdf);
+routes.get("/api/recibos/:id", roles_1.isStaff, ReciboController_1.findOne);
+// ==================== RELATÓRIO DE FINANCIADOR (Admin) ====================
+// Relatório isolado por carteira (desembolsos + recebimentos) com Excel e
+// envio por e-mail ao parceiro. O relatório oficial do BM NÃO é alterado:
+// continua consolidado, sem discriminar carteiras.
+routes.get("/api/reports/financiadores/:companyId/:walletId/excel", FinancierReportController_1.getFinancierReportExcel);
+routes.get("/api/reports/financiadores/:companyId/:walletId", FinancierReportController_1.getFinancierReport);
+routes.post("/api/reports/financiadores/:companyId/:walletId/email", FinancierReportController_1.sendFinancierReportEmail);
+// Desagregação por carteira — apenas para análise interna.
+routes.get("/api/reports/wallets-breakdown/:companyId", FinancierReportController_1.getWalletsBreakdown);
+// ==================== PORTAL DO PARCEIRO FINANCIADOR (userRole 4) ====================
+// Todas as rotas exigem userRole 4 + carteira associada; a carteira é lida da
+// base de dados (users.walletId) — o parceiro nunca escolhe a carteira.
+routes.use("/api/partner", roles_1.isPartner);
+routes.get("/api/partner/profile", PartnerPortalController_1.profile);
+routes.get("/api/partner/dashboard", PartnerPortalController_1.dashboard);
+routes.get("/api/partner/loans", PartnerPortalController_1.loans);
+routes.get("/api/partner/installments", PartnerPortalController_1.installments);
+routes.get("/api/partner/mora", PartnerPortalController_1.mora);
+routes.get("/api/partner/transactions", PartnerPortalController_1.transactions);
+routes.get("/api/partner/statement/excel", PartnerPortalController_1.statementExcel);
+routes.get("/api/partner/statement", PartnerPortalController_1.statement);
+routes.get("/api/partner/recibos/:id/pdf", PartnerPortalController_1.reciboPdf);
+routes.get("/api/partner/recibos", PartnerPortalController_1.recibos);

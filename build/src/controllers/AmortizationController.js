@@ -47,6 +47,8 @@ const CompanyModel_1 = require("../database/models/CompanyModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
+const kycDocuments_1 = require("../utils/kycDocuments");
+const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const getUpcomingAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
@@ -119,7 +121,7 @@ const getPastAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.getPastAmortizations = getPastAmortizations;
 const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     try {
         const { companyId, loanId, accountNumber, interestRate, numberOfInstallments, amount, dueDate, status } = req.body;
         // Validações de entrada
@@ -173,6 +175,70 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 success: false,
                 message: "O crédito ainda não está associado a uma conta oficial.",
             });
+        }
+        // ── KYC BLOQUEANTE NO DESEMBOLSO ──
+        // Última linha de defesa: mesmo que o pedido tenha sido criado antes da
+        // regra, o dinheiro só sai sem os 3 documentos base (BI, NUIT,
+        // Comprovativo de rendimentos).
+        const kycDocuments = yield CustomerDocumentsModel_1.CustomerDocumentsModel.findAll({
+            where: {
+                accountNumber: Number(accountNumber),
+                companyId: Number(companyId),
+            },
+            raw: true,
+        });
+        const kyc = (0, kycDocuments_1.evaluateKyc)(kycDocuments);
+        if (!kyc.complete) {
+            return res.status(400).json({
+                success: false,
+                error: "KYC_INCOMPLETE",
+                message: `Desembolso bloqueado: checklist KYC incompleta. Documentos em falta: ${kyc.missing.join(", ")}.`,
+                missing: kyc.missing,
+            });
+        }
+        // ── CARTEIRA DE FINANCIAMENTO (analítica) + SALDO REAL ──
+        // O desembolso tem obrigatoriamente de ser classificado numa carteira de
+        // financiamento. A carteira é validada em duas camadas:
+        //   1. analítica — não pode exceder o capital alocado ao fundo/parceria;
+        //   2. real — tem de existir dinheiro na conta de desembolso da empresa.
+        const bodyForWallet = req.body;
+        const walletIdRaw = (_b = (_a = bodyForWallet === null || bodyForWallet === void 0 ? void 0 : bodyForWallet.walletId) !== null && _a !== void 0 ? _a : bodyForWallet === null || bodyForWallet === void 0 ? void 0 : bodyForWallet.wallet_id) !== null && _b !== void 0 ? _b : null;
+        let walletId = walletIdRaw ? Number(walletIdRaw) : null;
+        // ── CARTEIRA DERIVADA DA TAXA DE JURO ──
+        // A taxa escolhida para o crédito pode estar ligada a uma carteira
+        // (`interest_rates.walletId`): nesse caso o desembolso já não obriga a
+        // escolher a carteira à mão. Se a taxa estiver ligada a mais do que uma
+        // carteira, avisa-se e pede-se a escolha explícita.
+        let carteiraDerivada = null;
+        if (!walletId) {
+            try {
+                const { resolveWalletFromRate } = yield Promise.resolve().then(() => __importStar(require("../services/financingWalletService")));
+                carteiraDerivada = yield resolveWalletFromRate(Number(companyId), loan.getDataValue("interestRate"));
+                if (carteiraDerivada === null || carteiraDerivada === void 0 ? void 0 : carteiraDerivada.walletId)
+                    walletId = Number(carteiraDerivada.walletId);
+            }
+            catch (deriveError) {
+                console.error("[Carteiras] Falha ao derivar a carteira da taxa:", (deriveError === null || deriveError === void 0 ? void 0 : deriveError.message) || deriveError);
+            }
+        }
+        if (!walletId && (carteiraDerivada === null || carteiraDerivada === void 0 ? void 0 : carteiraDerivada.ambiguo)) {
+            return res.status(400).json({ success: false, message: carteiraDerivada.motivo });
+        }
+        let walletValidation = null;
+        try {
+            const { validateDisbursement } = yield Promise.resolve().then(() => __importStar(require("../services/financingWalletService")));
+            walletValidation = yield validateDisbursement({
+                companyId: Number(companyId),
+                walletId,
+                amount: Number(amount),
+                requireWallet: true,
+            });
+        }
+        catch (walletError) {
+            console.error("[Carteiras] Falha ao validar a carteira do desembolso:", (walletError === null || walletError === void 0 ? void 0 : walletError.message) || walletError);
+        }
+        if (walletValidation && !walletValidation.ok) {
+            return res.status(400).json({ success: false, message: walletValidation.message });
         }
         // ── TESOURARIA: validações de saldo antes de desembolsar ──
         // Desembolso electrónico (BANK/MPESA/EMOLA) exige saldo suficiente na
@@ -259,11 +325,12 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
             dueDate,
             status
         });
-        // Insere o plano de amortização no banco de dados
-        const bulckInsert = yield AmortizationLoanModel_1.AmorizationLoanModel.bulkCreate(customerAmortizationPlan.map((installment) => (Object.assign(Object.assign({}, installment), { customerId }))));
+        // Insere o plano de amortização no banco de dados — cada prestação herda a
+        // carteira de financiamento do crédito (permite os relatórios por parceiro).
+        const bulckInsert = yield AmortizationLoanModel_1.AmorizationLoanModel.bulkCreate(customerAmortizationPlan.map((installment) => (Object.assign(Object.assign({}, installment), { customerId, walletId: walletId || loan.getDataValue("walletId") || null }))));
         // Atualiza o status do empréstimo e guarda a data real de desembolso:
         // o dueDate enviado é a base do plano (a 1ª prestação vence 1 mês depois).
-        yield LoanModel_1.LoanModel.update({ status: 1, disbursementDate: String(dueDate || "").slice(0, 10) || null }, {
+        yield LoanModel_1.LoanModel.update(Object.assign({ status: 1, disbursementDate: String(dueDate || "").slice(0, 10) || null }, (walletId ? { walletId } : {})), {
             where: {
                 id: loanId
             }
@@ -275,7 +342,7 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 accountNumber,
                 amount: Number(amount),
                 installments: Number(numberOfInstallments),
-                firstDueDate: ((_a = customerAmortizationPlan[0]) === null || _a === void 0 ? void 0 : _a.dueDate)
+                firstDueDate: ((_c = customerAmortizationPlan[0]) === null || _c === void 0 ? void 0 : _c.dueDate)
                     ? String(customerAmortizationPlan[0].dueDate)
                     : null,
             });
@@ -301,8 +368,8 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                     amount: Number(amount),
                     accountNumber,
                     // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
-                    paymentMethod: String(((_b = req.body) === null || _b === void 0 ? void 0 : _b.payment_method) || "CASH"),
-                    bankAccountId: ((_c = req.body) === null || _c === void 0 ? void 0 : _c.bank_account_id)
+                    paymentMethod: String(((_d = req.body) === null || _d === void 0 ? void 0 : _d.payment_method) || "CASH"),
+                    bankAccountId: ((_e = req.body) === null || _e === void 0 ? void 0 : _e.bank_account_id)
                         ? Number(req.body.bank_account_id)
                         : null,
                 });
@@ -350,7 +417,7 @@ exports.createAmortizationLoan = createAmortizationLoan;
  * dados financeiros).
  */
 const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _d;
+    var _f;
     try {
         const { companyId } = req.params;
         const companyIdNum = Number(companyId);
@@ -445,7 +512,7 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
                     customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || null,
                     customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "",
                     hasCustomer: !!customer,
-                    installmentOrder: (_d = a.installmentOrder) !== null && _d !== void 0 ? _d : "",
+                    installmentOrder: (_f = a.installmentOrder) !== null && _f !== void 0 ? _f : "",
                     installment: Number(a.installment) || 0,
                     paidAmount: Number(a.paidAmount) || 0,
                     status,

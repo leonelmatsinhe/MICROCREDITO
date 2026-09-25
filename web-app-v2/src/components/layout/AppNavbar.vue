@@ -1,6 +1,6 @@
 <template>
-  <q-header elevated class="navbar-header">
-    <q-toolbar class="q-px-md" style="min-height: 50px">
+  <q-header class="navbar-header">
+    <q-toolbar class="q-px-md" style="min-height: 62px">
       <!-- Sidebar Toggle -->
       <q-btn
         flat
@@ -8,16 +8,19 @@
         round
         :icon="sidebarMini ? 'menu' : 'menu_open'"
         @click="$emit('toggle-sidebar')"
-        class="q-mr-sm"
+        class="q-mr-sm text-grey-8"
         size="sm"
       />
 
-      <!-- Route Title -->
-      <div class="row items-center">
-        <q-icon :name="routeIcon" size="20px" class="q-mr-sm text-white" style="opacity: 0.85" />
-        <span class="text-white text-weight-bold" style="font-size: 15px">
-          {{ routeTitle }}
-        </span>
+      <!-- Route Title + Breadcrumbs (Home / Painel) -->
+      <div class="row items-center no-wrap">
+        <q-icon :name="routeIcon" size="22px" class="q-mr-sm text-green-10" />
+        <div>
+          <div class="text-grey-9 text-weight-bold" style="font-size: 15px; line-height: 1.2">
+            {{ routeTitle }}
+          </div>
+          <AppBreadcrumb class="navbar-breadcrumb" />
+        </div>
       </div>
 
       <q-space />
@@ -31,7 +34,7 @@
           round
           dense
           icon="sync"
-          text-color="white"
+          text-color="grey-8"
           size="sm"
           :loading="superAdminStore.loading || planStore.loading"
           @click="refreshAdminData"
@@ -45,18 +48,40 @@
           round
           dense
           :icon="isDark ? 'light_mode' : 'dark_mode'"
-          text-color="white"
+          text-color="grey-8"
           size="sm"
           @click="uiStore.toggleDark()"
         >
           <q-tooltip>{{ isDark ? 'Modo Claro' : 'Modo Escuro' }}</q-tooltip>
         </q-btn>
 
+        <!-- Idioma — QSelect com bandeira -->
+        <q-select
+          v-model="locale"
+          :options="localeOptions"
+          dense
+          borderless
+          emit-value
+          map-options
+          class="locale-select q-mx-xs"
+        >
+          <template v-slot:selected-item="scope">
+            <span class="text-caption text-weight-bold text-grey-8">{{ scope.opt.short }}</span>
+          </template>
+          <template v-slot:option="scope">
+            <q-item v-bind="scope.itemProps">
+              <q-item-section avatar>{{ scope.opt.flag }}</q-item-section>
+              <q-item-section>{{ scope.opt.label }}</q-item-section>
+            </q-item>
+          </template>
+          <q-tooltip>Idioma</q-tooltip>
+        </q-select>
+
         <!-- ALERTAS DO SISTEMA — sino com badge vermelho + modal -->
         <AlertBell />
 
         <!-- Notifications -->
-        <q-btn flat round dense icon="notifications" text-color="white" size="sm">
+        <q-btn flat round dense icon="notifications" text-color="grey-8" size="sm">
           <q-badge color="negative" floating v-if="unreadCount > 0">
             {{ unreadCount > 99 ? '99+' : unreadCount }}
           </q-badge>
@@ -165,7 +190,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
@@ -175,9 +200,17 @@ import { useSuperAdminStore } from '@/stores/superAdmin'
 import { usePlanStore } from '@/stores/plan'
 import AlertBell from './AlertBell.vue'
 import AiBotMaisMola from '../AiBotMaisMola.vue'
+import AppBreadcrumb from './AppBreadcrumb.vue'
 import { getInitials, timeAgo } from '@/utils/formatters'
 
 const emit = defineEmits(['toggle-sidebar'])
+
+// Idioma (só UI — sem i18n backend): PT padrão, EN opcional
+const locale = ref('pt')
+const localeOptions = [
+  { label: 'Português (Moçambique)', short: 'PT', flag: '🇲🇿', value: 'pt' },
+  { label: 'English', short: 'EM', flag: '🇬🇧', value: 'en' }
+]
 
 const router = useRouter()
 const route = useRoute()
@@ -295,12 +328,26 @@ function handleLogout() {
 
 <style lang="scss" scoped>
 .navbar-header {
-  background: linear-gradient(135deg, $green-600 0%, $green-500 100%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  color: #1f2937;
+}
+
+.navbar-breadcrumb {
+  font-size: 10.5px;
+  opacity: 0.8;
+}
+
+.locale-select {
+  min-width: 52px;
+  .q-field__control { min-height: 34px; padding: 0 6px; }
 }
 
 body.body--dark .navbar-header {
-  background: linear-gradient(135deg, $gray-800 0%, $gray-700 100%);
-  border-bottom-color: $gray-600;
+  background: rgba(17, 24, 39, 0.82);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  color: #f3f4f6;
 }
 </style>
