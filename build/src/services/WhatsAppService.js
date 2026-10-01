@@ -13,6 +13,7 @@ exports.listWhatsAppMessages = exports.sendPasswordResetWhatsApp = exports.sendR
 const WhatsAppModel_1 = require("../database/models/WhatsAppModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const CompanyModel_1 = require("../database/models/CompanyModel");
+const dateFormatMZ_1 = require("../utils/dateFormatMZ");
 const normalizePhone = (phone) => {
     if (!phone)
         return null;
@@ -66,7 +67,7 @@ const sendDisbursementWhatsApp = (params) => __awaiter(void 0, void 0, void 0, f
     const customer = yield getCustomer(params.companyId, params.accountNumber);
     if (!customer)
         return { sent: false, reason: "customer_not_found" };
-    const msg = `Ola ${customer.customerName}. Seu credito de ${Number(params.amount).toLocaleString("pt-MZ")} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${params.firstDueDate}.` : ''} Obrigado.`;
+    const msg = `Ola ${customer.customerName}. Seu credito de ${Number(params.amount).toLocaleString("pt-MZ")} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${(0, dateFormatMZ_1.formatDateMZ)(params.firstDueDate)}.` : ''} Obrigado.`;
     return (0, exports.sendWhatsAppMessage)({
         companyId: params.companyId,
         accountNumber: params.accountNumber,
@@ -105,7 +106,7 @@ const sendReminderWhatsApp = (params) => __awaiter(void 0, void 0, void 0, funct
     const customer = yield getCustomer(params.companyId, params.accountNumber);
     if (!customer)
         return { sent: false, reason: "customer_not_found" };
-    const msg = `Ola ${customer.customerName}. Sua prestacao de ${Number(params.installmentAmount).toLocaleString("pt-MZ")} MZN vence em ${params.dueDate}. Evite juros facendo o pagamento.`;
+    const msg = `Ola ${customer.customerName}. Sua prestacao de ${Number(params.installmentAmount).toLocaleString("pt-MZ")} MZN vence em ${(0, dateFormatMZ_1.formatDateMZ)(params.dueDate)}. Evite juros facendo o pagamento.`;
     return (0, exports.sendWhatsAppMessage)({
         companyId: params.companyId,
         accountNumber: params.accountNumber,

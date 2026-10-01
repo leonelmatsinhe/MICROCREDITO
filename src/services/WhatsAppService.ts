@@ -1,6 +1,7 @@
 import { WhatsAppModel } from "../database/models/WhatsAppModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { CompanyModel } from "../database/models/CompanyModel";
+import { formatDateMZ } from "../utils/dateFormatMZ";
 
 const normalizePhone = (phone?: string | null): string | null => {
   if (!phone) return null;
@@ -73,7 +74,7 @@ export const sendDisbursementWhatsApp = async (params: {
   const customer = await getCustomer(params.companyId, params.accountNumber);
   if (!customer) return { sent: false, reason: "customer_not_found" };
 
-  const msg = `Ola ${customer.customerName}. Seu credito de ${Number(params.amount).toLocaleString("pt-MZ")} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${params.firstDueDate}.` : ''} Obrigado.`;
+  const msg = `Ola ${customer.customerName}. Seu credito de ${Number(params.amount).toLocaleString("pt-MZ")} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${formatDateMZ(params.firstDueDate)}.` : ''} Obrigado.`;
 
   return sendWhatsAppMessage({
     companyId: params.companyId,
@@ -124,7 +125,7 @@ export const sendReminderWhatsApp = async (params: {
   const customer = await getCustomer(params.companyId, params.accountNumber);
   if (!customer) return { sent: false, reason: "customer_not_found" };
 
-  const msg = `Ola ${customer.customerName}. Sua prestacao de ${Number(params.installmentAmount).toLocaleString("pt-MZ")} MZN vence em ${params.dueDate}. Evite juros facendo o pagamento.`;
+  const msg = `Ola ${customer.customerName}. Sua prestacao de ${Number(params.installmentAmount).toLocaleString("pt-MZ")} MZN vence em ${formatDateMZ(params.dueDate)}. Evite juros facendo o pagamento.`;
 
   return sendWhatsAppMessage({
     companyId: params.companyId,

@@ -10,6 +10,7 @@ import { CompanyModel } from "../database/models/CompanyModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
 import { enqueueDisbursementSms } from "../services/SmsGatewayService";
+import { formatDateMZ } from "../utils/dateFormatMZ";
 import { evaluateKyc } from "../utils/kycDocuments";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { PackageAlreadyIssuedError } from "../services/concessionPackageService";
@@ -351,7 +352,7 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
         amount: Number(amount),
         installments: Number(numberOfInstallments),
         firstDueDate: customerAmortizationPlan[0]?.dueDate
-          ? String(customerAmortizationPlan[0].dueDate)
+          ? formatDateMZ(customerAmortizationPlan[0].dueDate)
           : null,
       });
     } catch (smsError) {

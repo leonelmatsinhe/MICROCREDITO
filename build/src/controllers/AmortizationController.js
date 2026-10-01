@@ -47,6 +47,7 @@ const CompanyModel_1 = require("../database/models/CompanyModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
+const dateFormatMZ_1 = require("../utils/dateFormatMZ");
 const kycDocuments_1 = require("../utils/kycDocuments");
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const concessionPackageService_1 = require("../services/concessionPackageService");
@@ -344,7 +345,7 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 amount: Number(amount),
                 installments: Number(numberOfInstallments),
                 firstDueDate: ((_c = customerAmortizationPlan[0]) === null || _c === void 0 ? void 0 : _c.dueDate)
-                    ? String(customerAmortizationPlan[0].dueDate)
+                    ? (0, dateFormatMZ_1.formatDateMZ)(customerAmortizationPlan[0].dueDate)
                     : null,
             });
         }

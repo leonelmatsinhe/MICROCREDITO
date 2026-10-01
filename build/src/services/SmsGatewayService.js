@@ -21,6 +21,7 @@ const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanMode
 const DebtModel_1 = require("../database/models/DebtModel");
 const CompanyModel_1 = require("../database/models/CompanyModel");
 const BulkSmsProvider_1 = require("./BulkSmsProvider");
+const dateFormatMZ_1 = require("../utils/dateFormatMZ");
 const normalizePhoneForGateway = (phone) => {
     if (!phone)
         return null;
@@ -126,8 +127,10 @@ const enqueueDisbursementSms = (params) => __awaiter(void 0, void 0, void 0, fun
     const customer = yield getCustomerForSms(params.companyId, params.accountNumber);
     if (!customer)
         return { created: false, reason: "customer_not_found" };
-    // Template: max 160 chars, sem caracteres especiais
-    const msg = `Ola ${customer.customerName}. Seu credito de ${safeMoney(params.amount)} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${params.firstDueDate}.` : ''} Obrigado.`;
+    // Template: max 160 chars, sem caracteres especiais. A data de vencimento
+    // vai SEMPRE formatada DD/MM/AAAA (nunca Date.toString() — era isto que
+    // produzia "Vence: Sun Nov 01 2026 00:00:00 GMT+0000...").
+    const msg = `Ola ${customer.customerName}. Seu credito de ${safeMoney(params.amount)} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${(0, dateFormatMZ_1.formatDateMZ)(params.firstDueDate)}.` : ''} Obrigado.`;
     return (0, exports.enqueueSms)({
         companyId: params.companyId,
         loanId: params.loanId,
@@ -242,8 +245,8 @@ const enqueueUpcomingInstallmentAlerts = (params) => __awaiter(void 0, void 0, v
             customerName: customer.customerName,
             phone: normalizedPhone,
             messageType: "upcoming_installment_alert",
-            // Template: max 160 chars, sem caracteres especiais
-            messageBody: `Ola ${customer.customerName}. Sua prestacao de ${safeMoney(installment.installment)} MZN vence em ${installment.dueDate}. Evite juros facendo o pagamento.`,
+            // Template: max 160 chars, sem caracteres especiais — data formatada.
+            messageBody: `Ola ${customer.customerName}. Sua prestacao de ${safeMoney(installment.installment)} MZN vence em ${(0, dateFormatMZ_1.formatDateMZ)(installment.dueDate)}. Evite juros facendo o pagamento.`,
             payloadJson: JSON.stringify({
                 installment_id: installment.id,
                 loan_id: installment.loanId,

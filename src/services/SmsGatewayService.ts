@@ -6,6 +6,7 @@ import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { DebtModel } from "../database/models/DebtModel";
 import { CompanyModel } from "../database/models/CompanyModel";
 import { sendBulkSms, isBulkSmsConfigured, getBulkSmsWalletBalance } from "./BulkSmsProvider";
+import { formatDateMZ } from "../utils/dateFormatMZ";
 
 export type SmsQueueStatus = "queued" | "processing" | "sent" | "failed" | "cancelled";
 
@@ -135,8 +136,10 @@ export const enqueueDisbursementSms = async (params: {
   const customer = await getCustomerForSms(params.companyId, params.accountNumber);
   if (!customer) return { created: false, reason: "customer_not_found" };
 
-  // Template: max 160 chars, sem caracteres especiais
-  const msg = `Ola ${customer.customerName}. Seu credito de ${safeMoney(params.amount)} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${params.firstDueDate}.` : ''} Obrigado.`;
+  // Template: max 160 chars, sem caracteres especiais. A data de vencimento
+  // vai SEMPRE formatada DD/MM/AAAA (nunca Date.toString() — era isto que
+  // produzia "Vence: Sun Nov 01 2026 00:00:00 GMT+0000...").
+  const msg = `Ola ${customer.customerName}. Seu credito de ${safeMoney(params.amount)} MZN foi desembolsado. Parcelas: ${params.installments}. ${params.firstDueDate ? `Vence: ${formatDateMZ(params.firstDueDate)}.` : ''} Obrigado.`;
 
   return enqueueSms({
     companyId: params.companyId,
@@ -279,8 +282,8 @@ export const enqueueUpcomingInstallmentAlerts = async (params: {
       customerName: customer.customerName,
       phone: normalizedPhone,
       messageType: "upcoming_installment_alert",
-      // Template: max 160 chars, sem caracteres especiais
-      messageBody: `Ola ${customer.customerName}. Sua prestacao de ${safeMoney(installment.installment)} MZN vence em ${installment.dueDate}. Evite juros facendo o pagamento.`,
+      // Template: max 160 chars, sem caracteres especiais — data formatada.
+      messageBody: `Ola ${customer.customerName}. Sua prestacao de ${safeMoney(installment.installment)} MZN vence em ${formatDateMZ(installment.dueDate)}. Evite juros facendo o pagamento.`,
       payloadJson: JSON.stringify({
         installment_id: installment.id,
         loan_id: installment.loanId,
