@@ -34,36 +34,20 @@ Documento de referência da implementação pedida pela Direcção (e-mail da Ir
 
 Todas as migrações são idempotentes e correm no arranque do servidor (`src/migrations/index.ts`) — nunca apagam dados.
 
-### Seed automático
-Para **cada** empresa são criadas 5 carteiras:
-
-| Código | Nome | Capital alocado | Taxa | Parceiro / Portal |
-|---|---|---|---|---|
-| `KMAD` | Desembolso no âmbito da parceria com a KMAD | 2.195.000 MT (660.000 já desembolsados) | — | Sim / Sim |
-| `PME_12` | Desembolso no âmbito das PME's – MBR / 12% | sem limite | 12% | Não |
-| `COM_9` | Desembolso no âmbito das Comunidades – MBR – 9% | sem limite | 9% | Não |
-| `INT_8` | Desembolsos no âmbito Interno – 8% | sem limite | 8% | Não |
-| `INT_10` | Desembolsos no âmbito Interno – 10% | sem limite | 10% | Não |
-
-E, na empresa operacional, a conta de teste do parceiro KMAD:
-**`parceiro@kmad.co.mz` / `Mbrm@2025`** (perfil *Parceiro Financiador*, ligada à carteira `KMAD`).
+### Seed automático — REMOVIDO (01/10/2026)
+O seed que criava 5 carteiras por empresa (`KMAD`, `PME_12`, `COM_9`, `INT_8`,
+`INT_10`) e a conta do parceiro `parceiro@kmad.co.mz` foi **removido do código**:
+enhuma migração, arranque do servidor (PM2/Docker/Dokploy) ou variável de
+ambiente cria carteiras. As carteiras existentes na base de dados ficam
+intactas; carteiras novas são criadas exclusivamente pelo Admin na interface
+(*Financiamento → Carteiras e Taxas → Nova Carteira*).
 
 > **Deploy em produção (VPS / Dokploy) — carteiras existentes intocáveis**
 >
-> O seed acima corre **apenas** em empresas que ainda não têm **nenhuma**
-> carteira. Empresas já configuradas (ex.: produção, com carteiras criadas ou
-> editadas pelo Admin) **nunca** são alteradas por deploy ou restart.
-> Para desligar por completo a migração de carteiras (seed, conta KMAD e
-> backfill de taxas), definir a variável de ambiente:
->
-> ```bash
-> SKIP_WALLET_MIGRATION=1
-> ```
->
-> - `deploy.sh` já exporta `SKIP_WALLET_MIGRATION=1` no passo `npm run migrate`.
-> - No **Dokploy**, adicionar `SKIP_WALLET_MIGRATION=1` nos *Environment Variables* do serviço.
-> - Para povoar carteiras num servidor **novo**, correr uma vez:
->   `SKIP_WALLET_MIGRATION=0 npm run migrate`
+> As migrações **nunca criam nem alteram carteiras** (o seed foi removido do
+> código em 01/10/2026). Deploy ou restart do servidor não cria carteiras
+> novas nem mexe nas existentes — sem qualquer variável de ambiente a
+> configurar. Carteiras são criadas e geridas apenas pelo Admin na interface.
 >
 > A pasta `uploads/` (imagens e documentos) também **não é alterada** pelo
 > deploy: está no `.gitignore` e no `.dockerignore` — no Dokploy deve ser um

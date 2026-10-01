@@ -9,7 +9,7 @@
 #
 # A base de dados é MySQL externo (variáveis DATABASE_*); nada de DB dentro da
 # imagem. As migrações correm no arranque do servidor (src/app.ts) e são
-# idempotentes — nunca tocam nas carteiras existentes se SKIP_WALLET_MIGRATION=1.
+# idempotentes — NUNCA criam nem alteram carteiras de financiadores.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: build do frontend ──────────────────────────────────────────────

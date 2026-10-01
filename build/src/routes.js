@@ -45,8 +45,10 @@ const SuperAdminController_1 = require("./controllers/SuperAdminController");
 const cashRoutes_1 = require("./routes/cashRoutes");
 // CARTEIRA REAL — rotas das contas bancárias com saldo (FNB, BCI, BIM, ...)
 const bankAccountRoutes_1 = require("./routes/bankAccountRoutes");
-// AI BOT MAISMOLA — assistente read-only (Groq tool-calling)
-const aiBotRoutes_1 = require("./routes/aiBotRoutes");
+// AI BOT MAISMOLA — DESACTIVADO (assistente de IA removido do sistema).
+// O módulo continua em src/modules/aiBot e src/routes/aiBotRoutes.ts,
+// mas a rota NÃO é registada para não expor /api/ai-bot.
+// import { aiBotRoutes } from "./routes/aiBotRoutes";
 const NotificationController_1 = require("./controllers/NotificationController");
 const DashboardController_1 = require("./controllers/DashboardController");
 const checkCashRegisterOpen_1 = require("./middlewares/checkCashRegisterOpen");
@@ -69,8 +71,8 @@ exports.routes = routes;
 routes.use(cashRoutes_1.cashRoutes);
 // CARTEIRA REAL — sub-router das contas bancárias (accounts + bank_transactions)
 routes.use(bankAccountRoutes_1.bankAccountRoutes);
-// AI BOT — sub-router do assistente de IA (só leitura; identidade via JWT)
-routes.use(aiBotRoutes_1.aiBotRoutes);
+// AI BOT — DESACTIVADO: rota /api/ai-bot removida (assistente de IA desligado).
+// routes.use(aiBotRoutes);
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
 routes.get("/logo/:image", (req, res) => {
     // Suporta tanto "filename" como "/documents/filename"

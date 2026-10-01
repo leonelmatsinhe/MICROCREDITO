@@ -84,13 +84,12 @@ npx tsc
 echo "  -> Backend compilado."
 
 # 4.1 Aplicar migracoes de base de dados (idempotentes; tambem correm no arranque do servidor)
-# SKIP_WALLET_MIGRATION=1: o deploy NUNCA cria/altera carteiras de credito
-# existentes (seed KMAD/PME/COM/INT, conta do parceiro KMAD e backfill de taxas
-# ficam desligados). Para povoar carteiras num servidor novo, correr uma vez:
-#   SKIP_WALLET_MIGRATION=0 npm run migrate
+# As migracoes NUNCA criam nem alteram carteiras de credito — o seed
+# (KMAD/PME/COM/INT + conta do parceiro) foi REMOVIDO do codigo.
+# Carteiras existentes ficam intactas; novas sao criadas apenas pelo Admin na interface.
 echo ""
-echo "[4.1/8] A aplicar migracoes de base de dados (carteiras existentes intocaveis)..."
-SKIP_WALLET_MIGRATION=1 npm run migrate
+echo "[4.1/8] A aplicar migracoes de base de dados (carteiras intocaveis)..."
+npm run migrate
 echo "  -> Migracoes aplicadas (carteiras existentes preservadas)."
 
 # 5. Compilar frontend (Vite -> public-v2/)

@@ -760,15 +760,11 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // ANALÍTICO (financing_wallets). Esta tabela NÃO guarda dinheiro físico —
   // serve de base de análise e para separar o relatório de cada financiador.
   //
-  // SEED OPT-IN — o ARRANQUE (app.ts/PM2/Docker) NUNCA povoa carteiras:
-  // na produção as carteiras já foram migradas na base de dados e são geridas
-  // pelo Admin. Só corre o seed quando alguém pede explicitamente, uma vez,
-  // num servidor novo e vazio:
-  //   WALLET_MIGRATION=1 npm run migrate
-  // SKIP_WALLET_MIGRATION=1 mantém-se aceite (compatibilidade com deploy.sh).
-  const walletMigrationDisabled =
-    String(process.env.SKIP_WALLET_MIGRATION || "").trim() === "1"
-    || !["1", "true"].includes(String(process.env.WALLET_MIGRATION || "").trim().toLowerCase());
+  // NENHUM SEED — decisão do dono do sistema (01/10/2026): nenhuma migração,
+  // arranque (app.ts/PM2/Docker) ou variável de ambiente cria carteiras.
+  // O bloco de seed (KMAD/PME_12/COM_9/INT_8/INT_10 + conta do parceiro KMAD)
+  // foi REMOVIDO do código. Carteiras só nascem pela interface do Admin
+  // (POST /api/financing-wallets); as existentes na base de dados ficam intactas.
   await createTableIfMissing(
     "financing_wallets",
     `CREATE TABLE IF NOT EXISTS financing_wallets (
@@ -924,139 +920,7 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   await addForeignKeyIfMissing("amortization_loans", "fk_amortization_wallet", "walletId", "financing_wallets", "id", "SET NULL", results);
   await addForeignKeyIfMissing("recibos", "fk_recibos_company", "companyId", "companies", "id", "RESTRICT", results);
 
-  // --- SEED: 5 carteiras analíticas para cada empresa (idempotente) ---
-  // KMAD é a única carteira de parceiro externo com portal; as restantes são
-  // fundos próprios MBRM (PME 12%, Comunidades 9%, Interno 8% e 10%).
-  const WALLET_SEED: Array<[string, string, string, string | null, number, string | null, number | null, number, string, number]> = [
-    [
-      "KMAD",
-      "Desembolso no âmbito da parceria com a KMAD",
-      "Clientes financiados em parceria com a KMAD. Capital inicial 2.195.000 MT, dos quais 660.000 MT já desembolsados. Refere-se aos clientes financiados em parceria com a KMAD.",
-      "KMAD",
-      1,
-      "relatorios@kmad.co.mz",
-      2195000,
-      660000,
-      "blue",
-      1,
-    ],
-    ["PME_12", "Desembolso no âmbito das PME's - MBR / 12%", "Fundo próprio MBRM para PME's - Taxa 12%", null, 0, null, null, 0, "orange", 0],
-    ["COM_9", "Desembolso no âmbito das Comunidades - MBR - 9%", "Fundo social (taxa bonificada) para comunidades - Taxa 9%", null, 0, null, null, 0, "green", 0],
-    ["INT_8", "Desembolsos no âmbito Interno - 8%", "Fundo interno taxa 8% - funcionários/colaboradores", null, 0, null, null, 0, "grey", 0],
-    ["INT_10", "Desembolsos no âmbito Interno - 10%", "Fundo interno taxa 10% - geral", null, 0, null, null, 0, "grey", 0],
-  ];
-  // Taxa esperada por código de carteira (usada também para pré-seleccionar
-  // taxas de juro no formulário de crédito).
-  const WALLET_TAX: Record<string, number | null> = {
-    KMAD: null,
-    PME_12: 0.12,
-    COM_9: 0.09,
-    INT_8: 0.08,
-    INT_10: 0.1,
-  };
-  try {
-    if (!walletMigrationDisabled && await hasTable("financing_wallets")) {
-      const companies: any[] = (await db.query("SELECT id FROM companies"))[0] as any[];
-      // Só povoa empresas que AINDA NÃO têm NENHUMA carteira — a carteira de
-      // uma empresa já configurada pelo Admin (ex.: produção) fica intacta
-      // mesmo sem SKIP_WALLET_MIGRATION.
-      const empresasSemCarteiras = new Set(
-        ((await db.query(
-          `SELECT c.id FROM companies c
-            WHERE NOT EXISTS (SELECT 1 FROM financing_wallets f WHERE f.companyId = c.id)`
-        ))[0] as any[]).map((row: any) => Number(row.id))
-      );
-      let seededWallets = 0;
-      for (const company of companies as any[]) {
-        const companyId = Number(company.id);
-        if (!empresasSemCarteiras.has(companyId)) continue;
-        for (const [codigo, nome, descricao, parceiro, isParceiro, email, alocado, inicial, cor, portal] of WALLET_SEED) {
-          const [existing]: any = await db.query(
-            "SELECT id FROM financing_wallets WHERE companyId = ? AND codigo = ? LIMIT 1",
-            { replacements: [companyId, codigo] }
-          );
-          if ((existing as any[]).length > 0) continue;
-          await db.query(
-            `INSERT INTO financing_wallets
-               (companyId, codigo, nome, descricao, tipo, parceiro_nome, is_parceiro_externo,
-                parceiro_email, allocated_amount, initial_disbursed_amount, taxa_juro,
-                cor_badge, is_ativa, tem_portal, portal_ativo, created_at, updated_at)
-             VALUES (?, ?, ?, ?, 'FINANCIAMENTO', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, NOW(), NOW())`,
-            {
-              replacements: [
-                companyId, codigo, nome, descricao, parceiro, isParceiro,
-                email, alocado, inicial, WALLET_TAX[codigo], cor, portal, portal,
-              ],
-            }
-          );
-          seededWallets += 1;
-        }
-      }
-      if (seededWallets > 0) {
-        results.applied += 1;
-        console.log(`[Migration] ${seededWallets} carteira(s) de financiamento criadas (KMAD, PME_12, COM_9, INT_8, INT_10)`);
-      } else {
-        results.skipped += 1;
-      }
-
-      // --- SEED: utilizador parceiro financiador (userRole 4) para a KMAD ---
-      // Apenas na empresa operacional (a que tem créditos); as restantes
-      // empresas criam o seu parceiro pelo Admin.
-      let partnerCompanyId: number | null = null;
-      try {
-        const [byLoans]: any = await db.query(
-          "SELECT companyId, COUNT(*) AS total FROM customer_loans GROUP BY companyId ORDER BY total DESC LIMIT 1"
-        );
-        partnerCompanyId = Number((byLoans as any[])[0]?.companyId) || null;
-      } catch { /* tabela pode não existir */ }
-      if (!partnerCompanyId) {
-        const [byName]: any = await db.query(
-          "SELECT id FROM companies WHERE companyName LIKE '%Mola%' ORDER BY id ASC LIMIT 1"
-        );
-        partnerCompanyId = Number((byName as any[])[0]?.id) || Number((companies as any[])[0]?.id) || null;
-      }
-
-      if (partnerCompanyId && !walletMigrationDisabled) {
-        const [walletRows]: any = await db.query(
-          "SELECT id, tem_portal FROM financing_wallets WHERE companyId = ? AND codigo = 'KMAD' LIMIT 1",
-          { replacements: [partnerCompanyId] }
-        );
-        const kmadWalletId = Number((walletRows as any[])[0]?.id) || null;
-        if (kmadWalletId) {
-          const [partnerUser]: any = await db.query(
-            "SELECT id FROM users WHERE email = 'parceiro@kmad.co.mz' AND companyId = ? LIMIT 1",
-            { replacements: [partnerCompanyId] }
-          );
-          if ((partnerUser as any[]).length === 0) {
-            const bcryptjs = require("bcryptjs");
-            const hash = bcryptjs.hashSync("Mbrm@2025", 10);
-            await db.query(
-              `INSERT INTO users
-                 (name, email, password, updatedPassword, phone, companyId, status, userRole,
-                  walletId, is_parceiro, is_active, credentialsSent, createdAt, updatedAt)
-               VALUES
-                 ('Parceiro KMAD', 'parceiro@kmad.co.mz', ?, 0, '+258840000000', ?, 1, 4,
-                  ?, 1, 1, 0, NOW(), NOW())`,
-              { replacements: [hash, partnerCompanyId, kmadWalletId] }
-            );
-            results.applied += 1;
-            console.log(`[Migration] Parceiro financiador KMAD criado (parceiro@kmad.co.mz, userRole 4) na empresa ${partnerCompanyId}`);
-          } else {
-            // Garante que uma conta já existente tem a carteira e o papel correctos.
-            await db.query(
-              `UPDATE users SET userRole = 4, walletId = ?, is_parceiro = 1
-               WHERE email = 'parceiro@kmad.co.mz' AND companyId = ?`,
-              { replacements: [kmadWalletId, partnerCompanyId] }
-            );
-            results.skipped += 1;
-          }
-        }
-      }
-    }
-  } catch (error: any) {
-    results.errors.push(`SEED carteiras financiamento: ${error?.message || error}`);
-    console.error("[Migration] Erro ao criar carteiras de financiamento:", error?.message || error);
-  }
+  // (SEED de carteiras REMOVIDO — ver nota acima. Nada popula financing_wallets.)
 
   // --- NORMALIZAÇÃO DE CHARSET (legado latin1 → utf8mb4) ---
   // As tabelas criadas no início do projecto ficaram em latin1_swedish_ci. Com
@@ -1095,91 +959,8 @@ export const runMigrations = async (): Promise<MigrationResult> => {
     console.error("[Migration] Erro ao normalizar o charset:", error?.message || error);
   }
 
-  // --- BACKFILL: origem do capital das taxas de juro legadas ---
-  // As taxas criadas antes das carteiras analíticas ficaram sem origem. Aqui
-  // ligam-se por palavra-chave do nome a uma carteira de financiamento e, em
-  // último recurso, à conta de desembolso principal da empresa. Corre apenas
-  // uma vez por empresa: assim que existir uma taxa vinculada não volta a
-  // mexer, para respeitar a escolha do Admin no formulário de taxas.
-  try {
-    // Backfill de taxas → carteiras: também respeita SKIP_WALLET_MIGRATION
-    // (deploy não altera a vinculação existente em produção).
-    if (!walletMigrationDisabled && await hasTable("financing_wallets") && await hasTable("interest_rates")) {
-      const [jaVinculadas]: any = await db.query(
-        "SELECT DISTINCT companyId FROM interest_rates WHERE walletId IS NOT NULL OR accountId IS NOT NULL"
-      );
-      const empresasTratadas = new Set((jaVinculadas as any[]).map((row: any) => Number(row.companyId)));
-
-      const [pendentes]: any = await db.query(
-        `SELECT ir.id, ir.companyId, ir.name
-           FROM interest_rates ir
-          WHERE ir.walletId IS NULL AND ir.accountId IS NULL
-          ORDER BY ir.companyId, ir.id`
-      );
-
-      // Carteira analítica sugerida pelo nome da taxa (ordem importa).
-      const REGRAS_CARTEIRA: Array<[RegExp, string]> = [
-        [/comunidade/i, "COM_9"],
-        [/pme|empres[aá]rio/i, "PME_12"],
-        [/fornecedor/i, "INT_10"],
-        [/intern|trabalhador|autom[oó]vel|colaborador/i, "INT_8"],
-      ];
-      const carteirasPorEmpresa = new Map<number, Map<string, number>>();
-      const contasDesembolso = new Map<number, number>();
-      let vinculadas = 0;
-
-      for (const taxa of pendentes as any[]) {
-        const companyId = Number(taxa.companyId);
-        if (empresasTratadas.has(companyId)) continue;
-
-        let walletId: number | null = null;
-        const nome = String(taxa.name || "");
-        const regra = REGRAS_CARTEIRA.find(([pattern]) => pattern.test(nome));
-        if (regra) {
-          if (!carteirasPorEmpresa.has(companyId)) {
-            const [rows]: any = await db.query(
-              "SELECT id, codigo FROM financing_wallets WHERE companyId = ? AND is_ativa = 1",
-              { replacements: [companyId] }
-            );
-            const mapa = new Map<string, number>();
-            (rows as any[]).forEach((row: any) => mapa.set(String(row.codigo), Number(row.id)));
-            carteirasPorEmpresa.set(companyId, mapa);
-          }
-          walletId = carteirasPorEmpresa.get(companyId)?.get(regra[1]) || null;
-        }
-
-        let accountId: number | null = null;
-        if (!walletId) {
-          if (!contasDesembolso.has(companyId)) {
-            const [rows]: any = await db.query(
-              `SELECT id FROM accounts
-                WHERE companyId = ? AND purpose IN ('DESEMBOLSO', 'MISTO')
-                ORDER BY is_default_desembolso DESC, id ASC LIMIT 1`,
-              { replacements: [companyId] }
-            );
-            contasDesembolso.set(companyId, Number((rows as any[])[0]?.id) || 0);
-          }
-          accountId = contasDesembolso.get(companyId) || null;
-        }
-
-        if (!walletId && !accountId) continue;
-        await db.query("UPDATE interest_rates SET walletId = ?, accountId = ? WHERE id = ?", {
-          replacements: [walletId, accountId, Number(taxa.id)],
-        });
-        vinculadas += 1;
-      }
-
-      if (vinculadas > 0) {
-        results.applied += 1;
-        console.log(`[Migration] ${vinculadas} taxa(s) de juro ligadas à origem do capital (carteira ou conta de desembolso)`);
-      } else {
-        results.skipped += 1;
-      }
-    }
-  } catch (error: any) {
-    results.errors.push(`BACKFILL taxas de juro: ${error?.message || error}`);
-    console.error("[Migration] Erro ao vincular taxas de juro:", error?.message || error);
-  }
+  // (BACKFILL de taxas → carteiras REMOVIDO: migrações nunca tocam em carteiras
+  // nem nas suas vinculações; a origem do capital é gerida pelo Admin na interface.)
 
   // ==================== PAGAMENTOS V2 — CORE BANCÁRIO ====================
   // Idempotência, auditoria append-only, alocação de pagamentos, motor de
