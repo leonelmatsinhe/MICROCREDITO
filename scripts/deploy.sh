@@ -72,6 +72,7 @@ echo ""
 echo "[3.1/8] A instalar dependencias do frontend..."
 cd web-app-v2
 npm install
+cd "$PROJECT_ROOT"
 echo "  -> Dependencias do frontend atualizadas."
 
 # 4. Compilar backend (TypeScript -> build/)
