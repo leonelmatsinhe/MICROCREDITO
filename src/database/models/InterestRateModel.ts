@@ -21,7 +21,10 @@ export const InterestRateModel = db.define("interest_rates", {
     allowNull: false,
   },
   administrativeFee: {
-    type: DataTypes.DECIMAL(15, 2),
+    // Fracção da taxa administrativa com 6 decimais: 0.0001 = 0.01%.
+    // DECIMAL(15,6) guarda percentagens pequenas sem perder precisão
+    // (com (15,2) um 0,01% era arredondado a zero).
+    type: DataTypes.DECIMAL(15, 6),
     allowNull: false,
   },
   walletId: {

@@ -81,6 +81,36 @@ const sendError = (res: Response, error: any, fallback: string) => {
  * Lista contas da carteira (para a página de gestão e para os q-select dos
  * forms de desembolso/pagamento).
  */
+/**
+ * GET /api/bank-accounts/reembolso?paymentMethod=CASH|BANK|MPESA
+ * Contas válidas como DESTINO de pagamento (REEMBOLSO/MISTO/caixa físico),
+ * ordenadas por prioridade do método. Usado pelo modal "Registar Pagamento".
+ * NÃO devolve contas de DESEMBOLSO/TAXAS/RESERVA (contas de despesa/operação).
+ */
+export const reembolsoAccounts = async (req: Request, res: Response) => {
+  try {
+    const decoded: any = jwt.verify(
+      (req.headers.authorization || "").split(" ")[1] || "",
+      process.env.APP_SECRET + ""
+    );
+    let companyId = Number(decoded?.companyId) || 0;
+    if (!companyId && decoded?.id) {
+      const { UserModel } = await import("../database/models/UserModel");
+      const user: any = await UserModel.findByPk(decoded.id, { attributes: ["companyId"] });
+      companyId = Number(user?.getDataValue?.("companyId") ?? user?.companyId) || 0;
+    }
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const { getReembolsoAccounts } = await import("../services/bankAccountResolver");
+    const accounts = await getReembolsoAccounts(companyId, String(req.query.paymentMethod || ""));
+    return res.status(200).json({ success: true, result: accounts });
+  } catch (error: any) {
+    console.error("[bank-accounts/reembolso] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao listar contas de destino." });
+  }
+};
+
 export const index = async (req: Request, res: Response) => {
   try {
     const { companyId } = await resolveIdentity(req);

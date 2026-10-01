@@ -81,6 +81,36 @@ const bootstrap = async () => {
   app.listen(PORT, () => {
     console.log(`MBR Server is running on PORT ${PORT}`);
 
+    // JOBS DO MÓDULO DE PAGAMENTOS V2 — accrual diário de mora (late_accruals)
+    // na janela 00:05 com catch-up horário idempotente (INSERT IGNORE por dia).
+    import("./jobs/paymentJobsIndex")
+      .then(({ startPaymentJobs }) => startPaymentJobs())
+      .catch((jobsError: any) =>
+        console.error("[Jobs] Falha ao arrancar jobs de pagamentos:", jobsError?.message || jobsError)
+      );
+
+    // MIGRAÇÃO DE RECIBOS — recibos antigos (pré-backend-authoritative) sem
+    // pdf_path ganham PDF gerado no servidor (pdfkit), uma vez por arranque.
+    import("./jobs/regenerateOldReceipts")
+      .then(({ startReciboMigrationJob }) => startReciboMigrationJob())
+      .catch((jobError: any) =>
+        console.error("[Jobs] Falha ao arrancar migração de recibos:", jobError?.message || jobError)
+      );
+
+    // PACOTE DE CONCESSÃO — backfill: créditos desembolsados sem pacote
+    // (desembolsados antes da funcionalidade) ganham o pacote imutável.
+    import("./services/concessionPackageService")
+      .then(({ generateMissingPackages }) =>
+        setTimeout(() => {
+          generateMissingPackages(25).then((n) =>
+            console.log(`[Concessao] Backfill: ${n} pacote(s) gerado(s)`)
+          ).catch((e: any) => console.error("[Concessao] Backfill falhou:", e?.message || e));
+        }, 40 * 1000)
+      )
+      .catch((jobError: any) =>
+        console.error("[Jobs] Falha ao arrancar backfill de concessão:", jobError?.message || jobError)
+      );
+
     // Fila de SMS (BulkSMM): processar mensagens pendentes a cada 60s.
     // Sem BULKSMS_API_KEY no .env, a fila permanece intacta (sem efeitos).
     setInterval(() => {

@@ -164,10 +164,17 @@ const pdf = async (req: Request, res: Response) => {
     }
 
     const download = String(req.query.download || "") === "1";
+    // ETag = hash AT do recibo: se o selo não mudou, o PDF não mudou —
+    // browsers evitam re-baixar (304) e o QR continua a validar o mesmo ficheiro.
+    const etag = `"${String(detalhe.recibo.hash_at || detalhe.recibo.numero).slice(0, 40)}"`;
+    res.setHeader("ETag", etag);
+    if (req.headers["if-none-match"] === etag) return res.status(304).end();
     res.setHeader("Content-Type", "application/pdf");
+    // Nome amigável: Recibo_REC-2026-00061.pdf
+    const friendly = `Recibo_${String(detalhe.recibo.numero).replace(/[^A-Za-z0-9-]/g, "_")}.pdf`;
     res.setHeader(
       "Content-Disposition",
-      `${download ? "attachment" : "inline"}; filename="${path.basename(filePath)}"`
+      `${download ? "attachment" : "inline"}; filename="${friendly}"`
     );
     return res.sendFile(filePath);
   } catch (error: any) {
@@ -361,4 +368,57 @@ const lookup = async (req: Request, res: Response) => {
   }
 };
 
-export { gerar, byLoan, byCustomer, findOne, pdf, validar, enviar, lookup };
+/**
+ * GET /api/tranzactions/:id/recibo — JSON com o recibo de um pagamento.
+ * O frontend usa isto para abrir/baixar o PDF do backend (nunca gera PDF).
+ */
+const reciboByTranzaction = async (req: Request, res: Response) => {
+  try {
+    const tranzactionId = Number(req.params.id);
+    const recibo: any = await ReciboModel.findOne({
+      where: { tranzactionId },
+      raw: true,
+    });
+    if (!recibo) {
+      return res.status(404).json({ success: false, message: "Este pagamento não tem recibo emitido." });
+    }
+    if (!ensureCompanyAccess(req, res, Number(recibo.companyId))) return;
+
+    // Garante selo + PDF (recibos antigos podem chegar aqui sem pdf_path).
+    const selado = recibo.hash_at ? recibo : await ensureReciboSeal(Number(recibo.id));
+    let pdfPath = recibo.pdf_url;
+    if (pdfPath) {
+      const abs = path.join(process.cwd(), "uploads", "docs", path.basename(String(pdfPath)));
+      if (!fs.existsSync(abs)) pdfPath = await renderReciboPdf(Number(recibo.id));
+    } else {
+      pdfPath = await renderReciboPdf(Number(recibo.id));
+    }
+    if (pdfPath) {
+      const { ReciboModel } = await import("../database/models/ReciboModel");
+      await ReciboModel.update({ pdf_url: pdfPath }, { where: { id: Number(recibo.id) } });
+    }
+
+    // Resposta enriquecida: serve tanto para o botão "Baixar Recibo" (pdf_url)
+    // como para o visualizador do frontend (ReciboViewerDialog precisa de
+    // numero/customer_name/valor_pago/hash_at sem um segundo pedido).
+    const reciboId = Number(recibo.id);
+    return res.status(200).json({
+      success: true,
+      result: {
+        ...recibo,
+        id: reciboId,
+        recibo_id: reciboId,
+        numero: String(recibo.numero),
+        hash: String(selado?.hash_at || recibo.hash_at || ""),
+        pdf_url: `/api/recibos/${reciboId}/pdf`,
+        qr_url: recibo.qr_code_url || null,
+        status: recibo.status || "EMITIDO",
+      },
+    });
+  } catch (error: any) {
+    console.error("[Recibo] Erro ao resolver recibo do pagamento:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao obter o recibo do pagamento." });
+  }
+};
+
+export { gerar, byLoan, byCustomer, findOne, pdf, validar, enviar, lookup, reciboByTranzaction };

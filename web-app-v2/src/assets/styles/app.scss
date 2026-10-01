@@ -101,6 +101,14 @@ body.body--dark .text-grey-8 {
   font-weight: 400 !important;
 }
 
+// Texto de alto contraste no modo claro: os cinzas claros (text-grey-5/6)
+// ficam ofuscados sobre o fundo branco. Aplicar `app-text-dark` a qualquer
+// elemento força o quase-preto apenas no modo claro — no modo dark a classe
+// é inerte e mantêm-se a cor herdada (ou as regras dark acima).
+body.body--light .app-text-dark {
+  color: $gray-900 !important;
+}
+
 // Links
 a {
   color: #0D7C3D;

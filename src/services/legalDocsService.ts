@@ -229,7 +229,12 @@ const drawTable = (ctx: Ctx, opts: TableOpts): number => {
   const drawRow = (cells: Cell[], rowY: number, bg: string | null): number => {
     const h = rowHeight(cells);
     if (rowY + h > contentBottom) {
+      // GUARD anti-loop: se a página actual não for a última do buffer, não há
+      // mais linhas esperadas — o addPage() só pagina UMA vez por linha. Sem
+      // isto, um contentBottom desactualizado (página trocada fora do drawTable)
+      // gerava páginas até esgotar a heap (OOM).
       doc.addPage();
+      ctx.contentBottom = doc.page.height - doc.page.margins.bottom - (doc.page.margins.left === doc.page.margins.right ? 20 : 20);
       rowY = doc.page.margins.top;
     }
     let x = opts.x;
@@ -299,26 +304,31 @@ const drawTable = (ctx: Ctx, opts: TableOpts): number => {
   return y;
 };
 
-/** Rodapé em todas as páginas: "Documento processado por computador" | "Empresa | Pág. i/n". */
-const drawFooters = (ctx: Ctx): void => {
+/** Rodapé em todas as páginas — TEXTO SIMPLES (sem QR nem hash, que ficam
+ *  no metadado/QR do pacote e não sobre o conteúdo): esquerda "Documento
+ *  processado por computador em dd/mm/aaaa hh:mm", direita "Empresa | Pág. i/n". */
+const drawFooters = (ctx: Ctx, seal?: { hash?: string; qrPath?: string | null; emitidoEm?: Date }): void => {
   const { doc, company } = ctx;
   const range = doc.bufferedPageRange();
+  const emit = seal?.emitidoEm || new Date();
+  const stamp = `Documento processado por computador em ${fmtDateShort(emit)} ${emit.toTimeString().slice(0, 5)}`;
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
     const y = doc.page.height - doc.page.margins.bottom - 12;
     doc.font("Helvetica").fontSize(7).fillColor(COLORS.grey);
-    doc.text("Documento processado por computador", doc.page.margins.left, y, { lineBreak: false });
+    doc.text(stamp, doc.page.margins.left, y, { lineBreak: false });
     const label = `${company.companyName || ""} | Pág. ${i - range.start + 1}/${range.count}`;
     const labelW = doc.widthOfString(label);
     doc.text(label, doc.page.width - doc.page.margins.right - labelW, y, { lineBreak: false });
   }
 };
 
-/** Parágrafo justificado simples (fontSize 8, como no pdfmake). */
+/** Parágrafo justificado simples — line-height 1.6 (legibilidade pedida). */
 const para = (ctx: Ctx, text: string, opts: { size?: number; align?: Align; gap?: number } = {}): void => {
   const { doc } = ctx;
-  doc.font("Helvetica").fontSize(opts.size ?? 8).fillColor("#000000");
-  doc.text(text, { width: ctx.right - ctx.left, align: opts.align || "justify", lineGap: 1 });
+  const size = opts.size ?? 8;
+  doc.font("Helvetica").fontSize(size).fillColor("#000000");
+  doc.text(text, { width: ctx.right - ctx.left, align: opts.align || "justify", lineGap: size * 0.6 });
   if (opts.gap) doc.moveDown(opts.gap);
 };
 
@@ -330,7 +340,7 @@ const numberedPara = (ctx: Ctx, parts: (string | RichPart)[]): void => {
   all.forEach((part, idx) => {
     doc.font(part.bold ? "Helvetica-Bold" : "Helvetica").fontSize(8).fillColor(part.color || "#000000");
     const isLast = idx === all.length - 1;
-    doc.text(part.text, { width: ctx.right - ctx.left, align: "justify", continued: !isLast, lineGap: 1 });
+    doc.text(part.text, { width: ctx.right - ctx.left, align: "justify", continued: !isLast, lineGap: 8 * 0.6 });
   });
   doc.moveDown(0.2);
 };
@@ -408,36 +418,92 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
   });
   y += 10;
 
-  // RESUMO DO CRÉDITO
+  // RESUMO DO CRÉDITO (+ TAEG — custo total anualizado do crédito)
   const totalInterest = amortizations.reduce((s, r) => s + (parseFloat(r.rateAmount) || 0), 0);
   const contractTotal = amortizations.reduce((s, r) => s + (parseFloat(r.installment) || 0), 0);
+  // TAEG: taxa mensal implícita do fluxo (capital → 18 prestações) anualizada.
+  // Bisección em i: Σ prestacao/(1+i)^k = capital. (2% a.m. ≈ 26,82% a.a.)
+  const capital = parseFloat(loan.getDataValue("amount")) || 0;
+  const nInst = amortizations.length;
+  let taegAnual: number | null = null;
+  if (capital > 0 && nInst > 0) {
+    const pv = (i: number) => amortizations.reduce((s, r, idx) => s + (parseFloat(r.installment) || 0) / Math.pow(1 + i, idx + 1), 0);
+    let lo = 0.0000001, hi = 1;
+    for (let k = 0; k < 80; k++) {
+      const mid = (lo + hi) / 2;
+      if (pv(mid) > capital) lo = mid; else hi = mid;
+    }
+    const iMensal = (lo + hi) / 2;
+    taegAnual = Math.round((Math.pow(1 + iMensal, 12) - 1) * 10000) / 100; // % a.a.
+  }
   doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
   doc.text("RESUMO DO CRÉDITO", left, y, { lineBreak: false });
   y += 9 * 1.3 + 5;
-  const cw = width / 5;
+  const cw = width / 6;
   y = drawTable(ctx, {
-    x: left, y, widths: [cw, cw, cw, cw, cw], aligns: ["center", "center", "center", "center", "center"],
+    x: left, y, widths: [cw, cw, cw, cw, cw, cw], aligns: ["center", "center", "center", "center", "center", "center"],
     rows: [
-      ["Capital Financiado", "Taxa de Juros", "Nº Prestações", "Total Juros", "Total Dívida"].map(t => plainTextCell(t, { bold: true, fontSize: 7, color: COLORS.grey, fillColor: "#fafafa" })),
+      ["Capital Financiado", "Taxa de Juros", "Nº Prestações", "Total Juros", "Total Dívida", "TAEG (a.a.)"].map(t => plainTextCell(t, { bold: true, fontSize: 7, color: COLORS.grey, fillColor: "#fafafa" })),
       [
         plainTextCell(fmtMoney(loan.getDataValue("amount")), { bold: true, fontSize: 9 }),
         plainTextCell(`${((parseFloat(loan.getDataValue("interestRate")) || 0) * 100).toFixed(1)}%`, { bold: true, fontSize: 9 }),
         plainTextCell(String(loan.getDataValue("numberOfInstallments") || 0), { bold: true, fontSize: 9 }),
         plainTextCell(fmtMoney(totalInterest), { bold: true, fontSize: 9 }),
         plainTextCell(fmtMoney(contractTotal), { bold: true, fontSize: 9, color: COLORS.red }),
+        plainTextCell(taegAnual != null ? `${taegAnual.toLocaleString("pt-MZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%` : "—", { bold: true, fontSize: 9, color: COLORS.navy }),
       ],
     ],
     padY: 4, outerLine: COLORS.navy, outerWidth: 1,
   });
   y += 10;
 
-  // SITUAÇÃO ACTUAL
-  const installmentTotalDue = (inst: any) =>
-    Math.round((Math.max(0, Number(inst?.installment || 0) - Number(inst?.paidAmount || 0)) + Number(inst?.latePaymentInterest || 0)) * 100) / 100;
+  // ── BASE DO SALDO (PADRÃO MBR): saldo = CAPITAL REMANESCENTE por linha ──
+  // Nunca se usa o remainingBalance da BD (pode vir de planos antigos com a
+  // fórmula da dívida total): recalcula-se a partir do capital financiado.
+  // A soma da amortização TEM de fechar no capital exacto — a diferença de
+  // arredondamento (± cêntimos) vai para a ÚLTIMA prestação (amortização pura
+  // residual) e o saldo da última linha fecha SEMPRE em 0,00.
+  const amortizacaoOf = (row: any) => {
+    const prestacao = parseFloat(row.installment) || 0;
+    const juros = parseFloat(row.rateAmount) || 0;
+    return row.amortization != null ? parseFloat(row.amortization) || 0 : Math.max(0, Math.round((prestacao - juros) * 100) / 100);
+  };
+  const capitalExato = Math.round((parseFloat(loan.getDataValue("amount")) || 0) * 100) / 100;
+  let amortList = amortizations.map(amortizacaoOf);
+  const somaAtual = Math.round(amortList.reduce((s, v) => s + v, 0) * 100) / 100;
+  const diff = Math.round((capitalExato - somaAtual) * 100) / 100;
+  if (Math.abs(diff) >= 0.01 && amortList.length > 0) {
+    amortList[amortList.length - 1] = Math.round((amortList[amortList.length - 1] + diff) * 100) / 100;
+  }
+  // Saldo capital por linha: capital − Σ amortizações das linhas anteriores;
+  // a última linha é forçada a 0,00 (fecha o plano ao cêntimo).
+  let saldoCapitalLinha = capitalExato;
+  const saldoPorLinha: number[] = amortList.map((amort, idx) => {
+    saldoCapitalLinha = Math.max(0, Math.round((saldoCapitalLinha - amort) * 100) / 100);
+    return idx === amortList.length - 1 ? 0 : saldoCapitalLinha;
+  });
+
+  // SITUAÇÃO ACTUAL — DINÂMICA (pagamentos reais, mora, atraso, próximo venc.)
   const totalPaid = amortizations.reduce((s, r) => s + (parseFloat(r.paidAmount) || 0), 0);
-  const remaining = amortizations.filter(r => Number(r.status) !== 1).reduce((s, r) => s + installmentTotalDue(r), 0);
+  // Saldo Remanescente = CAPITAL remanescente (padrão MBR): capital financiado
+  // menos o capital já pago (na linha, os juros são pagos primeiro e só depois
+  // o capital, limitado à amortização dessa linha). 0,00 quando todas pagas.
+  const capitalPago = amortizations.reduce((s, r, idx) => {
+    const juros = parseFloat(r.rateAmount) || 0;
+    const pago = parseFloat(r.paidAmount) || 0;
+    const amort = amortList[idx] ?? amortizacaoOf(r);
+    return s + Math.max(0, Math.min(amort, pago - juros));
+  }, 0);
+  const remaining = Math.max(0, Math.round((capitalExato - capitalPago) * 100) / 100);
   const paidCount = amortizations.filter(r => Number(r.status) === 1).length;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const atrasadas = amortizations.filter(r => Number(r.status) !== 1 && String(r.dueDate || "").slice(0, 10) < hoje);
   const pendingCount = amortizations.length - paidCount;
+  const moraTotal = amortizations.reduce((s, r) => s + (Number(r.status) === 1 ? 0 : parseFloat(r.latePaymentInterest) || 0), 0);
+  const proximoVencimento = amortizations
+    .filter(r => Number(r.status) !== 1)
+    .map(r => String(r.dueDate || "").slice(0, 10))
+    .sort()[0] || null;
 
   doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
   doc.text("SITUAÇÃO ACTUAL", left, y, { lineBreak: false });
@@ -457,45 +523,107 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
     ],
     padY: 4, outerLine: COLORS.navy, outerWidth: 1,
   });
+  y += 6;
+  // Segunda linha da situação: atraso, mora e próximo vencimento
+  // (guard: se não couber na página, segue na seguinte — Y absoluto)
+  if (y > ctx.contentBottom) {
+    doc.addPage();
+    ctx.contentBottom = doc.page.height - doc.page.margins.bottom - 20;
+    y = doc.page.margins.top;
+  }
+  y = drawTable(ctx, {
+    x: left, y, widths: [sw, sw, sw, sw], aligns: ["center", "center", "center", "center"],
+    rows: [
+      ["Em Atraso", "Mora Acumulada", "Próximo Vencimento", "Emitido em"].map(t =>
+        plainTextCell(t, { bold: true, fontSize: 7, fillColor: "#fafafa", color: t.startsWith("Em Atraso") ? COLORS.red : COLORS.navy })),
+      [
+        plainTextCell(`${atrasadas.length} prest.(ões)`, { bold: true, fontSize: 8, color: atrasadas.length > 0 ? COLORS.red : COLORS.green }),
+        plainTextCell(fmtMoney(moraTotal), { bold: true, fontSize: 8, color: moraTotal > 0 ? COLORS.red : COLORS.green }),
+        plainTextCell(proximoVencimento ? fmtDateShort(proximoVencimento) : "—", { bold: true, fontSize: 8 }),
+        plainTextCell(`${fmtDateShort(new Date())} ${new Date().toTimeString().slice(0, 5)}`, { fontSize: 8, color: COLORS.grey }),
+      ],
+    ],
+    padY: 4, outerLine: COLORS.navy, outerWidth: 1,
+  });
   y += 10;
 
   // PLANO DE AMORTIZAÇÃO — colunas Price (ordem exacta do PDF oficial)
+  // GARANTIA DE LARGURA: colunas com largura mínima de 20pt — largura negativa
+  // em doc.text({width}) faz o pdfkit entrar em LOOP INFINITO (crash OOM).
+  const planWidths = [46, 135, 110, 120, 135, 100, Math.max(20, width - 646)].map(w => Math.max(20, w));
+  if (process.env.LEGAL_DOCS_DEBUG) console.log("[Extracto] fase: plano, y=", Math.round(y), "contentBottom=", Math.round(ctx.contentBottom));
   doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
   doc.text(`PLANO DE AMORTIZAÇÃO (${amortizations.length} prestações)`, left, y, { lineBreak: false });
   y += 9 * 1.3 + 5;
 
-  const amortizacaoOf = (row: any) => {
-    const prestacao = parseFloat(row.installment) || 0;
-    const juros = parseFloat(row.rateAmount) || 0;
-    return row.amortization != null ? parseFloat(row.amortization) || 0 : Math.max(0, Math.round((prestacao - juros) * 100) / 100);
+  // (Amortizações ajustadas e saldo capital já calculados acima — a coluna
+  // Saldo usa o capital remanescente, com a última linha a fechar em 0,00.)
+
+  // Estado REAL por prestação: PAGO (com data do último pagamento), ATRASADO
+  // (não pago e vencida) ou PENDENTE.
+  const estadoOf = (row: any): { label: string; color: string; pagoEm: string | null } => {
+    const st = Number(row.status);
+    const due = String(row.dueDate || "").slice(0, 10);
+    if (st === 1) {
+      return { label: Number(row.paidAmount) > 0 && Number(row.paidAmount) < parseFloat(row.installment) ? "PAGO (PARCIAL)" : "PAGO", color: COLORS.green, pagoEm: row.lastPaymentDate ? fmtDateShort(row.lastPaymentDate) : null };
+    }
+    if (Number(row.paidAmount) > 0) return { label: "PAGO PARCIAL", color: COLORS.orange, pagoEm: row.lastPaymentDate ? fmtDateShort(row.lastPaymentDate) : null };
+    if (due && due < hoje) return { label: "ATRASADO", color: COLORS.red, pagoEm: null };
+    return { label: "PENDENTE", color: COLORS.orange, pagoEm: null };
   };
 
-  const planRows: Cell[][] = amortizations.map((row) => {
+  const planRows: Cell[][] = amortizations.map((row, idx) => {
     const isPaid = Number(row.status) === 1;
+    const estado = estadoOf(row);
+    const amortCell = fmtMoney(amortList[idx] ?? amortizacaoOf(row));
     return [
       plainTextCell(String(row.installmentOrder || ""), { align: "center" }),
-      plainTextCell(fmtMoney(amortizacaoOf(row)), { align: "right" }),
+      plainTextCell(amortCell, { align: "right" }),
       plainTextCell(fmtMoney(parseFloat(row.rateAmount) || 0), { align: "right" }),
       plainTextCell(fmtMoney(parseFloat(row.installment) || 0), { align: "right", bold: true }),
-      plainTextCell(fmtMoney(Math.max(0, parseFloat(row.remainingBalance) || 0)), { align: "right", color: isPaid ? COLORS.green : COLORS.red }),
+      plainTextCell(fmtMoney(saldoPorLinha[idx] ?? 0), { align: "right", color: isPaid ? COLORS.green : COLORS.red }),
       plainTextCell(fmtDateShort(row.dueDate), { align: "center" }),
+      plainTextCell(estado.pagoEm ? `${estado.label} em ${estado.pagoEm}` : estado.label, { align: "center", bold: true, color: estado.color, fontSize: 7 }),
     ];
   });
+  // TOTAIS — saldo final do plano: 0,00 SEMPRE (o plano fecha ao cêntimo;
+  // a última linha do saldo capital é forçada a zero), verde como no contrato.
+  const saldoFinal = saldoPorLinha.length > 0 ? saldoPorLinha[saldoPorLinha.length - 1] : 0;
   planRows.push([
     plainTextCell("TOTAIS", { bold: true, color: COLORS.navy }),
-    plainTextCell(fmtMoney(amortizations.reduce((s, r) => s + amortizacaoOf(r), 0)), { align: "right", bold: true }),
+    plainTextCell(fmtMoney(capitalExato), { align: "right", bold: true }),
     plainTextCell(fmtMoney(totalInterest), { align: "right", bold: true, color: COLORS.navy }),
     plainTextCell(fmtMoney(contractTotal), { align: "right", bold: true }),
-    plainTextCell(fmtMoney(remaining), { align: "right", bold: true, color: COLORS.red }),
+    plainTextCell(fmtMoney(saldoFinal), { align: "right", bold: true, color: saldoFinal > 0 ? COLORS.red : COLORS.green }),
+    plainTextCell("", {}),
     plainTextCell("", {}),
   ]);
 
+  if (process.env.LEGAL_DOCS_DEBUG) console.log("[Extracto] fase: drawTable plano, rows=", planRows.length);
   y = drawTable(ctx, {
-    x: left, y, widths: [50, 160, 140, 150, 170, width - 670], aligns: ["center", "right", "right", "right", "right", "center"],
-    header: ["Ordem", "Amortização", "Juros", "Prestação", "Saldo", "Vencimento"],
+    x: left, y, widths: planWidths, aligns: ["center", "right", "right", "right", "right", "center", "center"],
+    header: ["Ordem", "Amortização", "Juros", "Prestação", "Saldo", "Vencimento", "Estado"],
     headerBg: COLORS.navy, headerTextColor: "#ffffff",
     rows: planRows, zebra: true, gridColor: "#cfd8dc",
   });
+  if (process.env.LEGAL_DOCS_DEBUG) console.log("[Extracto] fase: tabela desenhada, y=", Math.round(y));
+
+  // Rodapé legal do extracto — Y ABSOLUTO (doc.y fica da página da tabela;
+  // moveDown aqui desenhava na página seguinte e podia disparar loop de páginas)
+  let fy = doc.y + 10;
+  if (fy > ctx.contentBottom) {
+    doc.addPage();
+    ctx.contentBottom = doc.page.height - doc.page.margins.bottom - 20;
+    fy = doc.page.margins.top;
+  }
+  doc.font("Helvetica").fontSize(7).fillColor(COLORS.grey);
+  doc.text(
+    `Documento processado por computador em ${new Date().toLocaleString("pt-MZ")}. ` +
+    "Este extracto é DINÂMICO e reflecte a situação do crédito à data de emissão; não substitui o pacote de concessão (imutável, com hash próprio).",
+    left,
+    fy,
+    { width, align: "left" }
+  );
 };
 
 // ── 2. CONTRATO DE CONCESSÃO (20 cláusulas + vigésima primeira) ────────
@@ -557,7 +685,6 @@ export const buildContratoConcessao = (ctx: Ctx, data: LegalDocsData): void => {
 
   if (plan.length > 0) {
     const totalInterest = plan.reduce((s, r) => s + (parseFloat(r.rateAmount) || 0), 0);
-    const totalAmortization = plan.reduce((s, r) => s + (parseFloat(r.amortization) || 0), 0);
     const totalInstallment = plan.reduce((s, r) => s + (parseFloat(r.installment) || 0), 0);
     const cw = width / 5;
     y = drawTable(ctx, {
@@ -575,12 +702,23 @@ export const buildContratoConcessao = (ctx: Ctx, data: LegalDocsData): void => {
     doc.y = y + 8;
 
     const pw = [45, 100, 90, 100, 100, width - 435];
-    let saldo = amount;
+    // ── SALDO (PADRÃO MBR): CAPITAL remanescente por linha — nunca o
+    // remainingBalance da BD nem a dívida total. A diferença de arredondamento
+    // da amortização (± cêntimos) vai para a ÚLTIMA prestação (ajuste = capital
+    // anterior na última linha) → Σ amortização = capital exacto e o saldo da
+    // última linha fecha sempre em 0,00.
+    const amortList: number[] = plan.map((a: any) => parseFloat(a.amortization) || 0);
+    const somaAmort = Math.round(amortList.reduce((s, v) => s + v, 0) * 100) / 100;
+    const diffAmort = Math.round((amount - somaAmort) * 100) / 100;
+    if (Math.abs(diffAmort) >= 0.01 && amortList.length > 0) {
+      amortList[amortList.length - 1] = Math.round((amortList[amortList.length - 1] + diffAmort) * 100) / 100;
+    }
+    let saldoCapital = amount;
     const planRows: Cell[][] = plan.map((a, idx) => {
-      const amort = parseFloat(a.amortization) || 0;
-      const apiBalance = a.remainingBalance !== undefined && a.remainingBalance !== null ? parseFloat(a.remainingBalance) : null;
-      saldo = apiBalance !== null ? apiBalance : Math.max(0, saldo - amort);
-      if (idx === plan.length - 1) saldo = 0;
+      const amort = amortList[idx] ?? (parseFloat(a.amortization) || 0);
+      saldoCapital = Math.max(0, Math.round((saldoCapital - amort) * 100) / 100);
+      const isLast = idx === plan.length - 1;
+      const saldo = isLast ? 0 : saldoCapital;
       return [
         plainTextCell(`${idx + 1}ª`, { align: "center" }),
         plainTextCell(fmtMoney(amort), { align: "right" }),
@@ -592,7 +730,7 @@ export const buildContratoConcessao = (ctx: Ctx, data: LegalDocsData): void => {
     });
     planRows.push([
       plainTextCell("Total", { align: "center", bold: true }),
-      plainTextCell(fmtMoney(totalAmortization), { align: "right", bold: true }),
+      plainTextCell(fmtMoney(amount), { align: "right", bold: true }),
       plainTextCell(fmtMoney(totalInterest), { align: "right", bold: true }),
       plainTextCell(fmtMoney(totalInstallment), { align: "right", bold: true }),
       plainTextCell("0,00 MZN", { align: "right", bold: true, color: COLORS.green }),
@@ -703,7 +841,7 @@ export const buildContratoConcessao = (ctx: Ctx, data: LegalDocsData): void => {
   doc.moveDown(2);
   doc.font("Helvetica").fontSize(8).fillColor("#000000");
   doc.text(`Maputo, aos ${fmtDateShort(l.getDataValue("updatedAt") || l.getDataValue("dateCreated"))}`, { width, align: "center" });
-  doc.moveDown(2.5);
+  doc.moveDown(3);
 
   const SIG_H = 70;
   let signY = doc.y + 10;
@@ -712,10 +850,11 @@ export const buildContratoConcessao = (ctx: Ctx, data: LegalDocsData): void => {
     signY = doc.page.margins.top;
   }
   const half = width / 2;
-  const leftSig = `__________________________\n\n${c.getDataValue("companyManager") || "Gestor de Crédito"}\n\n(O MUTUANTE)`;
+  const DOTTED = "…………………………………………";
+  const leftSig = `${DOTTED}\n\n${c.getDataValue("companyManager") || "Gestor de Crédito"}\n\n(O MUTUANTE)`;
   const rightSig = isPJ
-    ? `__________________________\n\nPela MUTUÁRIA\n${cu.getDataValue("customerName") || ""}\nRepresentada por: ${cu.getDataValue("companyLegalRepresentative") || ""}\nBI: ${cu.getDataValue("companyRepresentativeIdNumber") || ""}`
-    : `__________________________\n\n${cu.getDataValue("customerName") || ""}\n\n(${convertGender(cu).trim()})`;
+    ? `${DOTTED}\n\nPela MUTUÁRIA\n${cu.getDataValue("customerName") || ""}\nRepresentada por: ${cu.getDataValue("companyLegalRepresentative") || ""}\nBI: ${cu.getDataValue("companyRepresentativeIdNumber") || ""}`
+    : `${DOTTED}\n\n${cu.getDataValue("customerName") || ""}\n\n(${convertGender(cu).trim()})`;
   doc.font("Helvetica").fontSize(8).fillColor("#000000");
   doc.text(leftSig, left + 20, signY, { width: half - 40, align: "center" });
   doc.text(rightSig, left + half + 20, signY, { width: half - 40, align: "center" });
@@ -737,7 +876,7 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
 
   if (isPJ) {
     doc.text("Pelo presente, nós ", { width, align: "justify", continued: true, lineGap: 6 });
-    doc.font("Helvetica-Bold").text(cu.getDataValue("customerName") || "", { underline: true, continued: true });
+    doc.font("Helvetica-Bold").text(cu.getDataValue("customerName") || "", { continued: true });
     doc.font("Helvetica").text(", NUIT ", { continued: true });
     doc.font("Helvetica-Bold").text(cu.getDataValue("customerNuit") || "", { continued: true });
     doc.font("Helvetica").text(", representada por ", { continued: true });
@@ -748,22 +887,35 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
     doc.font("Helvetica-Bold").text(`${fmtMoney(amount)} (${numberToWords(amount)} meticais)`, { continued: true });
     doc.font("Helvetica").text(" da MBR Microcrédito.", { align: "justify" });
   } else {
+    // TERMO (PF) — texto limpo numa linha justificada: o bug antigo quebrava a
+    // linha dentro do nº do BI (pdfmake com segmentos sublinhados justificados).
+    // Um único doc.text com os realces via rich-inline resolve.
+    const bi = String(cu.getDataValue("customerNationalId") || "").trim();
     doc.text("Pelo presente, eu ", { width, align: "justify", continued: true, lineGap: 6 });
-    doc.font("Helvetica-Bold").text(cu.getDataValue("customerName") || "", { underline: true, continued: true });
-    doc.font("Helvetica").text("\nCidadão(ã) moçambicano(a) com o nº do BI ", { continued: true });
-    doc.font("Helvetica-Bold").text(cu.getDataValue("customerNationalId") || "", { continued: true });
+    doc.font("Helvetica-Bold").text(cu.getDataValue("customerName") || "", { continued: true });
+    doc.font("Helvetica").text(", Cidadão(ã) portador do BI nº ", { continued: true });
+    doc.font("Helvetica-Bold").text(bi, { continued: true });
     doc.font("Helvetica").text(", ", { continued: true });
-    doc.font("Helvetica-Bold").text("declaro que recebi", { continued: true });
+    doc.font("Helvetica-Bold").text("declaro que Recebi ", { continued: true });
     doc.font("Helvetica").text(" na data de hoje, o valor de ", { continued: true });
     doc.font("Helvetica-Bold").text(`${fmtMoney(amount)} (${numberToWords(amount)} meticais)`, { continued: true });
     doc.font("Helvetica").text(", em:", { align: "justify" });
   }
 
   doc.moveDown(0.6);
-  doc.font("Helvetica").fontSize(10);
-  doc.text("Cheque (________)    Numerário (________)    Transferência (________)", { width, align: "left" });
+  // CHECKBOXES da forma de recebimento — TEXTO SIMPLES numa linha ("( X )" no
+  // método real), sem caixas desenhadas: o posicionamento manual com ZapfDingbats
+  // sobreponha-se ao texto e partia a linha. O desembolso do sistema é directo
+  // na conta do Mutuário (cláusula segunda) → Transferência por omissão.
+  const methodRaw = String((l.getDataValue("paymentMethod") || l.getDataValue("payment_method") || "TRANSFER") || "TRANSFER").toUpperCase();
+  const methodIsCheque = methodRaw.includes("CHEQUE") || methodRaw === "2";
+  const methodIsTransfer = methodRaw.includes("TRANSFER") || methodRaw === "BANK" || methodRaw === "3" || methodRaw === "MPESA" || methodRaw === "EMOLA";
+  const methodIsCash = !methodIsCheque && !methodIsTransfer;
+  const mark = (on: boolean) => (on ? "( X )" : "(     )");
+  doc.font("Helvetica").fontSize(10).fillColor("#000000");
+  doc.text(`Cheque ${mark(methodIsCheque)}        Numerário ${mark(methodIsCash)}        Transferência ${mark(methodIsTransfer)}`, { width, align: "left" });
   doc.moveDown(0.3);
-  doc.font("Helvetica").text(" da ", { continued: true });
+  doc.font("Helvetica").text("da ", { continued: true });
   doc.font("Helvetica-Bold").text(String(c.getDataValue("companyName") || "Mais Mola"), { continued: true });
   doc.font("Helvetica").text(".", { align: "justify" });
 
@@ -787,7 +939,7 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
 
 // ── 4. DECLARAÇÃO DE GARANTIAS ─────────────────────────────────────────
 
-export const buildDeclaracaoGarantias = (ctx: Ctx, data: LegalDocsData): void => {
+export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): Promise<void> => {
   const { doc, left, right } = ctx;
   const { loan: l, customer: cu, company: c, guarantees } = data;
   const width = right - left;
@@ -821,29 +973,41 @@ export const buildDeclaracaoGarantias = (ctx: Ctx, data: LegalDocsData): void =>
   doc.text("2. Bens de garantia", { width });
   doc.moveDown(0.4);
 
-  const guarRows: Cell[][] = guarantees.map((g) => [
-    plainTextCell("", {}),
-    plainTextCell(String(g.getDataValue("guaranteeDescription") || g.getDataValue("description") || "--")),
-    plainTextCell(fmtDateShort(g.getDataValue("createdAt") || g.getDataValue("dateCreated"))),
-    plainTextCell(fmtMoney(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue") || 0), { align: "right" }),
-  ]);
-  // numeração das linhas
-  guarRows.forEach((row, i) => { row[0] = plainTextCell(String(i + 1), { align: "center" }); });
+  if (guarantees.length === 0) {
+    // Estado vazio legível — nunca tabela vazia nem texto cortado.
+    doc.font("Helvetica-Oblique").fontSize(10).fillColor(COLORS.grey);
+    doc.text("Nenhum bem registado — avaliação 0,00 MZN", { width, align: "center" });
+    doc.y += 14;
+  } else {
+    const guarRows: Cell[][] = guarantees.map((g) => [
+      plainTextCell("", {}),
+      plainTextCell(String(g.getDataValue("guaranteeDescription") || g.getDataValue("description") || "--")),
+      plainTextCell(fmtDateShort(g.getDataValue("createdAt") || g.getDataValue("dateCreated"))),
+      plainTextCell(fmtMoney(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue") || 0), { align: "right" }),
+    ]);
+    // numeração das linhas
+    guarRows.forEach((row, i) => { row[0] = plainTextCell(String(i + 1), { align: "center" }); });
 
-  const gw = [30, (width - 30) * 0.46, (width - 30) * 0.28, 0];
-  gw[3] = width - 30 - gw[1] - gw[2];
-  y = drawTable(ctx, {
-    x: left, y: doc.y, widths: gw, aligns: ["center", "left", "left", "right"],
-    header: ["#", "Descrição", "Data de submissão", "Avaliação (MZN)"],
-    rows: guarRows, padY: 3,
-  });
-  doc.y = y + 10;
+    const gw = [30, (width - 30) * 0.46, (width - 30) * 0.28, 0];
+    gw[3] = width - 30 - gw[1] - gw[2];
+    y = drawTable(ctx, {
+      x: left, y: doc.y, widths: gw, aligns: ["center", "left", "left", "right"],
+      header: ["#", "Descrição", "Data de submissão", "Avaliação (MZN)"],
+      rows: guarRows, padY: 3,
+    });
+    doc.y = y + 10;
+  }
 
   const totalGuaranteeAmount = guarantees.reduce((s, g) => s + (parseFloat(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue")) || 0), 0);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
-  doc.text(`Valor total dos bens para garantia ${fmtMoney(totalGuaranteeAmount)} (${numberToWords(totalGuaranteeAmount)} meticais)`, { width });
+  // Cobertura: bens avaliados vs capital financiado (ex.: 130k/150k = 86,7%)
+  const loanAmountForCoverage = parseFloat(l.getDataValue("amount")) || 0;
+  const coveragePct = loanAmountForCoverage > 0
+    ? Math.round((totalGuaranteeAmount / loanAmountForCoverage) * 1000) / 10
+    : 0;
+  doc.font("Helvetica-Bold").fontSize(11).fillColor("#222222");
+  doc.text(`Valor total dos bens para garantia ${fmtMoney(totalGuaranteeAmount)} (${numberToWords(totalGuaranteeAmount)} meticais) — cobertura de ${coveragePct.toLocaleString("pt-MZ", { maximumFractionDigits: 1 })}% do capital financiado (${fmtMoney(loanAmountForCoverage)})`, { width, align: "right" });
   doc.moveDown(0.5);
-  para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${c.getDataValue("companyName") || ""}`, { size: 9 });
+  para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${c.getDataValue("companyName") || ""}`, { size: 11 });
 
   doc.moveDown(1.5);
   doc.font("Helvetica").fontSize(8).fillColor("#000000");
@@ -857,10 +1021,22 @@ export const buildDeclaracaoGarantias = (ctx: Ctx, data: LegalDocsData): void =>
     signY = doc.page.margins.top;
   }
   const half = width / 2;
-  const leftSig = `__________________________\n\n${l.getDataValue("creditManager") || "Gestor de Crédito"}\n\n(GESTOR DE CRÉDITO)`;
+  // Nome do gestor: resolve por id (creditManager é users.id) com fallback ao
+  // texto gravado — nunca sai um número solto na linha da assinatura.
+  let gestorNome = String(l.getDataValue("creditManager") || "").trim();
+  if (/^\d+$/.test(gestorNome)) {
+    try {
+      const { UserModel } = await import("../database/models/UserModel");
+      const gestor: any = await UserModel.findByPk(Number(gestorNome), { raw: true });
+      gestorNome = String(gestor?.userName || gestor?.name || gestorNome);
+    } catch { /* mantém o que veio */ }
+  }
+  if (!gestorNome) gestorNome = "Gestor de Crédito";
+  const DOTTED_G = "…………………………………………";
+  const leftSig = `${DOTTED_G}\n\n${gestorNome}\n\n(GESTOR DE CRÉDITO)`;
   const rightSig = isPJ
-    ? `__________________________\n\n${cu.getDataValue("customerName") || ""}\nRepresentada por: ${cu.getDataValue("companyLegalRepresentative") || ""}`
-    : `__________________________\n\n${cu.getDataValue("customerName") || ""}\n\n(${convertGender(cu).trim()})`;
+    ? `${DOTTED_G}\n\n${cu.getDataValue("customerName") || ""}\nRepresentada por: ${cu.getDataValue("companyLegalRepresentative") || ""}`
+    : `${DOTTED_G}\n\n${cu.getDataValue("customerName") || ""}\n\n(${convertGender(cu).trim()})`;
   doc.font("Helvetica").fontSize(8).fillColor("#000000");
   doc.text(leftSig, left + 10, signY, { width: half - 30, align: "center" });
   doc.text(rightSig, left + half + 20, signY, { width: half - 30, align: "center" });
@@ -881,11 +1057,11 @@ const buildInsuranceClause = (ctx: Ctx, data: LegalDocsData, info: { companyName
       doc.text(title, { width });
       doc.font("Helvetica-Bold").fontSize(8);
       doc.text(`${num.trim()} `, { continued: true });
-      doc.font("Helvetica").text(text, { width, align: "justify" });
+      doc.font("Helvetica").text(text, { width, align: "justify", lineGap: 4.8 });
     } else {
       doc.font("Helvetica-Bold").fontSize(8).fillColor("#000000");
       doc.text(`${String(num || title).trim()} `, { continued: true });
-      doc.font("Helvetica").text(text, { width, align: "justify" });
+      doc.font("Helvetica").text(text, { width, align: "justify", lineGap: 4.8 });
     }
   };
   const list = (items: string[]) => {
@@ -986,9 +1162,9 @@ const buildInsuranceClause = (ctx: Ctx, data: LegalDocsData, info: { companyName
 
 // ── Pipeline: cria o doc, chama o builder, devolve o Buffer ────────────
 
-const LANDSCAPE_DOCS = new Set(["extracto"]);
+const LANDSCAPE_DOCS = new Set(["extracto", "plano"]);
 
-export const renderLegalDoc = async (tipo: string, data: LegalDocsData): Promise<Buffer> => {
+export const renderLegalDoc = async (tipo: string, data: LegalDocsData, seal?: { hash?: string; qrPath?: string | null; emitidoEm?: Date }): Promise<Buffer> => {
   const landscape = LANDSCAPE_DOCS.has(tipo);
   const doc = new PDFDocument({
     size: "A4",
@@ -1012,11 +1188,14 @@ export const renderLegalDoc = async (tipo: string, data: LegalDocsData): Promise
     case "contrato": buildContratoConcessao(ctx, data); break;
     case "termo": buildTermoCompromisso(ctx, data); break;
     case "garantias": buildDeclaracaoGarantias(ctx, data); break;
-    case "extracto": buildExtractoCredito(ctx, data); break;
+    case "extracto":
+    case "plano": // Plano Inicial = extracto no estado do desembolso (imutável no pacote)
+      buildExtractoCredito(ctx, data);
+      break;
     default: throw new Error(`Tipo de documento desconhecido: ${tipo}`);
   }
 
-  drawFooters(ctx);
+  drawFooters(ctx, seal);
   doc.end();
   await done;
   return Buffer.concat(chunks);

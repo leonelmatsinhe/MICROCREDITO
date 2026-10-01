@@ -111,7 +111,10 @@
             />
           </q-tab-panel>
           <q-tab-panel name="amortizacao" class="q-pa-none">
-            <TabAmortizacao @print-receipt="onPrintReceipt" />
+            <!-- Recibo backend-authoritative: o PDF é servido pelo backend;
+                 a ab trata o clique internamente (sem emit/print-receipt).
+                 go-to-legais: atalho para os Documentos de Concessão. -->
+            <TabAmortizacao @go-to-legais="tab = 'legais'" />
           </q-tab-panel>
           <q-tab-panel name="docs" class="q-pa-none">
             <TabDocumentosKyc />
@@ -220,7 +223,6 @@ import { useQuasar } from 'quasar'
 import { useMutuarioStore } from '@/stores/mutuario'
 import { useCompanyStore } from '@/stores/company'
 import { useAuthStore } from '@/stores/auth'
-import { usePaymentsStore } from '@/stores/payments'
 import { api } from '@/boot/axios'
 import { formatMoney } from '@/utils/formatters'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
@@ -239,7 +241,6 @@ const router = useRouter()
 const store = useMutuarioStore()
 const companyStore = useCompanyStore()
 const authStore = useAuthStore()
-const paymentsStore = usePaymentsStore()
 
 const tab = ref('visao')
 const showEditModal = ref(false)
@@ -330,38 +331,9 @@ function openApproval(loan) {
 }
 defineExpose({ openApproval })
 
-// Recibo de prestação paga (mantém o comportamento do previewReceipt antigo)
-async function onPrintReceipt(installment) {
-  try {
-    const { buildCompanyHeader, commonStyles } = await import('@/utils/pdfHeader')
-    const { getPdfMake } = await import('@/utils/pdfMake')
-    const pdfMake = await getPdfMake()
-    const company = companyStore.company || {}
-    const cust = store.customer || {}
-
-    const companyHeader = buildCompanyHeader(company, null, 'Recibo de Pagamento')
-    const doc = {
-      content: [
-        ...companyHeader,
-        { text: `${cust.customerName || ''} — Conta ${cust.accountNumber || ''}`, fontSize: 10, margin: [25, 8, 0, 4] },
-        { text: `Prestação ${installment.installmentOrder || ''} · Vencimento ${installment.dueDate ? new Date(installment.dueDate).toLocaleDateString('pt-MZ') : ''}`, fontSize: 9, margin: [25, 0, 0, 8] },
-        { table: { widths: ['*', 'auto'], body: [
-          [{ text: 'Capital', fontSize: 9 }, { text: formatMoney(installment.amortization), fontSize: 9, alignment: 'right' }],
-          [{ text: 'Juros', fontSize: 9 }, { text: formatMoney(installment.rateAmount), fontSize: 9, alignment: 'right' }],
-          [{ text: 'Mora cobrada', fontSize: 9 }, { text: formatMoney(installment.chargedLatePaymentInterest || 0), fontSize: 9, alignment: 'right' }],
-          [{ text: 'VALOR PAGO', fontSize: 10, bold: true }, { text: formatMoney(installment.paidAmount || installment.installment), fontSize: 12, bold: true, alignment: 'right', color: '#2e7d32' }]
-        ] }, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0' }, margin: [25, 0, 25, 10] },
-        { text: `Documento processado por computador — ${new Date().toLocaleDateString('pt-MZ')}`, fontSize: 7, color: '#999', margin: [25, 10, 0, 0] }
-      ],
-      pageSize: 'A5',
-      pageMargins: [0, 0, 0, 0]
-    }
-    pdfMake.createPdf(doc).open()
-  } catch (e) {
-    console.error('Erro ao gerar recibo:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar recibo', position: 'top' })
-  }
-}
+// Recibo de prestação paga — BACKEND AUTHORITATIVE: o PDF legal (hash AT + QR)
+// é gerado pelo backend dentro da transacção do pagamento. A aba Amortização
+// consome-o internamente (ReciboViewerDialog); esta página não gera PDF.
 
 // Recarrega dados se a rota mudar de mutuário
 watch(() => route.params.accountNumber, (acc, old) => {

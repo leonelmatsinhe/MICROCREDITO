@@ -378,50 +378,20 @@ async function exportPDF() {
     return
   }
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    const { buildCompanyHeader, companyLogoBase64 } = await import('@/utils/pdfHeader')
-    const company = companyStore.company || {}
-    const logoBase64 = await companyLogoBase64(company)
-
-    const body = [
-      exportCfg.headers.map(h => ({ text: h, style: 'tableHeader' })),
-      ...rows.map(row => exportCfg.keys.map(k => ({ text: String(row[k] ?? '—'), style: 'cellText' })))
-    ]
-
+    // PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
+    const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
     const dateStr = new Date().toISOString().slice(0, 10)
-    const docDefinition = {
-      pageSize: 'A4',
-      pageMargins: [24, 20, 24, 30],
-      content: [
-        ...buildCompanyHeader(company, logoBase64, `Centro de Mensagens — ${dateStr}`),
-        {
-          text: rows.length > 1 ? `${rows.length} mensagens` : '1 mensagem',
-          fontSize: 8,
-          color: '#444',
-          margin: [0, 0, 0, 8]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: exportCfg.widths,
-            body
-          },
-          layout: 'grid',
-          fontSize: 7
-        }
-      ],
-      styles: {
-        cellText: { fontSize: 7 },
-        tableHeader: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e8eaf6' }
-      }
-    }
-
-    pdfMake.createPdf(docDefinition).download(`centro-mensagens-${dateStr}.pdf`)
+    await downloadTablePdf({
+      title: 'Centro de Mensagens',
+      meta: [`Emitido em ${dateStr}`, rows.length > 1 ? `${rows.length} mensagens` : '1 mensagem'],
+      filename: `centro-mensagens-${dateStr}`,
+      columns: exportCfg.headers.map((h, i) => ({
+        label: h,
+        width: exportCfg.widths[i] ? Math.round(exportCfg.widths[i] * 0.9) : undefined,
+        align: 'left'
+      })),
+      rows: rows.map(row => exportCfg.keys.map(k => String(row[k] ?? '—')))
+    }, `centro-mensagens-${dateStr}.pdf`)
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF:', e)

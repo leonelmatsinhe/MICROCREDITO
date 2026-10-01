@@ -43,7 +43,7 @@
                     <q-icon name="inventory_2" color="orange" size="22px" class="q-mr-sm" />
                     <div class="col">
                       <div class="text-weight-medium" style="font-size: 13px">{{ g.guaranteeName || g.name || `Garantia #${g.id}` }}</div>
-                      <div class="text-caption text-grey-5">
+                      <div class="text-caption text-grey-5 app-text-dark">
                         {{ g.guaranteeValue ? `${formatMoney(g.guaranteeValue)}` : '' }}
                         {{ g.guaranteeDescription || g.description || '' }}
                       </div>
@@ -85,8 +85,8 @@
                   <q-icon name="receipt" color="positive" size="22px" class="q-mr-sm" />
                   <div class="col">
                     <div class="text-weight-medium" style="font-size: 13px">{{ r.numero || `Recibo #${r.id}` }}</div>
-                    <div class="text-caption text-grey-5">
-                      {{ formatMoney(r.totalAmount || r.amount) }} · {{ formatDate(r.createdAt) }}
+                    <div class="text-caption text-grey-5 app-text-dark">
+                      {{ formatMoney(r.valor_pago ?? r.totalAmount ?? r.amount) }} · {{ formatDate(r.created_at || r.createdAt) }}
                     </div>
                   </div>
                   <q-chip :color="r.status === 'ANULADO' ? 'negative' : 'positive'" text-color="white" dense>
@@ -110,6 +110,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useQuasar } from 'quasar'
 import { useMutuarioStore } from '@/stores/mutuario'
 import { useLoansStore } from '@/stores/loans'
 import { useCustomerStore } from '@/stores/customers'
@@ -120,6 +121,7 @@ import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
 const store = useMutuarioStore()
 const loansStore = useLoansStore()
 const customerStore = useCustomerStore()
+const $q = useQuasar()
 
 const showGuarantees = ref(false)
 const guarantees = ref([])
@@ -179,9 +181,30 @@ function guaranteePhotoUrl(g) {
 }
 
 function openPhoto(url) { window.open(url, '_blank') }
-function openReciboPdf(r) {
-  if (r.pdf_url) window.open(r.pdf_url, '_blank')
-  else window.open(`/api/recibos/${r.id}/pdf`, '_blank')
+/**
+ * Baixar Recibo: usa SEMPRE o endpoint do backend GET /api/recibos/:id/pdf —
+ * é ele que respeita a feature flag da certificação AT (config/certificacao).
+ * Com a flag desligada, o PDF sai limpo de 1 página, sem QR/hash/código AT.
+ * (o campo pdf_url da listagem é caminho de ficheiro no servidor, não URL de API)
+ *
+ * O pedido passa pelo axios (blob) porque leva o token Bearer de sessão —
+ * um window.open direto para a API iria sem cabeçalho e falhava com 401.
+ */
+async function openReciboPdf(r) {
+  if (!r?.id) return
+  try {
+    const response = await api.get(`/api/recibos/${r.id}/pdf`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `Recibo-${r.numero || r.id}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => window.URL.revokeObjectURL(url), 30000)
+  } catch {
+    $q.notify({ type: 'negative', message: 'Não foi possível descarregar o recibo', position: 'top' })
+  }
 }
 function formatDate(dateStr) { return dateStr ? new Date(dateStr).toLocaleDateString('pt-MZ') : '—' }
 

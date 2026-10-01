@@ -221,6 +221,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useQuasar } from 'quasar'
+import { api } from '@/boot/axios'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -347,7 +348,6 @@ function formatMoney(val) {
 async function fetchData() {
   loading.value = true
   try {
-    const api = (await import('@/boot/axios')).default
     const companyId = authStore.companyId
 
     const params = new URLSearchParams()
@@ -384,229 +384,118 @@ async function generatePDF() {
   }
 
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    // Buscar logotipo do BM
-    let bmLogo = null
-    try {
-      const resp = await fetch('/BMLogo.png')
-      if (resp.ok) {
-        const blob = await resp.blob()
-        bmLogo = await new Promise((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve(reader.result)
-          reader.readAsDataURL(blob)
-        })
-      }
-    } catch {}
-
+    // PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
+    // O modelo do BM mantém-se: cabeçalho identificado na meta, tabela com as
+    // 13 colunas oficiais, linha TOTAL e notas explicativas na 2.ª página.
+    const { openTablePdf, tablePdfError } = await import('@/utils/tablePdf')
     const comp = company.value
     const now = new Date()
     const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
 
-    // Header image — margem direita ampla para não ficar encostado ao texto
-    const headerImage = bmLogo ? [{ image: bmLogo, width: 60, margin: [0, 0, 0, 0] }] : []
+    const bmRows = reportData.value.map(row => [
+      String(row.operationNumber),
+      row.customerName || '-',
+      row.disbursementDate || '-',
+      formatMoneyRaw(row.disbursementAmount),
+      row.creditPurpose || '-',
+      formatMoneyRaw(row.installmentValue),
+      row.paymentFrequency || 'Mensal',
+      row.repaymentDate || '-',
+      `${row.interestRate.toFixed(1)}%`,
+      formatMoneyRaw(row.creditInDebt),
+      formatMoneyRaw(row.creditOverdue),
+      String(row.daysOverdue),
+      row.ppe || 'Não'
+    ])
 
-    const docDefinition = {
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      pageMargins: [20, 20, 20, 30],
-      content: [
-        // HEADER
-        {
-          columns: [
-            ...headerImage,
-            { width: 30, text: '' }, // espaçamento considerável após o logotipo
-            {
-              width: '*',
-              stack: [
-                { text: 'BANCO DE MOÇAMBIQUE', style: 'headerTitle', margin: [0, 0, 0, 2] },
-                { text: 'ENTIDADE DE SUPERVISÃO PRUDENCIAL', style: 'headerSub' },
-                { text: 'MONITORIA DE INFORMAÇÕES DE MICROFINANÇAS', style: 'headerSub' }
-              ]
-            },
-            {
-              width: 200,
-              stack: [
-                { text: 'PERÍODO DE REPORTE:', style: 'labelText', margin: [0, 0, 0, 2] },
-                { text: `DATA: ${dateStr} (DDMMAAAA)`, style: 'valueText' }
-              ]
-            }
-          ],
-          margin: [0, 0, 0, 15]
-        },
-
-        { text: '1. IDENTIFICAÇÃO DA INSTITUIÇÃO', style: 'sectionTitle', margin: [0, 0, 0, 5] },
-        {
-          table: {
-            widths: ['*', '*', '*'],
-            body: [
-              [
-                { text: `Denominação: ${comp.name || '-'}`, style: 'cellText' },
-                { text: `N° de Trabalhadores: ${manualData.value.numberOfEmployees || '-'}`, style: 'cellText' },
-                { text: `NUIT: ${comp.nuit || '-'}`, style: 'cellText' }
-              ],
-              [
-                { text: `Endereço: ${comp.address || '-'}`, style: 'cellText' },
-                { text: `Data de Início: ${manualData.value.activityStartDate || '-'}`, style: 'cellText' },
-                { text: `Província: ${comp.province || '-'}`, style: 'cellText' }
-              ],
-              [
-                { text: `Telefone: ${comp.phone || '-'}`, style: 'cellText' },
-                { text: `E-mail: ${comp.email || '-'}`, style: 'cellText' },
-                { text: `Responsável: ${comp.manager || '-'}`, style: 'cellText' }
-              ]
-            ]
-          },
-          layout: 'grid',
-          margin: [0, 0, 0, 15]
-        },
-
-        { text: '(Valores em Metical)', style: 'labelText', alignment: 'right', margin: [0, 0, 0, 5] },
-
-        // TABLE — larguras ajustadas para caber na largura útil da página (~802pt)
-        {
-          table: {
-            headerRows: 1,
-            widths: [38, 78, 50, 62, 60, 58, 48, 52, 38, 62, 62, 32, 28],
-            body: [
-              // Header
-              [
-                { text: 'N° Operação\n(1)', style: 'tableHeader' },
-                { text: 'Nome do\nCliente (2)', style: 'tableHeader' },
-                { text: 'Data\nDesembolso (3)', style: 'tableHeader' },
-                { text: 'Montante do\nDesembolso (4)', style: 'tableHeader' },
-                { text: 'Finalidade\ndo Crédito (5)', style: 'tableHeader' },
-                { text: 'Valor da\nPrestação (6)', style: 'tableHeader' },
-                { text: 'Periodicidade\n(7)', style: 'tableHeader' },
-                { text: 'Prazo\nReembolso (8)', style: 'tableHeader' },
-                { text: 'Taxa\nJuro (9)', style: 'tableHeader' },
-                { text: 'Crédito em\nDívida (10)', style: 'tableHeader' },
-                { text: 'Crédito em\nAtraso (11)', style: 'tableHeader' },
-                { text: 'Dias\nAtraso (12)', style: 'tableHeader' },
-                { text: 'PPEs\n(13)', style: 'tableHeader' }
-              ],
-              // Data rows
-              ...reportData.value.map(row => [
-                { text: String(row.operationNumber), style: 'cellCenter' },
-                { text: row.customerName || '-', style: 'cellText' },
-                { text: row.disbursementDate || '-', style: 'cellCenter' },
-                { text: formatMoneyRaw(row.disbursementAmount), style: 'cellRight' },
-                { text: row.creditPurpose || '-', style: 'cellText' },
-                { text: formatMoneyRaw(row.installmentValue), style: 'cellRight' },
-                { text: row.paymentFrequency || 'Mensal', style: 'cellCenter' },
-                { text: row.repaymentDate || '-', style: 'cellCenter' },
-                { text: `${row.interestRate.toFixed(1)}%`, style: 'cellCenter' },
-                { text: formatMoneyRaw(row.creditInDebt), style: 'cellRight' },
-                { text: formatMoneyRaw(row.creditOverdue), style: 'cellRight' },
-                { text: String(row.daysOverdue), style: 'cellCenter' },
-                { text: row.ppe || 'Não', style: 'cellCenter' }
-              ]),
-              // TOTAL row
-              [
-                { text: 'TOTAL', style: 'totalCell' },
-                { text: '', style: 'totalCell' },
-                { text: '', style: 'totalCell' },
-                { text: formatMoneyRaw(totals.value.disbursementAmount), style: 'totalCellRight' },
-                { text: '', style: 'totalCell' },
-                { text: formatMoneyRaw(totals.value.installmentValue), style: 'totalCellRight' },
-                { text: '', style: 'totalCell' },
-                { text: '', style: 'totalCell' },
-                { text: '', style: 'totalCell' },
-                { text: formatMoneyRaw(totals.value.creditInDebt), style: 'totalCellRight' },
-                { text: formatMoneyRaw(totals.value.creditOverdue), style: 'totalCellRight' },
-                { text: '', style: 'totalCell' },
-                { text: '', style: 'totalCell' }
-              ]
-            ]
-          },
-          layout: 'grid',
-          margin: [0, 0, 0, 15]
-        },
-
-        // 3. PAGAMENTOS POR CANAL (Portal vs Balcão) — só quando há dados do caixa
-        ...(treasuryPayments.value ? [{
-          text: '3. PAGAMENTOS POR CANAL — Portal vs Balcão',
-          style: 'sectionTitle',
-          margin: [0, 10, 0, 5]
-        },
-        {
-          table: {
-            widths: ['30%', '28%', '14%', '14%', '14%'],
-            body: [
-              [
-                { text: 'Canal / Método', style: 'tableHeader' },
-                { text: '', style: 'tableHeader' },
-                { text: 'Entradas', style: 'tableHeader' },
-                { text: 'Saídas', style: 'tableHeader' },
-                { text: 'Líquido', style: 'tableHeader' }
-              ],
-              ...paymentsRows.value.map((r) => ([
-                { text: r.isFirst ? r.channel : '', style: 'cellText', bold: r.isFirst },
-                { text: r.method, style: 'cellText' },
-                { text: formatMoneyRaw(r.in), style: 'cellRight', color: '#2e7d32' },
-                { text: formatMoneyRaw(r.out), style: 'cellRight', color: '#c62828' },
-                { text: formatMoneyRaw(r.net), style: 'cellRight', bold: true }
-              ])),
-              [
-                { text: 'TOTAL', colSpan: 2, style: 'totalCell' },
-                { text: '', style: 'totalCell' },
-                { text: formatMoneyRaw(paymentsTotals.value.in), style: 'totalCellRight' },
-                { text: formatMoneyRaw(paymentsTotals.value.out), style: 'totalCellRight' },
-                { text: formatMoneyRaw(paymentsTotals.value.net), style: 'totalCellRight' }
-              ]
-            ]
-          },
-          layout: 'grid',
-          margin: [0, 0, 0, 10]
-        }] : []),
-
-        // NOTAS
-        { text: 'Notas Explicativas', style: 'sectionTitle', margin: [0, 10, 0, 5] },
-        {
-          ol: [
-            '1- Número da operação de crédito',
-            '2- Nome do cliente',
-            '3- Data de desembolso inicial',
-            '4- Valor do crédito concedido',
-            '5- Finalidade de crédito desembolsado, designadamente para empresas, consumo ou habitação',
-            '6- Montante da prestação periódica para amortizar o crédito',
-            '7- Periodicidade dos pagamentos, indica se são diária, semanal, mensal ou anual',
-            '8- Data de vencimento do crédito desembolsado',
-            '9- Percentagem da taxa de juro aplicada ao crédito',
-            '10- Montante do crédito desembolsado que falta pagar, excluindo prestações em atraso',
-            '11- Montante das prestações em atraso incluindo capital e juros',
-            '12- Dias em atraso do pagamento das prestações',
-            '13- Crédito concedido pessoas politicamente expostas'
-          ],
-          style: 'notesText'
-        }
+    await openTablePdf({
+      title: 'BANCO DE MOÇAMBIQUE — Monitoria de Informações de Microfinanças',
+      meta: [
+        'Entidade de Supervisão Prudencial',
+        `Denominação: ${comp.name || '-'} · NUIT: ${comp.nuit || '-'} · Província: ${comp.province || '-'}`,
+        `Endereço: ${comp.address || '-'} · Tel.: ${comp.phone || '-'} · E-mail: ${comp.email || '-'} · Responsável: ${comp.manager || '-'}`,
+        `N° de Trabalhadores: ${manualData.value.numberOfEmployees || '-'} · Data de Início: ${manualData.value.activityStartDate || '-'} · DATA: ${dateStr} (DDMMAAAA)`,
+        '(Valores em Metical)'
       ],
-      styles: {
-        headerTitle: { fontSize: 14, bold: true, color: '#1a237e' },
-        headerSub: { fontSize: 8, bold: true, color: '#37474f' },
-        sectionTitle: { fontSize: 10, bold: true, margin: [0, 0, 0, 3] },
-        labelText: { fontSize: 8, bold: true },
-        valueText: { fontSize: 8 },
-        cellText: { fontSize: 7 },
-        cellCenter: { fontSize: 7, alignment: 'center' },
-        cellRight: { fontSize: 7, alignment: 'right' },
-        tableHeader: { fontSize: 6.5, bold: true, alignment: 'center', fillColor: '#e8eaf6' },
-        totalCell: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e0e0e0' },
-        totalCellRight: { fontSize: 7, bold: true, alignment: 'right', fillColor: '#e0e0e0' },
-        notesText: { fontSize: 7, margin: [0, 2, 0, 0] }
-      }
+      orientation: 'landscape',
+      filename: 'reporte-bm-mensal',
+      columns: [
+        { label: 'N° Operação (1)', width: 40, align: 'center' },
+        { label: 'Nome do Cliente (2)', width: 90 },
+        { label: 'Data Desembolso (3)', width: 60, align: 'center' },
+        { label: 'Montante do Desembolso (4)', width: 70, align: 'right' },
+        { label: 'Finalidade do Crédito (5)', width: 80 },
+        { label: 'Valor da Prestação (6)', width: 65, align: 'right' },
+        { label: 'Periodicidade (7)', width: 55, align: 'center' },
+        { label: 'Prazo Reembolso (8)', width: 60, align: 'center' },
+        { label: 'Taxa Juro (9)', width: 40, align: 'center' },
+        { label: 'Crédito em Dívida (10)', width: 68, align: 'right' },
+        { label: 'Crédito em Atraso (11)', width: 68, align: 'right' },
+        { label: 'Dias Atraso (12)', width: 38, align: 'center' },
+        { label: 'PPEs (13)', width: 36, align: 'center' }
+      ],
+      rows: bmRows,
+      totalsRow: [
+        'TOTAL', '', '',
+        formatMoneyRaw(totals.value.disbursementAmount), '',
+        formatMoneyRaw(totals.value.installmentValue), '', '', '',
+        formatMoneyRaw(totals.value.creditInDebt),
+        formatMoneyRaw(totals.value.creditOverdue), '', ''
+      ]
+    })
+
+    // Notas explicativas — 2.º PDF (o endpoint tabelar é tabular puro)
+    const notes = [
+      '1- Número da operação de crédito',
+      '2- Nome do cliente',
+      '3- Data de desembolso inicial',
+      '4- Valor do crédito concedido',
+      '5- Finalidade de crédito desembolsado, designadamente para empresas, consumo ou habitação',
+      '6- Montante da prestação periódica para amortizar o crédito',
+      '7- Periodicidade dos pagamentos, indica se são diária, semanal, mensal ou anual',
+      '8- Data de vencimento do crédito desembolsado',
+      '9- Percentagem da taxa de juro aplicada ao crédito',
+      '10- Montante do crédito desembolsado que falta pagar, excluindo prestações em atraso',
+      '11- Montante das prestações em atraso incluindo capital e juros',
+      '12- Dias em atraso do pagamento das prestações',
+      '13- Crédito concedido pessoas politicamente expostas'
+    ]
+    await openTablePdf({
+      title: 'Notas Explicativas — Reporte BM',
+      meta: [`Denominação: ${comp.name || '-'} · ${dateStr}`],
+      filename: 'reporte-bm-notas',
+      columns: [{ label: 'N°', width: 30, align: 'center' }, { label: 'Nota' }],
+      rows: notes.map(n => [n.slice(0, n.indexOf('-')).trim(), n.slice(n.indexOf('-') + 1).trim()])
+    })
+
+    // 3. Pagamentos por canal — só quando há dados do caixa
+    if (treasuryPayments.value) {
+      await openTablePdf({
+        title: '3. Pagamentos por Canal — Portal vs Balcão',
+        meta: [`Denominação: ${comp.name || '-'} · ${dateStr}`],
+        filename: 'reporte-bm-canais',
+        columns: [
+          { label: 'Canal', width: 120 },
+          { label: 'Método', width: 100 },
+          { label: 'Entradas', width: 90, align: 'right' },
+          { label: 'Saídas', width: 90, align: 'right' },
+          { label: 'Líquido', width: 90, align: 'right' }
+        ],
+        rows: paymentsRows.value.map(r => [
+          r.isFirst ? r.channel : '',
+          r.method,
+          formatMoneyRaw(r.in),
+          formatMoneyRaw(r.out),
+          formatMoneyRaw(r.net)
+        ]),
+        totalsRow: ['TOTAL', '', formatMoneyRaw(paymentsTotals.value.in), formatMoneyRaw(paymentsTotals.value.out), formatMoneyRaw(paymentsTotals.value.net)]
+      })
     }
 
-    pdfMake.createPdf(docDefinition).open()
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+    $q.notify({ type: 'negative', message: await (await import('@/utils/tablePdf')).tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
 }
 
@@ -626,7 +515,6 @@ async function generateExcel() {
 
   try {
     $q.loading.show({ message: 'A gerar Excel...' })
-    const api = (await import('@/boot/axios')).default
     const companyId = authStore.companyId
 
     const params = new URLSearchParams()

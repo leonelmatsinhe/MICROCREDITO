@@ -310,6 +310,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
+import { api } from '@/boot/axios'
 import { Bar, Doughnut, Line } from 'vue-chartjs'
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, PointElement, LineElement, Title, Tooltip, Legend, Filler } from 'chart.js'
 import jsPDF from 'jspdf'
@@ -536,7 +537,6 @@ function buildMonthlyData(transactions) {
 async function fetchData() {
   loading.value = true
   try {
-    const api = (await import('@/boot/axios')).default
     const companyId = authStore.companyId
 
     // 1. Fetch dashboard data for KPIs

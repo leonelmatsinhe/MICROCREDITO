@@ -1,0 +1,42 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const CompanyModel_1 = require("./models/CompanyModel");
+const AccountModel_1 = require("./models/AccountModel");
+const CustomerModel_1 = require("./models/CustomerModel");
+const InterestRateModel_1 = require("./models/InterestRateModel");
+const UserModel_1 = require("./models/UserModel");
+const LoanModel_1 = require("./models/LoanModel");
+const AmortizationLoanModel_1 = require("./models/AmortizationLoanModel");
+const TranzactionModel_1 = require("./models/TranzactionModel");
+const GuarateeAssessmentModel_1 = require("./models/GuarateeAssessmentModel");
+const DebtModel_1 = require("./models/DebtModel");
+CompanyModel_1.CompanyModel.hasMany(AccountModel_1.AccountModel, { foreignKey: "companyId", as: "accounts" });
+CompanyModel_1.CompanyModel.hasMany(CustomerModel_1.CustomerModel, { foreignKey: "companyId", as: "customers" });
+CompanyModel_1.CompanyModel.hasMany(InterestRateModel_1.InterestRateModel, { foreignKey: "companyId", as: "interestRates" });
+CompanyModel_1.CompanyModel.hasMany(UserModel_1.UserModel, { foreignKey: "companyId", as: "users" });
+CompanyModel_1.CompanyModel.hasMany(LoanModel_1.LoanModel, { foreignKey: "companyId", as: "loans" });
+AccountModel_1.AccountModel.belongsTo(CompanyModel_1.CompanyModel, { foreignKey: "companyId", as: "company" });
+CustomerModel_1.CustomerModel.belongsTo(CompanyModel_1.CompanyModel, { foreignKey: "companyId", as: "company" });
+CustomerModel_1.CustomerModel.belongsTo(InterestRateModel_1.InterestRateModel, { foreignKey: "interestRateId", as: "interestRate" });
+CustomerModel_1.CustomerModel.hasMany(LoanModel_1.LoanModel, { foreignKey: "customerId", as: "loans" });
+InterestRateModel_1.InterestRateModel.belongsTo(CompanyModel_1.CompanyModel, { foreignKey: "companyId", as: "company" });
+UserModel_1.UserModel.belongsTo(CompanyModel_1.CompanyModel, { foreignKey: "companyId", as: "company" });
+LoanModel_1.LoanModel.belongsTo(CompanyModel_1.CompanyModel, { foreignKey: "companyId", as: "company" });
+LoanModel_1.LoanModel.belongsTo(CustomerModel_1.CustomerModel, { foreignKey: "customerId", as: "customer" });
+LoanModel_1.LoanModel.hasMany(AmortizationLoanModel_1.AmorizationLoanModel, { foreignKey: "loanId", as: "installments" });
+LoanModel_1.LoanModel.hasMany(TranzactionModel_1.TranzactionModel, { foreignKey: "loanId", as: "transactions" });
+AmortizationLoanModel_1.AmorizationLoanModel.belongsTo(LoanModel_1.LoanModel, { foreignKey: "loanId", as: "loan" });
+AmortizationLoanModel_1.AmorizationLoanModel.belongsTo(CustomerModel_1.CustomerModel, { foreignKey: "customerId", as: "customer" });
+AmortizationLoanModel_1.AmorizationLoanModel.hasMany(TranzactionModel_1.TranzactionModel, { foreignKey: "amortizationLoanId", as: "transactions" });
+TranzactionModel_1.TranzactionModel.belongsTo(LoanModel_1.LoanModel, { foreignKey: "loanId", as: "loan" });
+TranzactionModel_1.TranzactionModel.belongsTo(CustomerModel_1.CustomerModel, { foreignKey: "customerId", as: "customer" });
+TranzactionModel_1.TranzactionModel.belongsTo(AmortizationLoanModel_1.AmorizationLoanModel, {
+    foreignKey: "amortizationLoanId",
+    as: "installment",
+});
+GuarateeAssessmentModel_1.GuarateeAssessmentModel.belongsTo(LoanModel_1.LoanModel, { foreignKey: "loanId", as: "loan" });
+LoanModel_1.LoanModel.hasMany(GuarateeAssessmentModel_1.GuarateeAssessmentModel, { foreignKey: "loanId", as: "guarantees" });
+DebtModel_1.DebtModel.belongsTo(LoanModel_1.LoanModel, { foreignKey: "loanId", as: "loan" });
+DebtModel_1.DebtModel.belongsTo(AmortizationLoanModel_1.AmorizationLoanModel, { foreignKey: "amortisationId", as: "installment" });
+DebtModel_1.DebtModel.belongsTo(CustomerModel_1.CustomerModel, { foreignKey: "customerId", as: "customer" });
+LoanModel_1.LoanModel.hasMany(DebtModel_1.DebtModel, { foreignKey: "loanId", as: "debts" });

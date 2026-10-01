@@ -425,46 +425,38 @@ async function exportRegisterXlsx(row, movements) {
   XLSX.writeFile(wb, `caixa-${formatDay(row.opening_date).replaceAll('/', '-')}-${row.id}.xlsx`)
 }
 
+// PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
 async function exportRegisterPdf(row, movements) {
-  const pdfMakeMod = await import('pdfmake/build/pdfmake')
-  const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-  const pdfMake = (pdfMakeMod.default || pdfMakeMod)
-  pdfMake.vfs = (pdfFontsMod.default?.vfs || pdfFontsMod.vfs || pdfFontsMod.default || pdfFontsMod)
-
-  const docDefinition = {
-    pageSize: 'A4',
-    pageMargins: [30, 25, 30, 30],
-    content: [
-      { text: 'Mais Mola — Gestão de Microcrédito', fontSize: 14, bold: true, color: '#0a3d2e' },
-      { text: `Fecho de Caixa — ${formatDay(row.opening_date)}`, fontSize: 11, color: '#475569', margin: [0, 2, 0, 12] },
-      {
-        table: {
-          widths: [120, '*'],
-          body: registerSummaryRows(row).map(([k, v]) => [
-            { text: k, bold: true, fillColor: '#f1f5f9' },
-            String(v)
-          ])
-        },
-        fontSize: 9,
-        layout: 'lightHorizontalLines'
-      },
-      { text: 'MOVIMENTOS', fontSize: 10, bold: true, color: '#0a3d2e', margin: [0, 14, 0, 5] },
-      {
-        table: {
-          headerRows: 1,
-          widths: [70, 45, 65, '*', 65],
-          body: [
-            ['Hora', 'Tipo', 'Categoria', 'Descrição', 'Valor'].map(h => ({ text: h, bold: true, fillColor: '#e2e8f0' })),
-            ...(movements.length ? movementTableRows(movements) : [['—', '—', '—', 'Sem movimentos', '—']])
-          ]
-        },
-        fontSize: 7.5,
-        layout: 'lightHorizontalLines'
-      },
-      { text: `Documento gerado automaticamente pelo sistema em ${new Date().toLocaleString('pt-MZ')}`, fontSize: 7, color: '#94a3b8', margin: [0, 14, 0, 0] }
-    ]
+  const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
+  const daySlug = formatDay(row.opening_date).replaceAll('/', '-')
+  const mvRows = movements.length ? movementTableRows(movements) : [['—', '—', '—', 'Sem movimentos', '—']]
+  try {
+    // Página 1: resumo (rótulo/valor); página 2: movimentos.
+    await downloadTablePdf({
+      title: 'Fecho de Caixa',
+      meta: [`${formatDay(row.opening_date)} · ${row.userName || ''}`],
+      filename: `caixa-${daySlug}-${row.id}`,
+      columns: [{ label: 'Resumo', width: 200 }, { label: 'Valor' }],
+      rows: registerSummaryRows(row).map(([k, v]) => [String(k), String(v)]),
+      totalsRow: null
+    }, `caixa-${daySlug}-${row.id}-resumo.pdf`)
+    await downloadTablePdf({
+      title: 'Fecho de Caixa — Movimentos',
+      meta: [`${formatDay(row.opening_date)} · ${row.userName || ''}`],
+      filename: `caixa-${daySlug}-${row.id}-movimentos`,
+      columns: [
+        { label: 'Hora', width: 55 },
+        { label: 'Tipo', width: 55 },
+        { label: 'Categoria', width: 75 },
+        { label: 'Descrição' },
+        { label: 'Valor', width: 70, align: 'right' }
+      ],
+      rows: mvRows
+    }, `caixa-${daySlug}-${row.id}-movimentos.pdf`)
+  } catch (e) {
+    console.error('Erro ao gerar PDF do fecho de caixa:', e)
+    $q.notify({ type: 'negative', message: await tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
-  pdfMake.createPdf(docDefinition).download(`caixa-${formatDay(row.opening_date).replaceAll('/', '-')}-${row.id}.pdf`)
 }
 
 // ─── Tabela ───

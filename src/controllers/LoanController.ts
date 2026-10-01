@@ -275,6 +275,9 @@ const getLoanAmortization = async (req: Request, res: Response) => {
         completionPayment = transaction;
       }
     });
+    // RECIBO BACKEND-AUTHORITATIVE: expõe o pagamento que completou a prestação
+    // (tranzactions.id) para o frontend abrir o PDF do backend — nunca gera PDF.
+    item.tranzactionId = completionPayment ? Number(completionPayment.id) : null;
     const paidDate = completionPayment?.paymentDate
       ? String(completionPayment.paymentDate).slice(0, 10)
       : null;
@@ -290,6 +293,26 @@ const getLoanAmortization = async (req: Request, res: Response) => {
       : 0;
     item.chargedLateDate = paidDate || null;
   });
+
+  // Recibo legal já emitido por pagamento (batch — evita N+1 na grelha).
+  const completionIds = installments
+    .map((item: any) => Number(item.tranzactionId) || 0)
+    .filter((id: number) => id > 0);
+  const recibosPorPagamento: any[] = completionIds.length > 0
+    ? (await ReciboModel.findAll({
+        where: { tranzactionId: { [Op.in]: completionIds } },
+        attributes: ["id", "numero", "hash_at", "tranzactionId"],
+        raw: true,
+      })) as any[]
+    : [];
+  const reciboByTx = new Map<number, any>();
+  (recibosPorPagamento || []).forEach((r: any) => reciboByTx.set(Number(r.tranzactionId), r));
+  installments.forEach((item: any) => {
+    const recibo = reciboByTx.get(Number(item.tranzactionId));
+    item.reciboId = recibo ? Number(recibo.id) : null;
+    item.reciboNumero = recibo ? String(recibo.numero) : null;
+  });
+
   const totals = totalsOfInstallments(installments)
 
   return loans != null && loans.length > 0

@@ -148,47 +148,17 @@ function openExtractPicker() {
   showExtractPicker.value = true
 }
 
-async function getLogoBase64ForPdf() {
-  const logo = companyStore.companyLogo
-  if (!logo || logo === '/logo.png') return null
-  try {
-    const url = logo.startsWith('http') ? logo : logo.startsWith('/') ? logo : `/documents/${logo}`
-    const token = localStorage.getItem('applicationMicroToken')
-    const headers = token ? { Authorization: `Bearer ${token}` } : {}
-    const response = await fetch(url, { headers })
-    const contentType = response.headers.get('content-type') || ''
-    if (!contentType.includes('image/')) return null
-    const blob = await response.blob()
-    return new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onloadend = () => resolve(reader.result)
-      reader.readAsDataURL(blob)
-    })
-  } catch (e) {
-    console.warn('Erro ao buscar logo:', e)
-    return null
-  }
-}
-
-// ==================== EXTRACTO DO CRÉDITO EM PDF (idêntico ao original) ====================
+// ==================== EXTRACTO DO CRÉDITO EM PDF (GERADO NO BACKEND) ====================
 async function downloadCreditExtract(loan) {
   if (!loan || !loan.installments?.length) return
   generatingPdf.value = true
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
+    // PDF GERADO NO BACKEND — o portal do financiador consome o mesmo endpoint
+    // tabelar (POST /api/reports/table-pdf) usado pelas páginas internas.
+    const { downloadTablePdf } = await import('@/utils/tablePdf')
 
-    const { buildCompanyHeader, buildFooterWithSignature, tableLayout, infoTableLayout } = await import('@/utils/pdfHeader')
-
-    const comp = companyStore.company || {}
     const cust = customer.value || {}
     const allAmorts = [...(loan.installments || [])].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-    const logoBase64 = await getLogoBase64ForPdf()
-
-    const companyHeader = buildCompanyHeader(comp, logoBase64, 'Extracto do Crédito')
 
     const paidInstallments = allAmorts.filter(a => Number(a.status) === 1)
     const pendingInstallments = allAmorts.filter(a => Number(a.status) !== 1)
@@ -207,150 +177,50 @@ async function downloadCreditExtract(loan) {
     const totalPaid = allAmorts.reduce((sum, a) => sum + (parseFloat(a.paidAmount) || 0), 0)
     const remainingDebt = Math.max(0, Math.round((totalDebt - totalPaid) * 100) / 100)
 
-    const clientSection = [
-      { text: 'DADOS DO CLIENTE', fontSize: 9, bold: true, color: '#1a237e', margin: [0, 0, 0, 6] },
-      {
-        table: {
-          widths: ['*', '*', '*', '*'],
-          body: [[
-            { text: [{ text: 'Nome: ', bold: true, fontSize: 8 }, { text: cust.name || '', fontSize: 8 }] },
-            { text: [{ text: 'Conta: ', bold: true, fontSize: 8 }, { text: String(cust.accountNumber || ''), fontSize: 8 }] },
-            { text: [{ text: 'Telefone: ', bold: true, fontSize: 8 }, { text: cust.phone || '', fontSize: 8 }] },
-            { text: [{ text: 'Email: ', bold: true, fontSize: 8 }, { text: cust.email || '', fontSize: 8 }] }
-          ]]
-        },
-        layout: infoTableLayout,
-        margin: [25, 0, 25, 12]
-      }
-    ]
-
-    const summarySection = [
-      { text: 'RESUMO DO CRÉDITO', fontSize: 9, bold: true, color: '#1a237e', margin: [25, 0, 25, 6] },
-      {
-        table: {
-          widths: ['*', '*', '*', '*', '*'],
-          body: [
-            [
-              { text: 'Capital Financiado', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Taxa de Juros', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Nº Prestações', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Total Juros', fontSize: 7, bold: true, color: '#666', alignment: 'center' },
-              { text: 'Total Dívida', fontSize: 7, bold: true, color: '#666', alignment: 'center' }
-            ],
-            [
-              { text: formatMoney(principal), fontSize: 9, bold: true, alignment: 'center' },
-              { text: `${((rate) * 100).toFixed(1)}%`, fontSize: 9, bold: true, alignment: 'center' },
-              { text: `${n}`, fontSize: 9, bold: true, alignment: 'center' },
-              { text: formatMoney(totalInterest), fontSize: 9, bold: true, alignment: 'center' },
-              { text: formatMoney(totalDebt), fontSize: 9, bold: true, alignment: 'center', color: '#c62828' }
-            ]
-          ]
-        },
-        layout: { hLineWidth: (i) => i === 0 || i === 2 ? 1 : 0.5, vLineWidth: () => 0.5, hLineColor: () => '#1a237e', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5 },
-        margin: [25, 0, 25, 8]
-      }
-    ]
-
-    const statusSection = [
-      { text: 'SITUAÇÃO ACTUAL', fontSize: 9, bold: true, color: '#1a237e', margin: [25, 0, 25, 6] },
-      {
-        table: {
-          widths: ['*', '*', '*', '*'],
-          body: [
-            [
-              { text: 'Total Pago', fontSize: 7, bold: true, color: '#2e7d32', alignment: 'center' },
-              { text: 'Saldo Remanescente', fontSize: 7, bold: true, color: '#c62828', alignment: 'center' },
-              { text: 'Prestações Pagas', fontSize: 7, bold: true, color: '#1a237e', alignment: 'center' },
-              { text: 'Prestações Pendentes', fontSize: 7, bold: true, color: '#f57c00', alignment: 'center' }
-            ],
-            [
-              { text: formatMoney(totalPaid), fontSize: 9, bold: true, color: '#2e7d32', alignment: 'center' },
-              { text: formatMoney(remainingDebt), fontSize: 9, bold: true, color: '#c62828', alignment: 'center' },
-              { text: `${paidInstallments.length} de ${allAmorts.length}`, fontSize: 9, bold: true, alignment: 'center' },
-              { text: `${pendingInstallments.length}`, fontSize: 9, bold: true, alignment: 'center' }
-            ]
-          ]
-        },
-        layout: { hLineWidth: (i) => i === 0 || i === 2 ? 1 : 0.5, vLineWidth: () => 0.5, hLineColor: () => '#e0e0e0', vLineColor: () => '#e0e0e0', paddingTop: () => 5, paddingBottom: () => 5 },
-        margin: [25, 0, 25, 12]
-      }
-    ]
-
+    // Plano de amortização — tabela única enviada ao backend
     let saldoCorrente = principal
-    const installmentsBody = allAmorts.map(row => {
+    const installmentsRows = allAmorts.map(row => {
       const status = Number(row.status) === 1 ? 'Pago' : Number(row.status) === -1 ? 'Parcial' : 'Pendente'
-      const statusColor = Number(row.status) === 1 ? '#2e7d32' : Number(row.status) === -1 ? '#f57c00' : '#333'
       const paidAmount = Number(row.paidAmount) || 0
       const discount = paidAmount > 0 && paidAmount < row.installment ? row.installment - paidAmount : 0
-
       const saldo = Math.max(0, saldoCorrente - (Number(row.amortization) || 0))
       saldoCorrente = saldo
-
       return [
-        { text: row.installmentOrder || '', fontSize: 7, alignment: 'center' },
-        { text: formatDate(row.dueDate), fontSize: 7, alignment: 'center' },
-        { text: formatMoney(row.amortization), fontSize: 7, alignment: 'right' },
-        { text: formatMoney(row.rateAmount), fontSize: 7, alignment: 'right' },
-        { text: formatMoney(row.installment), fontSize: 7, alignment: 'right', bold: true },
-        { text: formatMoney(saldo), fontSize: 7, alignment: 'right', color: saldo > 0 ? '#c62828' : '#2e7d32' },
-        { text: formatMoney(paidAmount), fontSize: 7, alignment: 'right', color: paidAmount > 0 ? '#2e7d32' : '#999' },
-        { text: discount > 0 ? '-' + formatMoney(discount) : '—', fontSize: 7, alignment: 'right', color: discount > 0 ? '#f57c00' : '#999' },
-        { text: status, fontSize: 7, bold: true, color: statusColor, alignment: 'center' }
+        row.installmentOrder || '',
+        formatDate(row.dueDate),
+        formatMoney(row.amortization),
+        formatMoney(row.rateAmount),
+        formatMoney(row.installment),
+        formatMoney(saldo),
+        formatMoney(paidAmount),
+        discount > 0 ? '-' + formatMoney(discount) : '—',
+        status
       ]
     })
 
-    installmentsBody.push([
-      { text: 'TOTAIS', fontSize: 7, bold: true, colSpan: 2, color: '#1a237e' }, {},
-      { text: formatMoney(principal), fontSize: 7, alignment: 'right', bold: true },
-      { text: formatMoney(totalInterest), fontSize: 7, alignment: 'right', bold: true },
-      { text: formatMoney(totalDebt), fontSize: 7, alignment: 'right', bold: true },
-      { text: '0,00 MZN', fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
-      { text: formatMoney(totalPaid), fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
-      { text: '', fontSize: 7 },
-      { text: '', fontSize: 7 }
-    ])
-
-    const amortSection = [
-      { text: `PLANO DE AMORTIZAÇÃO (${allAmorts.length} prestações)`, fontSize: 9, bold: true, color: '#1a237e', margin: [25, 0, 25, 6] },
-      {
-        table: {
-          headerRows: 1,
-          widths: ['auto', 'auto', '*', '*', '*', '*', '*', '*', 'auto'],
-          body: [
-            [
-              { text: 'Ordem', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
-              { text: 'Vencimento', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' },
-              { text: 'Capital', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Juros', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Prestação', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Saldo', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Pago', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Desconto', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'right' },
-              { text: 'Estado', fontSize: 7, bold: true, color: '#fff', fillColor: '#1a237e', alignment: 'center' }
-            ],
-            ...installmentsBody
-          ]
-        },
-        layout: tableLayout,
-        margin: [25, 0, 25, 12]
-      }
-    ]
-
-    const docDefinition = {
-      footer: buildFooterWithSignature(comp),
-      content: [
-        ...companyHeader,
-        clientSection,
-        summarySection,
-        statusSection,
-        amortSection
-      ].flat(),
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      pageMargins: [25, 15, 25, 15]
-    }
     const fileName = `Extracto_Credito_Conta${cust.accountNumber || 'N/A'}_${new Date().toISOString().split('T')[0]}.pdf`
-    pdfMake.createPdf(docDefinition).download(fileName)
+    await downloadTablePdf({
+      title: 'Extracto do Crédito',
+      meta: [
+        `${cust.name || ''} · Conta ${cust.accountNumber || 'N/A'} · Tel. ${cust.phone || '—'}`,
+        `Capital ${formatMoney(principal)} · Taxa ${((rate) * 100).toFixed(1)}% · ${n} prestações · Total dívida ${formatMoney(totalDebt)}`,
+        `Pago ${formatMoney(totalPaid)} · Saldo ${formatMoney(remainingDebt)} · Prestações pagas ${paidInstallments.length}/${allAmorts.length}`
+      ],
+      orientation: 'landscape',
+      filename: `extracto-credito-${cust.accountNumber || 'na'}`,
+      columns: [
+        { label: 'Ordem', width: 40, align: 'center' },
+        { label: 'Vencimento', width: 65, align: 'center' },
+        { label: 'Capital', width: 70, align: 'right' },
+        { label: 'Juros', width: 65, align: 'right' },
+        { label: 'Prestação', width: 70, align: 'right' },
+        { label: 'Saldo', width: 75, align: 'right' },
+        { label: 'Pago', width: 70, align: 'right' },
+        { label: 'Desconto', width: 65, align: 'right' },
+        { label: 'Estado', width: 55, align: 'center' }
+      ],
+      rows: installmentsRows
+    }, fileName)
     showExtractPicker.value = false
     $q.notify({ type: 'positive', message: 'Extracto gerado com sucesso', position: 'top' })
   } catch (e) {

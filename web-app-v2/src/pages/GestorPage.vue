@@ -443,7 +443,9 @@ function viewDetails(row) {
   showDetails.value = true
 }
 
-// ==================== GERAÇÃO PDF ====================
+// ==================== GERAÇÃO PDF (BACKEND) ====================
+// POST /api/reports/table-pdf (pdfkit no servidor) — nada de PDF no browser.
+// Linhas agrupadas por mês com coluna de grupo; totais no fim.
 async function downloadPDF() {
   if (filteredInstallments.value.length === 0) {
     $q.notify({ type: 'warning', message: 'Sem dados para exportar', position: 'top' })
@@ -451,45 +453,12 @@ async function downloadPDF() {
   }
 
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    let companyLogo = null
-    const company = companyStore.company
-    const logo = company?.companyLogo
-    if (logo && logo !== '/logo.png') {
-      try {
-        const token = localStorage.getItem('applicationMicroToken')
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
-        const resp = await fetch(logo, { headers })
-        const contentType = resp.headers.get('content-type') || ''
-        if (resp.ok && contentType.includes('image/')) {
-          const blob = await resp.blob()
-          companyLogo = await new Promise((resolve) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(reader.result)
-            reader.readAsDataURL(blob)
-          })
-        }
-      } catch {}
-    }
-
-    const comp = company || {}
+    const { openTablePdf, tablePdfError } = await import('@/utils/tablePdf')
     const now = new Date()
     const dateStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`
-    const headerImage = companyLogo ? [{ image: companyLogo, width: 50, margin: [0, 0, 15, 0] }] : []
 
-    // Agrupar por data de vencimento (recente → antigo)
-    const sorted = [...filteredInstallments.value].sort((a, b) => {
-      const dateA = new Date(a.dueDate)
-      const dateB = new Date(b.dueDate)
-      return dateA - dateB // Crescente (mais próximo primeiro)
-    })
-
-    // Agrupar por mês/ano
+    // Agrupar por mês/ano (ordenado por vencimento)
+    const sorted = [...filteredInstallments.value].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
     const groups = {}
     sorted.forEach(row => {
       const d = new Date(row.dueDate)
@@ -499,142 +468,50 @@ async function downloadPDF() {
       groups[key].rows.push(row)
     })
 
-    // Construir conteúdo do PDF agrupado
-    const pdfContent = [
-      {
-        columns: [
-          ...headerImage,
-          {
-            width: '*',
-            stack: [
-              { text: comp.companyName || 'Empresa', style: 'headerTitle', margin: [0, 0, 0, 2] },
-              { text: `NUIT: ${comp.companyNuit || '-'}`, style: 'headerSub' },
-              { text: `${comp.companyAddress || ''} | Tel: ${comp.companyPhone || ''}`, style: 'headerSub' }
-            ]
-          },
-          {
-            width: 150,
-            stack: [
-              { text: 'DATA:', style: 'labelText', margin: [0, 0, 0, 2] },
-              { text: dateStr, style: 'valueText' },
-              { text: `Registos: ${filteredInstallments.value.length}`, style: 'labelText', margin: [8, 4, 0, 0] }
-            ]
-          }
-        ],
-        margin: [0, 0, 0, 15]
-      },
-      { text: 'RELATÓRIO DE PRESTAÇÕES POR VENCIMENTO', style: 'sectionTitle', margin: [0, 0, 0, 10] }
-    ]
-
-    const tableHeader = [
-      { text: 'Mutuário', style: 'tableHeader' },
-      { text: 'Prestação', style: 'tableHeader' },
-      { text: 'Vencimento', style: 'tableHeader' },
-      { text: 'Observações', style: 'tableHeader' },
-      { text: 'Mora', style: 'tableHeader' },
-      { text: 'Total a Pagar', style: 'tableHeader' }
-    ]
-
-    // Adicionar cada grupo ao conteúdo
+    const rowsOut = []
     Object.values(groups).forEach(group => {
-      pdfContent.push({
-        text: group.label.toUpperCase(),
-        style: 'groupTitle',
-        margin: [0, 10, 0, 5]
-      })
-
-      const groupRows = group.rows.map(row => {
+      group.rows.forEach(row => {
         let observations = ''
         if (row.status === 1) observations = 'Liquidado'
         else if (row.daysOverdue > 0) observations = `${row.daysOverdue} dias vencido`
         else if (row.daysUntilDue > 0) observations = `${row.daysUntilDue} dias pra vencer`
         else observations = 'Vence hoje'
-
-        return [
-          { text: row.customerName || '-', style: 'cellText' },
-          { text: formatMoneyRaw(row.installment), style: 'cellRight' },
-          { text: formatDate(row.dueDate), style: 'cellCenter' },
-          { text: observations, style: 'cellText' },
-          { text: formatMoneyRaw(row.lateFee), style: 'cellRight' },
-          { text: formatMoneyRaw(row.totalToPay), style: 'cellRightBold' }
-        ]
-      })
-
-      // Subtotal do grupo
-      const groupMora = group.rows.reduce((sum, r) => sum + (r.lateFee || 0), 0)
-      const groupTotal = group.rows.reduce((sum, r) => sum + (r.totalToPay || 0), 0)
-      groupRows.push([
-        { text: `Subtotal (${group.rows.length})`, style: 'totalCell' },
-        { text: '', style: 'totalCell' },
-        { text: '', style: 'totalCell' },
-        { text: '', style: 'totalCell' },
-        { text: formatMoneyRaw(groupMora), style: 'totalCellRight' },
-        { text: formatMoneyRaw(groupTotal), style: 'totalCellRight' }
-      ])
-
-      pdfContent.push({
-        table: {
-          headerRows: 1,
-          widths: ['*', 70, 65, 90, 60, 80],
-          body: [tableHeader, ...groupRows]
-        },
-        layout: 'grid',
-        margin: [0, 0, 0, 10]
+        rowsOut.push([
+          row.customerName || '-',
+          group.label,
+          formatMoneyRaw(row.installment),
+          formatDate(row.dueDate),
+          observations,
+          formatMoneyRaw(row.lateFee),
+          formatMoneyRaw(row.totalToPay)
+        ])
       })
     })
 
-    // Total geral
     const totalMora = filteredInstallments.value.reduce((sum, r) => sum + (r.lateFee || 0), 0)
     const totalGeral = filteredInstallments.value.reduce((sum, r) => sum + (r.totalToPay || 0), 0)
 
-    pdfContent.push({
-      text: 'TOTAL GERAL',
-      style: 'sectionTitle',
-      margin: [0, 15, 0, 5]
+    await openTablePdf({
+      title: 'RELATÓRIO DE PRESTAÇÕES POR VENCIMENTO',
+      meta: [`Emitido em ${dateStr}`, `${filteredInstallments.value.length} prestações`],
+      orientation: 'landscape',
+      filename: 'prestacoes-por-vencimento',
+      columns: [
+        { label: 'Mutuário' },
+        { label: 'Mês', width: 70 },
+        { label: 'Prestação', width: 70, align: 'right' },
+        { label: 'Vencimento', width: 65, align: 'center' },
+        { label: 'Observações', width: 95 },
+        { label: 'Mora', width: 60, align: 'right' },
+        { label: 'Total a Pagar', width: 75, align: 'right' }
+      ],
+      rows: rowsOut,
+      totalsRow: [`TOTAL (${filteredInstallments.value.length} prestações)`, '', '', '', '', formatMoneyRaw(totalMora), formatMoneyRaw(totalGeral)]
     })
-
-    pdfContent.push({
-      table: {
-        widths: ['*', 70, 65, 90, 60, 80],
-        body: [[
-          { text: `TOTAL (${filteredInstallments.value.length} prestações)`, style: 'totalCell' },
-          { text: '', style: 'totalCell' },
-          { text: '', style: 'totalCell' },
-          { text: '', style: 'totalCell' },
-          { text: formatMoneyRaw(totalMora), style: 'totalCellRight' },
-          { text: formatMoneyRaw(totalGeral), style: 'totalCellRight' }
-        ]]
-      },
-      layout: 'grid'
-    })
-
-    const docDefinition = {
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      pageMargins: [20, 20, 20, 30],
-      content: pdfContent,
-      styles: {
-        headerTitle: { fontSize: 14, bold: true, color: '#1b5e20' },
-        headerSub: { fontSize: 8, color: '#37474f' },
-        sectionTitle: { fontSize: 11, bold: true },
-        labelText: { fontSize: 8, bold: true },
-        valueText: { fontSize: 8 },
-        tableHeader: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e8eaf6' },
-        cellText: { fontSize: 7 },
-        cellCenter: { fontSize: 7, alignment: 'center' },
-        cellRight: { fontSize: 7, alignment: 'right' },
-        cellRightBold: { fontSize: 7, alignment: 'right', bold: true },
-        totalCell: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e0e0e0' },
-        totalCellRight: { fontSize: 7, bold: true, alignment: 'right', fillColor: '#e0e0e0' },
-        groupTitle: { fontSize: 9, bold: true, color: '#1b5e20', margin: [0, 8, 0, 4] }
-      }
-    }
-
-    pdfMake.createPdf(docDefinition).open()
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+    $q.notify({ type: 'negative', message: await (await import('@/utils/tablePdf')).tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
 }
 

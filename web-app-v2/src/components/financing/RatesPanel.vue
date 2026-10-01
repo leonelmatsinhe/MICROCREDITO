@@ -124,7 +124,7 @@
 
             <div class="text-caption text-grey-6 q-mt-sm" v-if="Number(rate.administrativeFee) > 0">
               <q-icon name="receipt" size="12px" class="q-mr-xs" />
-              Taxa administrativa: {{ (Number(rate.administrativeFee) * 100).toFixed(1) }}%
+              Taxa administrativa: {{ formatPct(rate.administrativeFee) }}%
             </div>
           </q-card-section>
         </q-card>
@@ -153,7 +153,7 @@
               </q-input>
             </div>
             <div class="col-6">
-              <q-input v-model.number="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="number" step="0.1" input-style="font-size: 13px">
+              <q-input v-model.number="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="number" step="0.001" min="0" input-style="font-size: 13px">
                 <template v-slot:prepend><q-icon name="receipt" size="16px" color="grey-5" /></template>
               </q-input>
             </div>
@@ -309,6 +309,12 @@ const editingRate = ref(null)
 const editingToDelete = ref(null)
 const form = ref({ name: '', taxPercent: '', adminFeePercent: 0, vinculacao: 'CARTEIRA', walletId: null, accountId: null })
 
+// Percentagem com até 3 decimais (0.001% entra sem ser arredondada a zero)
+const formatPct = (frac) => {
+  const pct = Number(frac || 0) * 100
+  return Number(pct.toFixed(3)).toLocaleString('pt-MZ', { maximumFractionDigits: 3 })
+}
+
 const vinculacaoOptions = [
   { label: 'Carteira de Financiamento', value: 'CARTEIRA' },
   { label: 'Conta de Desembolso Principal', value: 'CONTA' },
@@ -346,7 +352,7 @@ function openEdit(rate) {
   form.value = {
     name: rate.name || '',
     taxPercent: Number(rate.tax) * 100,
-    adminFeePercent: (Number(rate.administrativeFee) || 0) * 100,
+    adminFeePercent: Number(((Number(rate.administrativeFee) || 0) * 100).toFixed(3)),
     vinculacao,
     walletId: rate.walletId || null,
     accountId: rate.accountId || null
@@ -382,7 +388,7 @@ async function saveRate() {
   const payload = {
     name: f.name.trim(),
     tax: Number(f.taxPercent) / 100,
-    administrativeFee: (Number(f.adminFeePercent) || 0) / 100,
+    administrativeFee: Number((((Number(f.adminFeePercent) || 0) / 100).toFixed(6))),
     companyId: authStore.companyId,
     vinculacao: f.vinculacao,
     walletId: f.vinculacao === 'CARTEIRA' ? f.walletId : null,

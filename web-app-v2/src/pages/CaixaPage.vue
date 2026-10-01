@@ -739,7 +739,7 @@ async function submitClose() {
 
 // ==================== EXPORTAÇÃO PDF ====================
 // Resumo do dia: cabeçalho da empresa, quadro de totais com divergência e
-// lista completa de movimentos. Segue o padrão pdfmake da PaymentsPage.
+// lista completa de movimentos. Gerado no BACKEND via /api/reports/table-pdf.
 function moneyRaw(value) {
   return (Number(value) || 0).toLocaleString('pt-MZ', {
     minimumFractionDigits: 2,
@@ -747,35 +747,23 @@ function moneyRaw(value) {
   })
 }
 
+// PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
+// O resumo do dia (rótulo/valor) e os movimentos saem em dois blocos do mesmo
+// documento lógico: 1.º PDF = resumo, 2.º PDF = movimentos.
 async function exportPDF() {
   if (movements.value.length === 0) {
     $q.notify({ type: 'warning', message: 'Não há movimentos para exportar', position: 'top' })
     return
   }
   try {
-    // Garantir dados da empresa para o cabeçalho
-    const companyId = authStore.companyId
-    if (companyId && !companyStore.hasCompany) {
-      await companyStore.fetchCompany(companyId).catch(() => {})
-    }
-
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    const { buildCompanyHeader, companyLogoBase64, commonStyles, tableLayout } = await import('@/utils/pdfHeader')
-    const company = companyStore.company || {}
-    const logoBase64 = await companyLogoBase64(company)
-
+    const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
     const reg = register.value
     const dayLabel = formatDay(reg.opening_date)
     const isBalanced = Math.abs(Number(reg.difference ?? 0)) < 0.01 && reg.status === 'FECHADO'
 
     // ── Quadro de resumo (2 colunas: rótulo / valor) ──
-    // Separação CASH vs BANK no PDF: o fecho audita o dinheiro físico;
-    // o electrónico fica nas contas bancárias (total_bank_in/out).
+    // Separação CASH vs BANK: o fecho audita o dinheiro físico; o electrónico
+    // fica nas contas bancárias (total_bank_in/out).
     const summaryRows = [
       ['Estado do caixa', reg.status === 'ABERTO' ? 'ABERTO' : 'FECHADO'],
       ['Responsável', authStore.userName || '—'],
@@ -796,92 +784,42 @@ async function exportPDF() {
         : null
     ].filter(Boolean)
 
-    const summaryTable = {
-      table: {
-        widths: ['*', 'auto'],
-        body: summaryRows.map(([label, value]) => ([
-          { text: label, style: 'cellText' },
-          { text: value, style: 'cellRightBold' }
-        ]))
-      },
-      layout: 'grid',
-      margin: [0, 0, 0, 14]
-    }
-
-    // ── Tabela de movimentos ──
-    const movementHeader = [
-      { text: 'Hora', style: 'tableHeader' },
-      { text: 'Categoria', style: 'tableHeader' },
-      { text: 'Descrição', style: 'tableHeader' },
-      { text: 'Origem', style: 'tableHeader' },
-      { text: 'Valor', style: 'tableHeader' }
-    ]
-    const movementRows = movements.value.map(m => ([
-      { text: formatTime(m.createdAt), style: 'cellCenter' },
-      { text: categoryLabel(m.category), style: 'cellCenter' },
-      { text: m.description || '—', style: 'cellText' },
-      { text: m.isAutomatic ? 'Automático' : 'Manual', style: 'cellCenter' },
-      {
-        text: (m.type === 'ENTRADA' ? '+ ' : '− ') + moneyRaw(m.amount) + ' MZN',
-        style: m.type === 'ENTRADA' ? 'inPositive' : 'inNegative'
-      }
-    ]))
-
-    // Linha de totais: entradas/saídas do dia
-    const totalRow = [
-      { text: 'TOTAIS', colSpan: 4, style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      {
-        text: `+ ${moneyRaw(reg.total_in)} / − ${moneyRaw(reg.total_out)} MZN`,
-        style: 'totalCellRight'
-      }
-    ]
-
-    const docDefinition = {
-      pageSize: 'A4',
-      pageMargins: [24, 20, 24, 30],
-      content: [
-        ...buildCompanyHeader(company, logoBase64, `Caixa do Dia — ${dayLabel}`),
-        {
-          text: `${movements.value.length} movimento(s) registado(s)` +
-            (reg.status === 'FECHADO' ? ` · caixa encerrado às ${formatTime(reg.closed_at)}` : ' · caixa em curso'),
-          fontSize: 8,
-          color: '#444',
-          margin: [0, 0, 0, 8]
-        },
-        summaryTable,
-        {
-          text: 'MOVIMENTOS DO DIA',
-          fontSize: 10,
-          bold: true,
-          color: '#1a237e',
-          margin: [0, 0, 0, 5]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: [40, 70, '*', 55, 90],
-            body: [movementHeader, ...movementRows, totalRow]
-          },
-          layout: tableLayout,
-          fontSize: 7
-        }
+    await downloadTablePdf({
+      title: `Caixa do Dia — ${dayLabel}`,
+      meta: [
+        `${movements.value.length} movimento(s) registado(s)`,
+        reg.status === 'FECHADO' ? `caixa encerrado às ${formatTime(reg.closed_at)}` : 'caixa em curso'
       ],
-      styles: {
-        ...commonStyles,
-        inPositive: { fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
-        inNegative: { fontSize: 7, alignment: 'right', bold: true, color: '#c62828' }
-      },
-      defaultStyle: { font: 'Roboto' }
-    }
+      filename: `caixa-${reg.opening_date}-resumo`,
+      columns: [{ label: 'Resumo do caixa', width: 260 }, { label: 'Valor', align: 'right' }],
+      rows: summaryRows.map(([label, value]) => [String(label), String(value)])
+    }, `caixa-${reg.opening_date}-resumo.pdf`)
 
-    pdfMake.createPdf(docDefinition).download(`caixa-${reg.opening_date}.pdf`)
+    await downloadTablePdf({
+      title: `Caixa do Dia — Movimentos (${dayLabel})`,
+      meta: [`+ ${moneyRaw(reg.total_in)} entradas / − ${moneyRaw(reg.total_out)} saídas MZN`],
+      filename: `caixa-${reg.opening_date}-movimentos`,
+      columns: [
+        { label: 'Hora', width: 55 },
+        { label: 'Categoria', width: 80 },
+        { label: 'Descrição' },
+        { label: 'Origem', width: 60, align: 'center' },
+        { label: 'Valor', width: 85, align: 'right' }
+      ],
+      rows: movements.value.map(m => [
+        formatTime(m.createdAt),
+        categoryLabel(m.category),
+        m.description || '—',
+        m.isAutomatic ? 'Automático' : 'Manual',
+        `${m.type === 'ENTRADA' ? '+' : '-'} ${moneyRaw(m.amount)} MZN`
+      ])
+    }, `caixa-${reg.opening_date}-movimentos.pdf`)
+
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF do caixa:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+    const { tablePdfError } = await import('@/utils/tablePdf')
+    $q.notify({ type: 'negative', message: await tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
 }
 

@@ -25,7 +25,9 @@ export const useMutuarioStore = defineStore('mutuario', {
     amortLoading: false,
     submitting: false,
     liquidating: false,
-    simulation: null           // resultado do POST /api/loan/simulate
+    simulation: null,          // resultado do POST /api/loan/simulate
+    quote: null,               // quote oficial da prestação (GET /api/installments/:id/quote)
+    quoteLoading: false
   }),
 
   getters: {
@@ -276,15 +278,40 @@ export const useMutuarioStore = defineStore('mutuario', {
       }
     },
 
-    // ── Pagamento individual (POST /api/tranzaction) ──
+    // ── Pagamento individual (POST /api/tranzaction) — V2 com idempotência ──
     async payInstallment(payload) {
-      const { data } = await api.post('/api/tranzaction', payload)
+      // Idempotency-Key: gerada POR TENTATIVA de submissão (regenerada em cada
+      // abertura do modal pelo componente). Retry da MESMA tentativa reenvia a
+      // mesma chave → o servidor devolve a resposta original sem duplicar.
+      const headers = payload?.idempotencyKey
+        ? { 'Idempotency-Key': String(payload.idempotencyKey) }
+        : {}
+      const body = { ...(payload || {}) }
+      delete body.idempotencyKey
+      const { data } = await api.post('/api/tranzaction', body, { headers })
       if (!data.success) throw new Error(data.message || 'Erro no pagamento')
       // Refresca o plano do crédito pago (payload.loanId é sempre explícito)
       if (payload?.loanId) {
         await Promise.all([this.fetchPlanFor(payload.loanId), this.fetchLoans()])
       }
       return data
+    },
+
+    // ── QUOTE OFICIAL server-side (V2) — mora vem do backend, não do JS ──
+    async fetchQuote(installmentId, payDate) {
+      this.quoteLoading = true
+      try {
+        const { data } = await api.get(`/api/installments/${installmentId}/quote`, {
+          params: payDate ? { payDate } : {}
+        })
+        if (data.success) {
+          this.quote = data.result
+          return data.result
+        }
+        throw new Error(data.message || 'Erro ao calcular a quote')
+      } finally {
+        this.quoteLoading = false
+      }
     },
 
     clear() {

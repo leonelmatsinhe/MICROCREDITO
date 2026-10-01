@@ -59,6 +59,8 @@ const PartnerPortalController_1 = require("./controllers/PartnerPortalController
 const FinancierReportController_1 = require("./controllers/FinancierReportController");
 // RECIBOS com numeração sequencial legal (AT Moçambique)
 const ReciboController_1 = require("./controllers/ReciboController");
+// PDF TABELAR GENÉRICO — relatórios do frontend gerados no backend (pdfkit)
+const TablePdfController_1 = require("./controllers/TablePdfController");
 const roles_1 = require("./middlewares/roles");
 const ExcelExportController_1 = require("./controllers/ExcelExportController");
 const routes = express_1.default.Router();
@@ -181,6 +183,8 @@ routes.get("/api/debug/companies", SuperAdminController_1.debugCompanies);
 // VALIDAÇÃO PÚBLICA DO RECIBO — é o destino do QR Code impresso no documento,
 // por isso não pode exigir sessão (tem de vir antes do middleware auth).
 routes.get("/api/recibos/validar", ReciboController_1.validar);
+// Alias curto usado no QR Code (mesma lógica, URL amigável para o fiscal).
+routes.get("/api/validar-recibo", ReciboController_1.validar);
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth_1.auth);
 // SUPER ADMIN — aprovação de empresas (apenas userRole = 0)
@@ -221,8 +225,16 @@ routes.delete("/api/users/:id", UserController_1.destroy);
 routes.post("/api/loan/simulate", LoanController_1.simulateLoan);
 routes.get("/api/loan/:id", LoanController_1.findLoanByCustomer);
 // DOSSIÊ DO CRÉDITO (página de detalhe: pagamentos + recibos + prestações)
-// DOCUMENTOS LEGAIS DO CRÉDITO (pdfkit no backend, layout do PDF oficial):
-// contrato | termo | garantias | extracto
+// DOCUMENTOS LEGAIS DO CRÉDITO — DOIS FLUXOS:
+//   FLUXO 1 (IMUTÁVEL): pacote de concessão gerado 1× após desembolso,
+//   com hash + QR; endpoints próprios (meta, gerar, PDF, ZIP).
+//   FLUXO 2 (DINÂMICO): extracto on-demand, sempre actualizado, em memória.
+routes.get("/api/loans/:loanId/concession", roles_1.isStaff, LegalDocsController_1.concessionMeta);
+routes.post("/api/loans/:loanId/concession/generate", roles_1.isStaff, LegalDocsController_1.concessionGenerate);
+routes.get("/api/loans/:loanId/concession/zip", roles_1.isStaff, LegalDocsController_1.concessionZip);
+routes.get("/api/loans/:loanId/concession/:key/pdf", roles_1.isStaff, LegalDocsController_1.concessionDocPdf);
+// Compat: contrato | termo | garantias (do pacote se emitido; senão on-the-fly)
+// e extracto (dinâmico, sempre on-demand).
 routes.get("/api/loans/:loanId/documents/:tipo/pdf", LegalDocsController_1.downloadLegalDoc);
 routes.get("/api/loan/:id/detail", roles_1.isStaff, LoanController_1.loanDetail);
 routes.get("/api/loan/amortization/:id", LoanController_1.getLoanAmortization);
@@ -298,6 +310,12 @@ routes.get("/api/monthllyTransactions/:id", TranzactionController_1.findTransact
 routes.get("/api/payments/:id/paginated", TranzactionController_1.findPaginatedTransactions);
 routes.get("/api/payments/:companyId/all", TranzactionController_1.findAllPaymentsOverview);
 routes.put("/api/tranzaction/:id", TranzactionController_1.updateTranzaction);
+// Validação async de referência (frontend chama ao digitar) — ANTES de "/:id"
+routes.get("/api/tranzaction/loan/reference-check", auth_1.auth, TranzactionController_1.checkReference);
+// PAGAMENTOS V2 — quote oficial server-side (o frontend deixa de calcular mora)
+routes.get("/api/installments/:id/quote", auth_1.auth, TranzactionController_1.getInstallmentQuote);
+// ESTORNO FORMAL — só ADMIN; motivo obrigatório; transacção atómica
+routes.post("/api/tranzaction/:id/reverse", auth_1.auth, TranzactionController_1.reverseTranzaction);
 // Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA
 // (REEMBOLSO / JUROS_MORA / TAXA_ADMIN) são criados no controller.
 routes.post("/api/tranzaction", checkCashRegisterOpen_1.checkCashRegisterOpen, TranzactionController_1.addTranzaction);
@@ -372,6 +390,8 @@ routes.delete("/api/wallets/:id", roles_1.isAdmin, FinancingWalletController_1.d
 // UMA carteira de financiamento com portal activo.
 routes.post("/api/users/parceiros", roles_1.isAdmin, UserController_1.createPartner);
 routes.put("/api/users/parceiros/:id", roles_1.isAdmin, UserController_1.updatePartner);
+// ==================== PDF TABELAR GENÉRICO (relatórios sem pdfMake) ====================
+routes.post("/api/reports/table-pdf", TablePdfController_1.tablePdf);
 // ==================== RECIBOS (NUMERAÇÃO SEQUENCIAL LEGAL — AT) ====================
 routes.post("/api/recibos/gerar/:tranzactionId", roles_1.isStaff, ReciboController_1.gerar);
 routes.get("/api/recibos/loan/:loanId", roles_1.isStaff, ReciboController_1.byLoan);
@@ -381,6 +401,8 @@ routes.get("/api/recibos/customer/:customerId", roles_1.isStaff, ReciboControlle
 routes.post("/api/recibos/lookup", roles_1.isStaff, ReciboController_1.lookup);
 routes.post("/api/recibos/:id/enviar", roles_1.isStaff, ReciboController_1.enviar);
 routes.get("/api/recibos/:id/pdf", roles_1.isStaff, ReciboController_1.pdf);
+// Recibo de um pagamento — o frontend só consome isto (nunca gera PDF).
+routes.get("/api/tranzactions/:id/recibo", roles_1.isStaff, ReciboController_1.reciboByTranzaction);
 routes.get("/api/recibos/:id", roles_1.isStaff, ReciboController_1.findOne);
 // ==================== RELATÓRIO DE FINANCIADOR (Admin) ====================
 // Relatório isolado por carteira (desembolsos + recebimentos) com Excel e

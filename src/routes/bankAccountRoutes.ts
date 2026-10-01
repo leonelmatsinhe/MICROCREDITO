@@ -2,6 +2,7 @@ import { Router } from "express";
 import { auth } from "../middlewares/auth";
 import {
   index,
+  reembolsoAccounts,
   walletTotals,
   balance,
   transactions,
@@ -30,6 +31,8 @@ const bankAccountRoutes = Router();
 
 // Rotas estáticas ANTES das dinâmicas (:id) para não colidirem.
 bankAccountRoutes.get("/api/bank-accounts", auth, index);
+// Contas de DESTINO de pagamento (REEMBOLSO/MISTO/caixa) priorizadas por método
+bankAccountRoutes.get("/api/bank-accounts/reembolso", auth, reembolsoAccounts);
 bankAccountRoutes.get("/api/bank-accounts/wallet-totals", auth, walletTotals);
 bankAccountRoutes.post("/api/bank-accounts/transfer", auth, transfer);
 bankAccountRoutes.post("/api/bank-accounts/deposit", auth, deposit);

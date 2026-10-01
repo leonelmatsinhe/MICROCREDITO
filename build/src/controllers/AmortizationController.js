@@ -49,6 +49,7 @@ const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
 const kycDocuments_1 = require("../utils/kycDocuments");
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
+const concessionPackageService_1 = require("../services/concessionPackageService");
 const getUpcomingAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
@@ -349,6 +350,27 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         }
         catch (smsError) {
             console.error("Erro ao enfileirar SMS de desembolso:", smsError);
+        }
+        // ── FLUXO 1: PACOTE DE CONCESSÃO (IMUTÁVEL) — gerado no desembolso ──
+        // Documentos legais (Termo, Garantias, Contrato, Plano) com hash + QR.
+        // Best-effort: falha NÃO desfaz o desembolso (o job de arranque cobre o
+        // backfill); imutabilidade garantida pela constraint UNIQUE loanId.
+        try {
+            const jwt = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
+            const decoded = jwt.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
+            const { generateConcessionPackage } = yield Promise.resolve().then(() => __importStar(require("../services/concessionPackageService")));
+            const pacote = yield generateConcessionPackage({
+                loanId: Number(loanId),
+                companyId: Number(companyId),
+                createdBy: Number(decoded === null || decoded === void 0 ? void 0 : decoded.id) || null,
+                ip: req.ip || null,
+            });
+            console.log(`[Concessao] Pacote emitido para o crédito #${loanId} (hash ${String(pacote.package_hash).slice(0, 12)}…)`);
+        }
+        catch (pkgError) {
+            if (!(pkgError instanceof concessionPackageService_1.PackageAlreadyIssuedError)) {
+                console.error("[Concessao] Falha ao gerar pacote (desembolso mantido):", (pkgError === null || pkgError === void 0 ? void 0 : pkgError.message) || pkgError);
+            }
         }
         // ── CAIXA DIÁRIO: movimento automático SAIDA / DESEMBOLSO ──
         // Best-effort: se falhar, NÃO impede o desembolso (apenas regista o erro).

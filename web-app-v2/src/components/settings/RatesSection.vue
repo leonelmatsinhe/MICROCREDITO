@@ -58,9 +58,9 @@
               <q-badge v-else color="grey-5" label="Sem carteira de financiamento" />
             </div>
 
-            <div class="text-caption text-grey-5 q-mt-xs" v-if="rate.administrativeFee">
+            <div class="text-caption text-grey-5 q-mt-xs" v-if="Number(rate.administrativeFee) > 0">
               <q-icon name="receipt" size="12px" class="q-mr-xs" />
-              Taxa administrativa: {{ (rate.administrativeFee * 100).toFixed(1) }}%
+              Taxa administrativa: {{ formatPct(rate.administrativeFee) }}%
             </div>
           </q-card-section>
         </q-card>
@@ -84,7 +84,7 @@
             <q-input v-model.number="form.taxPercent" dense outlined label="Taxa de Juro (%) *" type="number" step="0.1" :rules="[val => !!val || 'Obrigatório']" input-style="font-size: 13px">
               <template v-slot:prepend><q-icon name="percent" size="16px" color="grey-5" /></template>
             </q-input>
-            <q-input v-model.number="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="number" step="0.1" input-style="font-size: 13px">
+            <q-input v-model.number="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="number" step="0.001" min="0" input-style="font-size: 13px">
               <template v-slot:prepend><q-icon name="receipt" size="16px" color="grey-5" /></template>
             </q-input>
             <!-- OBRIGATÓRIO: cada taxa pertence a uma carteira de financiamento -->
@@ -151,6 +151,12 @@ const walletsStore = useWalletsStore()
 const walletOptions = computed(() => walletsStore.walletOptions)
 const carteiraDaTaxa = (rate) => walletsStore.walletById(rate.walletId)
 
+// Percentagem com até 3 decimais (0.001% entra sem ser arredondada a zero)
+const formatPct = (frac) => {
+  const pct = Number(frac || 0) * 100
+  return Number(pct.toFixed(3)).toLocaleString('pt-MZ', { maximumFractionDigits: 3 })
+}
+
 const loading = computed(() => settingsStore.loadingRates)
 const saving = computed(() => settingsStore.saving)
 const rates = computed(() => settingsStore.rates)
@@ -171,8 +177,8 @@ function openEdit(rate) {
   editingRate.value = rate
   form.value = {
     name: rate.name || '',
-    taxPercent: rate.tax * 100,
-    adminFeePercent: (rate.administrativeFee || 0) * 100,
+    taxPercent: Number(rate.tax) * 100,
+    adminFeePercent: Number(((Number(rate.administrativeFee) || 0) * 100).toFixed(3)),
     walletId: rate.walletId || null
   }
   showForm.value = true
@@ -190,7 +196,7 @@ async function saveRate() {
     const payload = {
       name: form.value.name,
       tax: form.value.taxPercent / 100,
-      administrativeFee: (form.value.adminFeePercent || 0) / 100,
+      administrativeFee: Number((((form.value.adminFeePercent || 0) / 100).toFixed(6))),
       companyId: authStore.companyId,
       walletId: form.value.walletId
     }

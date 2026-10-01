@@ -260,13 +260,16 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useMutuarioStore } from '@/stores/mutuario'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort } from '@/utils/formatters'
 
 const $q = useQuasar()
+const router = useRouter()
 const store = useMutuarioStore()
 const settingsStore = useSettingsStore()
 const authStore = useAuthStore()
@@ -411,11 +414,12 @@ async function confirmExcessSubmit() {
   try {
     let parecerUrl = ''
     if (capacityForm.value.parecerFile) {
+      if (!api?.post) throw new Error('API não inicializada')
       const fd = new FormData()
       fd.append('file', capacityForm.value.parecerFile)
-      const { data: up } = await import('@/boot/axios').then(m => m.api.post('/api/document/upload', fd, {
+      const { data: up } = await api.post('/api/document/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
-      }))
+      })
       if (up?.success) parecerUrl = up.documentFileUrl || ''
     }
     const fullObservation = `[${capacityForm.value.reason}] ${String(capacityForm.value.observation).trim()}${parecerUrl ? ` (parecer: ${parecerUrl})` : ''}`
@@ -444,7 +448,14 @@ async function submitLoan(observationOverride) {
       status: 0
     })
     if (data.success === false) throw new Error(data.message || 'Erro ao submeter')
-    $q.notify({ type: 'positive', message: 'Crédito submetido com sucesso', position: 'top' })
+    // Fluxo com parecer de excesso: mensagem específica + redirect para a lista de mutuários
+    const comParecer = !!observationOverride
+    $q.notify({
+      type: 'positive',
+      message: comParecer ? 'Crédito submetido com parecer para aprovação' : 'Crédito submetido com sucesso',
+      position: 'top'
+    })
+    showCapacityDialog.value = false
     showSimModal.value = false
     form.value.capital = 0
     form.value.prestacoes = null
@@ -453,6 +464,7 @@ async function submitLoan(observationOverride) {
     estimatedInstallment.value = 0
     simRows.value = []
     await store.fetchLoans()
+    if (comParecer) router.push('/mutuarios')
   } catch (e) {
     // KYC_INCOMPLETE devolvido pelo backend (defesa em profundidade)
     if (e.response?.data?.error === 'KYC_INCOMPLETE') {

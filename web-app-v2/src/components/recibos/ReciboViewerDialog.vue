@@ -8,7 +8,7 @@
           <div class="text-subtitle2 text-weight-bold ellipsis">
             Recibo {{ recibo?.numero || '' }}
           </div>
-          <div class="text-caption text-grey-6 ellipsis">
+          <div class="text-caption text-grey-6 app-text-dark ellipsis">
             {{ recibo?.customer_name || 'Mutuário' }} ·
             {{ money(recibo?.valor_pago) }} ·
             {{ recibo?.wallet_nome || 'sem carteira atribuída' }}
@@ -19,13 +19,15 @@
         <q-btn dense flat no-caps icon="print" label="Imprimir" class="q-mr-xs" @click="print" />
         <q-btn dense flat no-caps icon="autorenew" label="Re-imprimir" class="q-mr-xs" :loading="reprinting" @click="reimprimir">
           <q-tooltip>
-            Volta a gerar o PDF com o layout actual — mantém o número, o hash e a
+            Volta a gerar o PDF com o layout actual — mantém o número e a
             sequência legal do recibo
           </q-tooltip>
         </q-btn>
         <q-btn dense flat no-caps icon="mail" label="E-mail" class="q-mr-xs" :loading="sending" @click="emailDialog = true" />
         <q-btn dense flat no-caps icon="chat" label="WhatsApp" class="q-mr-xs" @click="whatsapp" />
+        <!-- Selo AT (QR + hash): só quando a certificação AT está activa -->
         <q-btn
+          v-if="mostraSelo"
           dense
           no-caps
           unelevated
@@ -40,8 +42,8 @@
         <q-btn dense flat round icon="close" color="grey-7" class="q-ml-sm" @click="open = false" />
       </q-card-section>
 
-      <!-- ═══════ FAIXA DO SELO ELECTRÓNICO ═══════ -->
-      <q-card-section class="seal-bar row items-center q-py-xs q-px-md no-wrap">
+      <!-- ═══════ FAIXA DO SELO ELECTRÓNICO (só com certificação AT activa) ═══════ -->
+      <q-card-section v-if="mostraSelo" class="seal-bar row items-center q-py-xs q-px-md no-wrap">
         <q-icon name="verified_user" size="14px" color="primary" class="q-mr-xs" />
         <div class="text-caption text-grey-8 ellipsis" style="font-family: monospace">
           Hash AT: {{ recibo?.hash_at ? `${recibo.hash_at.slice(0, 40)}…` : 'a gerar…' }}
@@ -89,7 +91,7 @@
         >
           <template v-slot:prepend><q-icon name="alternate_email" size="16px" /></template>
         </q-input>
-        <div class="text-caption text-grey-6 q-mt-sm">
+        <div class="text-caption text-grey-6 app-text-dark q-mt-sm">
           O PDF segue em anexo, com o link de validação do hash.
         </div>
       </q-card-section>
@@ -105,6 +107,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
 import { api } from '@/boot/axios'
+import { AT_CERTIFICADO_ENABLED } from '@/config/certificacao'
 
 /**
  * VISUALIZADOR DE RECIBO — pré-visualização do PDF com acções de partilha.
@@ -122,6 +125,11 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const $q = useQuasar()
+
+// TODO AT: Ativar quando tiver Certificado AT 2026/001 — com a flag a true, a
+// faixa do selo (hash + código de validação) e o botão "Validar QR" voltam a
+// aparecer, alinhados com o que o PDF imprime.
+const mostraSelo = AT_CERTIFICADO_ENABLED
 
 const open = computed({
   get: () => props.modelValue,
@@ -269,11 +277,12 @@ async function sendEmail() {
   }
 }
 
-/** WhatsApp: envia o link de validação (o PDF segue pelo e-mail/junto). */
+/** WhatsApp: envia o resumo (com link de validação só quando há selo AT). */
 function whatsapp() {
   const numero = String(props.recibo?.customer_phone || '').replace(/\D/g, '')
-  const link = validationLink.value
-  const texto = `Recibo ${props.recibo?.numero} — ${money(props.recibo?.valor_pago)}. Valide a autenticidade em ${link}`
+  const texto = mostraSelo
+    ? `Recibo ${props.recibo?.numero} — ${money(props.recibo?.valor_pago)}. Valide a autenticidade em ${validationLink.value}`
+    : `Recibo ${props.recibo?.numero} — ${money(props.recibo?.valor_pago)}`
   const base = numero ? `https://wa.me/${numero}` : 'https://wa.me/'
   window.open(`${base}?text=${encodeURIComponent(texto)}`, '_blank')
 }

@@ -243,7 +243,7 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // binário típicos de FLOAT.
   await modifyColumnType("customer_loans", "amount", "DECIMAL(15,2) NOT NULL", results);
   await modifyColumnType("customer_loans", "interestRate", "DECIMAL(8,4) NOT NULL", results);
-  await modifyColumnType("customer_loans", "administrativeFee", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
+  await modifyColumnType("customer_loans", "administrativeFee", "DECIMAL(15,6) NOT NULL DEFAULT 0", results);
   await modifyColumnType("amortization_loans", "amortization", "DECIMAL(15,2) NOT NULL", results);
   await modifyColumnType("amortization_loans", "rateAmount", "DECIMAL(15,2) NOT NULL", results);
   await modifyColumnType("amortization_loans", "installment", "DECIMAL(15,2) NOT NULL", results);
@@ -256,7 +256,7 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   await modifyColumnType("tranzactions", "discountAmount", "DECIMAL(15,2) NULL DEFAULT 0", results);
   await modifyColumnType("debts", "debtAmount", "DECIMAL(15,2) NOT NULL", results);
   await modifyColumnType("interest_rates", "tax", "DECIMAL(8,4) NOT NULL", results);
-  await modifyColumnType("interest_rates", "administrativeFee", "DECIMAL(15,2) NOT NULL", results);
+  await modifyColumnType("interest_rates", "administrativeFee", "DECIMAL(15,6) NOT NULL", results);
   await modifyColumnType("loan_guarantees", "purchaseAmount", "DECIMAL(15,2) NULL", results);
 
   // Credenciais enviadas (clientes) — enviar credenciais de acesso ao portal
@@ -759,6 +759,16 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // Duas camadas de dinheiro: REAL (accounts purpose DESEMBOLSO/REEMBOLSO) e
   // ANALÍTICO (financing_wallets). Esta tabela NÃO guarda dinheiro físico —
   // serve de base de análise e para separar o relatório de cada financiador.
+  //
+  // SEED OPT-IN — o ARRANQUE (app.ts/PM2/Docker) NUNCA povoa carteiras:
+  // na produção as carteiras já foram migradas na base de dados e são geridas
+  // pelo Admin. Só corre o seed quando alguém pede explicitamente, uma vez,
+  // num servidor novo e vazio:
+  //   WALLET_MIGRATION=1 npm run migrate
+  // SKIP_WALLET_MIGRATION=1 mantém-se aceite (compatibilidade com deploy.sh).
+  const walletMigrationDisabled =
+    String(process.env.SKIP_WALLET_MIGRATION || "").trim() === "1"
+    || !["1", "true"].includes(String(process.env.WALLET_MIGRATION || "").trim().toLowerCase());
   await createTableIfMissing(
     "financing_wallets",
     `CREATE TABLE IF NOT EXISTS financing_wallets (
@@ -841,6 +851,40 @@ export const runMigrations = async (): Promise<MigrationResult> => {
     results
   );
 
+  // BACKFILL do contador: num servidor com recibos já emitidos mas SEM linha
+  // na tabela de sequência (ex.: migração de base de dados antiga), o contador
+  // a zero reiniciaria a numeração em REC-YYYY-00001 e DUPLICARIA números.
+  // Sincroniza o contador com o maior sequencia REAL por empresa/ano — só
+  // actua quando o contador está abaixo do máximo emitido (nunca recua).
+  try {
+    if (await hasTable("recibos")) {
+      const [recalcs]: any = await db.query(
+        `UPDATE recibos_sequencia s
+           JOIN (
+             SELECT companyId, ano, MAX(sequencia) AS max_seq
+             FROM recibos
+             GROUP BY companyId, ano
+           ) r ON r.companyId = s.companyId AND r.ano = s.ano
+           SET s.ultima_sequencia = r.max_seq
+           WHERE s.ultima_sequencia < r.max_seq`
+      );
+      const n = Number((recalcs as any)?.affectedRows ?? 0);
+      if (n > 0) console.log(`[Migration] Contador de recibos sincronizado: ${n} contador(es) avançado(s) para o máximo já emitido.`);
+      // Contador em falta para pares empresa/ano que JÁ têm recibos emitidos
+      // (tabela acabada de criar neste arranque): cria já no máximo real.
+      const [inserted]: any = await db.query(
+        `INSERT IGNORE INTO recibos_sequencia (companyId, ano, ultima_sequencia)
+         SELECT companyId, ano, MAX(sequencia) FROM recibos GROUP BY companyId, ano`
+      );
+      const n2 = Number((inserted as any)?.affectedRows ?? 0);
+      if (n2 > 0) console.log(`[Migration] ${n2} contador(es) de recibos criado(s) já sincronizados com os recibos existentes.`);
+    }
+  } catch (error: any) {
+    const msg = `[Migration] Backfill do contador de recibos falhou: ${error?.message || error}`;
+    results.errors.push(msg);
+    console.error(msg);
+  }
+
   // --- colunas das carteiras analíticas nas entidades existentes ---
   await addColumnIfMissing("users", "walletId", "INTEGER NULL", results);
   await addColumnIfMissing("users", "is_parceiro", "TINYINT(1) NOT NULL DEFAULT 0", results);
@@ -911,11 +955,21 @@ export const runMigrations = async (): Promise<MigrationResult> => {
     INT_10: 0.1,
   };
   try {
-    if (await hasTable("financing_wallets")) {
+    if (!walletMigrationDisabled && await hasTable("financing_wallets")) {
       const companies: any[] = (await db.query("SELECT id FROM companies"))[0] as any[];
+      // Só povoa empresas que AINDA NÃO têm NENHUMA carteira — a carteira de
+      // uma empresa já configurada pelo Admin (ex.: produção) fica intacta
+      // mesmo sem SKIP_WALLET_MIGRATION.
+      const empresasSemCarteiras = new Set(
+        ((await db.query(
+          `SELECT c.id FROM companies c
+            WHERE NOT EXISTS (SELECT 1 FROM financing_wallets f WHERE f.companyId = c.id)`
+        ))[0] as any[]).map((row: any) => Number(row.id))
+      );
       let seededWallets = 0;
       for (const company of companies as any[]) {
         const companyId = Number(company.id);
+        if (!empresasSemCarteiras.has(companyId)) continue;
         for (const [codigo, nome, descricao, parceiro, isParceiro, email, alocado, inicial, cor, portal] of WALLET_SEED) {
           const [existing]: any = await db.query(
             "SELECT id FROM financing_wallets WHERE companyId = ? AND codigo = ? LIMIT 1",
@@ -962,7 +1016,7 @@ export const runMigrations = async (): Promise<MigrationResult> => {
         partnerCompanyId = Number((byName as any[])[0]?.id) || Number((companies as any[])[0]?.id) || null;
       }
 
-      if (partnerCompanyId) {
+      if (partnerCompanyId && !walletMigrationDisabled) {
         const [walletRows]: any = await db.query(
           "SELECT id, tem_portal FROM financing_wallets WHERE companyId = ? AND codigo = 'KMAD' LIMIT 1",
           { replacements: [partnerCompanyId] }
@@ -1048,7 +1102,9 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   // uma vez por empresa: assim que existir uma taxa vinculada não volta a
   // mexer, para respeitar a escolha do Admin no formulário de taxas.
   try {
-    if (await hasTable("financing_wallets") && await hasTable("interest_rates")) {
+    // Backfill de taxas → carteiras: também respeita SKIP_WALLET_MIGRATION
+    // (deploy não altera a vinculação existente em produção).
+    if (!walletMigrationDisabled && await hasTable("financing_wallets") && await hasTable("interest_rates")) {
       const [jaVinculadas]: any = await db.query(
         "SELECT DISTINCT companyId FROM interest_rates WHERE walletId IS NOT NULL OR accountId IS NOT NULL"
       );
@@ -1125,5 +1181,275 @@ export const runMigrations = async (): Promise<MigrationResult> => {
     console.error("[Migration] Erro ao vincular taxas de juro:", error?.message || error);
   }
 
+  // ==================== PAGAMENTOS V2 — CORE BANCÁRIO ====================
+  // Idempotência, auditoria append-only, alocação de pagamentos, motor de
+  // mora (regras por empresa + accrual diário) e crédito a favor do cliente.
+  await migratePaymentsV2(results);
+
   return results;
+};
+
+/**
+ * PAGAMENTOS V2 — todas as estruturas novas do módulo de pagamentos.
+ * Idempotente: cada bloco verifica a existência antes de criar.
+ */
+const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
+  // ── 1. IDEMPOTÊNCIA — header Idempotency-Key no POST de pagamento ──
+  await createTableIfMissing(
+    "idempotency_keys",
+    `CREATE TABLE IF NOT EXISTS idempotency_keys (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      idem_key VARCHAR(80) NOT NULL,
+      company_id INT NOT NULL,
+      user_id INT NULL,
+      endpoint VARCHAR(120) NOT NULL,
+      response_status INT NULL,
+      response_body JSON NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_idem_key (idem_key),
+      INDEX idx_idem_created (created_at)
+    )`,
+    results
+  );
+
+  // ── 2. AUDITORIA APPEND-ONLY (sem UPDATE/DELETE por convenção do código) ──
+  await createTableIfMissing(
+    "audit_log",
+    `CREATE TABLE IF NOT EXISTS audit_log (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NULL,
+      company_id INT NULL,
+      ip VARCHAR(64) NULL,
+      action VARCHAR(60) NOT NULL,
+      entity VARCHAR(60) NOT NULL,
+      entity_id INT NULL,
+      before_data JSON NULL,
+      after_data JSON NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_audit_entity (entity, entity_id),
+      INDEX idx_audit_user (user_id),
+      INDEX idx_audit_created (created_at)
+    )`,
+    results
+  );
+
+  // ── 3. Colunas novas em tranzactions (quem recebeu, estorno, origem) ──
+  await addColumnIfMissing("tranzactions", "received_by", "INT NULL", results);
+  await addColumnIfMissing("tranzactions", "received_ip", "VARCHAR(64) NULL", results);
+  await addColumnIfMissing("tranzactions", "idem_key", "VARCHAR(80) NULL", results);
+  await addColumnIfMissing("tranzactions", "status", "VARCHAR(20) NOT NULL DEFAULT 'CONFIRMED'", results);
+  await addColumnIfMissing("tranzactions", "reversed_by", "INT NULL", results);
+  await addColumnIfMissing("tranzactions", "reversal_reason", "VARCHAR(255) NULL", results);
+  await addColumnIfMissing("tranzactions", "reversed_tranzaction_id", "INT NULL", results);
+  await addIndexIfMissing("tranzactions", "idx_tranz_idem", ["idem_key"], results);
+  await addIndexIfMissing("tranzactions", "idx_tranz_status", ["status"], results);
+
+  // ── 4. Unicidade de referência por empresa + método (anti duplo-registo) ──
+  // NOTA: MySQL não suporta índice parcial (WHERE reference IS NOT NULL);
+  // strings vazias são convertidas para NULL na normalização e o índice UNIQUE
+  // do MySQL ignora linhas com NULL na coluna indexada.
+  try {
+    await db.query(
+      "UPDATE tranzactions SET tranzactionReference = NULL WHERE tranzactionReference = ''"
+    );
+  } catch { /* tabela pode não existir em BD nova */ }
+  await addUniqueIndexIfMissing(
+    "tranzactions",
+    "uq_tranz_ref",
+    ["companyId", "paymentMethod", "tranzactionReference"],
+    results
+  );
+
+  // ── 5. ALOCAÇÃO DE PAGAMENTOS — para onde foi cada cêntimo ──
+  await createTableIfMissing(
+    "payment_allocations",
+    `CREATE TABLE IF NOT EXISTS payment_allocations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      payment_id INT NOT NULL,
+      amortization_loan_id INT NOT NULL,
+      component ENUM('PENALTY','LATE_INTEREST','INTEREST','CAPITAL') NOT NULL,
+      amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_alloc_payment (payment_id),
+      INDEX idx_alloc_amort (amortization_loan_id)
+    )`,
+    results
+  );
+
+  // ── 6. REGRAS DE MORA POR EMPRESA (motor configurável) ──
+  await createTableIfMissing(
+    "company_penalty_rules",
+    `CREATE TABLE IF NOT EXISTS company_penalty_rules (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      company_id INT NOT NULL,
+      forfeit_percent DECIMAL(5,4) NOT NULL DEFAULT 1.0000,
+      grace_days INT NOT NULL DEFAULT 0,
+      cap_percent DECIMAL(5,2) NOT NULL DEFAULT 100.00,
+      base ENUM('INSTALLMENT','OUTSTANDING_BALANCE') NOT NULL DEFAULT 'INSTALLMENT',
+      business_days_only TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL,
+      UNIQUE KEY uq_penalty_company (company_id)
+    )`,
+    results
+  );
+  // Seed: 1 regra por empresa, herdando companies.forfeit; grace 0 = comportamento actual.
+  try {
+    if ((await hasTable("company_penalty_rules")) && (await hasTable("companies"))) {
+      const [empresasSemRegra]: any = await db.query(
+        `SELECT c.id, c.forfeit FROM companies c
+          WHERE NOT EXISTS (SELECT 1 FROM company_penalty_rules r WHERE r.company_id = c.id)`
+      );
+      let seeds = 0;
+      for (const e of empresasSemRegra as any[]) {
+        await db.query(
+          `INSERT INTO company_penalty_rules
+             (company_id, forfeit_percent, grace_days, cap_percent, base, business_days_only, created_at)
+           VALUES (?, ?, 0, 100.00, 'INSTALLMENT', 0, NOW())`,
+          { replacements: [Number(e.id), Math.max(0, Math.min(10, Number(e.forfeit) || 0))] }
+        );
+        seeds += 1;
+      }
+      if (seeds > 0) {
+        results.applied += 1;
+        console.log(`[Migration] ${seeds} regra(s) de mora criadas em company_penalty_rules (herdadas de companies.forfeit, grace 0)`);
+      }
+    }
+  } catch (error: any) {
+    results.errors.push(`SEED company_penalty_rules: ${error?.message || error}`);
+  }
+
+  // ── 7. ACCRUAL DIÁRIO DE MORA — mora registada, não re-calculada ao vivo ──
+  await createTableIfMissing(
+    "late_accruals",
+    `CREATE TABLE IF NOT EXISTS late_accruals (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      amortization_loan_id INT NOT NULL,
+      accrual_date DATE NOT NULL,
+      days INT NOT NULL DEFAULT 1,
+      base_amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      rate DECIMAL(6,4) NOT NULL DEFAULT 0.0000,
+      amount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      status ENUM('ACCRUED','CHARGED','WAIVED') NOT NULL DEFAULT 'ACCRUED',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_accrual_day (amortization_loan_id, accrual_date),
+      INDEX idx_accrual_status (status)
+    )`,
+    results
+  );
+
+  // ── 8. CRÉDITO A FAVOR DO CLIENTE (excesso de pagamento nunca é descartado) ──
+  await createTableIfMissing(
+    "customer_credits",
+    `CREATE TABLE IF NOT EXISTS customer_credits (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      company_id INT NOT NULL,
+      customer_id INT NOT NULL,
+      account_number INT NOT NULL,
+      amount DECIMAL(15,2) NOT NULL,
+      remaining_amount DECIMAL(15,2) NOT NULL,
+      source_payment_id INT NULL,
+      status ENUM('ACTIVE','APPLIED','CANCELLED') NOT NULL DEFAULT 'ACTIVE',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NULL,
+      INDEX idx_credit_customer (company_id, account_number, status)
+    )`,
+    results
+  );
+
+  // ── 9. Estorno/risco: recibo ganha estado (EMITIDO/ANULADO) + link ao estorno ──
+  await addColumnIfMissing("recibos", "status", "VARCHAR(20) NOT NULL DEFAULT 'EMITIDO'", results);
+  await addColumnIfMissing("recibos", "annulled_by_recibo_id", "INT NULL", results);
+  await addColumnIfMissing("recibos", "annulment_reason", "VARCHAR(255) NULL", results);
+
+  // ── 10. DATAS REAIS (DATE) — fim das strings 'YYYY-MM-DD HH:MM:SS' ──
+  // MySQL converte 'YYYY-MM-DD HH:MM:SS' e 'YYYY-MM-DD' para DATE truncando a
+  // hora. Os models passam a DataTypes.DATEONLY (leitura sempre 'YYYY-MM-DD'),
+  // eliminando bugs de fuso (GMT+2 Maputo) nos cálculos de mora.
+  try {
+    await db.query("ALTER TABLE `amortization_loans` MODIFY COLUMN `dueDate` DATE NOT NULL");
+    results.applied += 1;
+    console.log("[Migration] amortization_loans.dueDate convertido para DATE");
+  } catch (error: any) {
+    if (!String(error?.message).includes("Unknown column")) {
+      results.errors.push(`DATE dueDate: ${error?.message || error}`);
+      console.error("[Migration] dueDate → DATE:", error?.message || error);
+    }
+  }
+  try {
+    await db.query("ALTER TABLE `tranzactions` MODIFY COLUMN `paymentDate` DATE NOT NULL");
+    results.applied += 1;
+    console.log("[Migration] tranzactions.paymentDate convertido para DATE");
+  } catch (error: any) {
+    if (!String(error?.message).includes("Unknown column")) {
+      results.errors.push(`DATE paymentDate: ${error?.message || error}`);
+      console.error("[Migration] paymentDate → DATE:", error?.message || error);
+    }
+  }
+
+  // ── 11. CONTA DE DESTINO DO PAGAMENTO (bank_account_id → accounts.id) ──
+  // NULLABLE: caixas/pagamentos antigos continuam a funcionar (legado).
+  await addColumnIfMissing("cash_registers", "bank_account_id", "INT NULL", results);
+  await addColumnIfMissing("tranzactions", "bank_account_id", "INT NULL", results);
+  await addIndexIfMissing("tranzactions", "idx_tranz_bank_account", ["bank_account_id"], results);
+
+  // Backfill: pagamentos sem conta herdam a conta do caixa do dia (mesma
+  // empresa). Uma linha por corrida — corre só enquanto existirem NULL.
+  try {
+    const [faltam]: any = await db.query(
+      `SELECT COUNT(*) AS n FROM tranzactions
+        WHERE bank_account_id IS NULL
+          AND EXISTS (SELECT 1 FROM cash_registers WHERE cash_registers.companyId = tranzactions.companyId)`
+    );
+    if (Number((faltam as any[])[0]?.n) > 0) {
+      await db.query(
+        `UPDATE tranzactions t
+           LEFT JOIN cash_registers cr
+             ON cr.companyId = t.companyId
+            AND cr.opening_date = t.paymentDate
+         SET t.bank_account_id = cr.bank_account_id
+         WHERE t.bank_account_id IS NULL`
+      );
+      results.applied += 1;
+      console.log("[Migration] tranzactions.bank_account_id preenchido a partir do caixa do dia (onde existia)");
+    }
+  } catch (error: any) {
+    results.errors.push(`BACKFILL bank_account_id: ${error?.message || error}`);
+  }
+
+  // ── 12. PACOTE DE CONCESSÃO (documentos legais imutáveis) ──
+  // Gerado UMA vez após o desembolso (Termo, Garantias, Contrato, Plano).
+  // IMUTÁVEL: os PDFs ficam em storage + hash SHA-256 do conteúdo; nova
+  // tentativa de geração é bloqueada (409). Regeneração só via invalidar
+  // desembolso (que apaga a linha — o crédito volta a Pendentes).
+  if (!(await hasTable("concession_packages"))) {
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS concession_packages (
+          id INT NOT NULL AUTO_INCREMENT,
+          companyId INT NOT NULL,
+          loanId INT NOT NULL,
+          accountNumber VARCHAR(255) NULL,
+          customerId INT NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'EMITIDO',
+          package_hash CHAR(64) NULL,
+          storage_dir VARCHAR(500) NULL,
+          docs JSON NULL,
+          created_by INT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uq_concession_loan (loanId),
+          KEY idx_concession_company (companyId, accountNumber)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+      results.applied += 1;
+      console.log("[Migration] tabela concession_packages criada (pacote de concessão imutável)");
+    } catch (error: any) {
+      results.errors.push(`concession_packages: ${error?.message || error}`);
+      console.error("[Migration] Erro ao criar concession_packages:", error?.message || error);
+    }
+  } else {
+    results.skipped += 1;
+  }
 };

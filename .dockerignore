@@ -1,0 +1,31 @@
+# Build context do Docker/Dokploy — nada disto entra na imagem.
+# uploads/: documentos e imagens dos mutuários — ficam SEMPRE no volume do VPS,
+# nunca dentro da imagem (cada rebuild preserva os ficheiros reais).
+uploads/
+database/
+database/backups/
+
+# Segredos e ambientes
+.env
+.env.local
+.env.backup
+
+# Artefactos de build locais (reconstruidos dentro da imagem)
+build/
+node_modules/
+web-app-v2/node_modules/
+web-app-v2/dist/
+
+# Frontend antigo e logs
+web-app/
+public/
+public/v2/
+server.log
+vite-dev.log
+*.log
+
+# Git e docs
+.git/
+.gitignore
+docs/
+scripts/

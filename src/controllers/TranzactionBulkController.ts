@@ -7,6 +7,8 @@ import { LoanModel } from "../database/models/LoanModel";
 import { CompanyModel } from "../database/models/CompanyModel";
 import { Op } from "sequelize";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { methodToTreasury } from "../utils/paymentMethodMap";
+import { round2, num } from "../utils/money";
 
 /**
  * POST /api/tranzaction/bulk — Liquidação Total ATÓMICA.
@@ -49,6 +51,39 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
   if (!paymentMethod || !tranzactionReference || !staffName) {
     return res.status(400).send({ success: false, message: "Meio de pagamento, referência e funcionário são obrigatórios." });
   }
+
+  // ── CONTA DE DESTINO OBRIGATÓRIA (bug contábil do modal antigo) ──
+  // Sem conta válida não há para onde "vai" o dinheiro liquidado: nem o campo
+  // bank_account_id era gravado, nem o saldo da conta era creditado.
+  const { validateReembolsoAccount } = await import("../services/bankAccountResolver");
+  const requestedAccountId = Number((req.body as any)?.bank_account_id || (req.body as any)?.bankAccountId || 0);
+  if (!requestedAccountId) {
+    return res.status(400).send({
+      success: false,
+      code: "BANK_ACCOUNT_REQUIRED",
+      message: "Seleccione a conta de destino da liquidação.",
+    });
+  }
+  let destAccount: any = null;
+  try {
+    destAccount = await validateReembolsoAccount(requestedAccountId, Number(companyId));
+  } catch (e: any) {
+    return res.status(e?.http || 400).send(e?.payload || { success: false, code: "INVALID_BANK_ACCOUNT", message: "Conta de destino inválida." });
+  }
+
+  // Actor (JWT) — auditoria e movimentos de caixa do mesmo pedido
+  let actorUserId: number | null = null;
+  try {
+    const jwt = await import("jsonwebtoken");
+    const decoded: any = jwt.verify(
+      (req.headers.authorization || "").split(" ")[1] || "",
+      process.env.APP_SECRET + ""
+    );
+    actorUserId = Number(decoded?.id) || null;
+  } catch { actorUserId = null; }
+
+  // Crédito atómico da conta de destino (saldo + extrato) dentro da transacção
+  const { creditAccountInTransaction } = await import("../services/treasuryService");
   const todayDate = new Date().toISOString().slice(0, 10);
   const payDate = paymentDate ? String(paymentDate).slice(0, 10) : todayDate;
   if (payDate > todayDate) {
@@ -150,7 +185,8 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
             totalAmount: item.totalAmount,
             latePaymentInterest: item.latePaymentInterest,
             interestRateAmount: item.rateAmount,
-            phoneNumber,
+            // Normalizado como no pagamento individual (coluna NOT NULL)
+            phoneNumber: String(phoneNumber || ""),
             tranzactionReference,
             paymentMethod,
             description:
@@ -165,6 +201,7 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
             discountAmount: item.discountAmount,
             walletId: loan.getDataValue("walletId") || null,
             mora_amount: item.latePaymentInterest,
+            bank_account_id: requestedAccountId,
           },
           { transaction }
         );
@@ -201,6 +238,45 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
           },
           { where: { id: item.amortizationLoanId }, transaction }
         );
+
+        // ── CRÉDITO DA CONTA DE DESTINO (por prestação, mesma transacção) ──
+        // Saldo + extrato real (bank_transactions) no mesmo commit: rollback
+        // desfaz prestações, recibos e dinheiro. O movimento de caixa
+        // pós-commit usa skipAccountLedger → sem duplo crédito.
+        await creditAccountInTransaction({
+          companyId: Number(companyId),
+          accountId: requestedAccountId,
+          amount: item.totalAmount,
+          description: `Liquidação total - Prestação ${item.installmentOrder} — conta ${accountNumber}`,
+          userId: actorUserId,
+          cashRegisterId: Number((req as any).cashRegister?.id) || null,
+          referenceType: "tranzactions",
+          referenceId: Number(tranzaction.getDataValue("id")),
+          transaction,
+        });
+      }
+
+      // ── AUDITORIA agregada do crédito à conta de destino ──
+      const totalCredited = round2(planned.reduce((sum: number, p: any) => sum + p.totalAmount, 0));
+      if (totalCredited > 0) {
+        const { AuditLogModel } = await import("../database/models/paymentsV2Models");
+        await AuditLogModel.create(
+          {
+            user_id: actorUserId,
+            company_id: Number(companyId),
+            ip: null,
+            action: "BANK_ACCOUNT_CREDIT",
+            entity: "accounts",
+            entity_id: requestedAccountId,
+            before_data: null,
+            after_data: {
+              amount: totalCredited,
+              loanId: Number(loanId),
+              transactions: createdTransactions.map((t: any) => Number(t.getDataValue("id"))),
+            },
+          },
+          { transaction }
+        );
       }
 
       await transaction.commit();
@@ -210,25 +286,24 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
         const { recordPayment } = await import("../services/cashRegisterService");
         const openRegister = (req as any).cashRegister;
         if (openRegister) {
-          const jwt = await import("jsonwebtoken");
-          const decoded: any = jwt.verify(
-            (req.headers.authorization || "").split(" ")[1] || "",
-            process.env.APP_SECRET + ""
-          );
           for (const item of planned) {
             await recordPayment({
               companyId: Number(companyId),
-              userId: Number(decoded?.id) || undefined,
+              userId: actorUserId || undefined,
               loanId: Number(loanId),
               amortizationLoanId: item.amortizationLoanId,
               tranzactionId: Number(createdTransactions.find((t: any) => Number(t.getDataValue("amortizationLoanId")) === item.amortizationLoanId)?.getDataValue("id")),
               customerId: Number(loan.getDataValue("customerId")),
-              amount: item.amount,
-              lateInterest: item.latePaymentInterest,
+              // Movimento único REEMBOLSO com totalAmount (capital + mora) —
+              // a reconciliação compara tranzactions.totalAmount vs movimentos.
+              amount: item.totalAmount,
+              lateInterest: 0,
               adminFee: 0,
               accountNumber,
-              paymentMethod: String((req.body as any)?.payment_method || "CASH"),
-              bankAccountId: (req.body as any)?.bank_account_id ? Number((req.body as any).bank_account_id) : null,
+              paymentMethod: methodToTreasury(paymentMethod),
+              bankAccountId: requestedAccountId,
+              // Saldo já creditado dentro da transacção atómica acima.
+              skipAccountLedger: true,
             });
           }
         }
@@ -292,6 +367,8 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
           totalLateInterest: Number(planned.reduce((sum: number, p: any) => sum + p.latePaymentInterest, 0).toFixed(2)),
           totalDiscount: Number(planned.reduce((sum: number, p: any) => sum + p.discountAmount, 0).toFixed(2)),
           installmentsCleared: planned.length,
+          bankAccountId: requestedAccountId,
+          destination: destAccount?.name || null,
         },
         recibos,
       });

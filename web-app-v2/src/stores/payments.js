@@ -16,7 +16,9 @@ export const usePaymentsStore = defineStore('payments', {
   getters: {
     hasPayments: (state) => state.payments.length > 0,
     paymentCount: (state) => state.payments.length,
-    totalPaid: (state) => state.payments.reduce((sum, p) => sum + (p.amount || 0), 0)
+    // amount chega como string (DECIMAL do MySQL): converter antes de somar,
+    // senão a concatenação de strings produz NaN no formatMoney.
+    totalPaid: (state) => state.payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   },
 
   actions: {

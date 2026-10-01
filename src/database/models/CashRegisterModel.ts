@@ -109,6 +109,11 @@ export const CashRegisterModel = db.define("cash_registers", {
     allowNull: true,
     comment: "Observações do fecho (explicar divergência, etc.)",
   },
+  bank_account_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Conta de destino por defeito dos pagamentos deste caixa (accounts.id)",
+  },
   closed_at: {
     type: DataTypes.DATE,
     allowNull: true,

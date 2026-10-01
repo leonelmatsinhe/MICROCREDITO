@@ -21,27 +21,43 @@
     <q-skeleton v-if="loading" type="rect" height="180px" style="border-radius: 12px" />
 
     <template v-else-if="loan">
-      <!-- 3 cartões de documentos legais -->
-      <div class="row q-col-gutter-md">
-        <div class="col-12 col-sm-4" v-for="card in docCards" :key="card.tipo">
-          <q-card flat bordered style="border-radius: 12px" class="text-center full-height legal-card">
-            <q-card-section>
-              <q-icon :name="card.icon" :color="card.color" size="48px" class="q-mb-sm" />
-              <div class="text-subtitle1 text-weight-bold">{{ card.title }}</div>
-              <div class="text-caption text-grey-5 q-mb-md">{{ card.subtitle }}</div>
-              <q-btn
-                :color="card.color"
-                icon="picture_as_pdf"
-                label="Gerar PDF"
-                unelevated no-caps rounded
-                :loading="generating === card.tipo"
-                :disable="generating !== null"
-                @click="gerar(card.tipo)"
-              />
-            </q-card-section>
-          </q-card>
-        </div>
-      </div>
+      <!-- ═══ FLUXO 1: DOCUMENTOS DE CONCESSÃO (IMUTÁVEL, hash + QR) ═══ -->
+      <!-- Só existe após o desembolso; o pacote é gerado 1× e nunca muda. -->
+      <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
+        <q-card-section>
+          <div class="row items-center q-mb-sm">
+            <q-icon name="verified_user" size="20px" :color="concessao ? 'positive' : 'grey-5'" class="q-mr-sm" />
+            <div class="text-subtitle1 text-weight-bold">Documentos de Concessão</div>
+            <q-badge v-if="concessao" outline color="positive" class="q-ml-sm">Imutável · hash {{ String(concessao.package_hash || '').slice(0, 10) }}…</q-badge>
+            <q-badge v-else outline color="grey-6" class="q-ml-sm">Só após o desembolso</q-badge>
+            <q-space />
+            <q-btn
+              v-if="concessao"
+              outline color="positive" icon="folder_zip" label="ZIP completo" no-caps rounded dense
+              :loading="gerando === 'zip'"
+              @click="baixarZip"
+            />
+          </div>
+          <div v-if="concessao" class="row q-col-gutter-sm">
+            <div class="col-6 col-sm-3" v-for="doc in concessao.docs" :key="doc.key">
+              <q-card flat bordered style="border-radius: 10px">
+                <q-card-section class="text-center q-py-sm">
+                  <q-icon name="picture_as_pdf" size="28px" color="negative" />
+                  <div class="text-caption text-weight-medium ellipsis">{{ docLabel(doc.key) }}</div>
+                  <q-btn flat dense no-caps color="primary" icon="download" label="Baixar" :loading="gerando === doc.key" @click="baixarConcessaoDoc(doc.key)" />
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+          <div v-else class="text-caption text-grey-6">
+            <q-icon name="lock" size="14px" class="q-mr-xs" />Pacote de concessão ainda não emitido para este crédito. É gerado automaticamente no desembolso — se já foi desembolsado, aguarde um minuto (backfill) ou contacte o administrador.
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- (Os 3 cartões antigos "Gerar PDF" foram removidos — duplicavam o
+           pacote imutável de cima. Os documentos legais saem SEMPRE do pacote
+           de concessão; o extracto dinâmico fica na secção abaixo.) -->
 
       <!-- Extracto do crédito -->
       <q-card flat bordered class="q-mt-md" style="border-radius: 12px">
@@ -68,7 +84,7 @@
               unelevated no-caps rounded
               :loading="generating === 'extracto'"
               :disable="generating !== null || viewRows.length === 0"
-              @click="gerar('extracto')"
+              @click="gerarExtracto"
             />
           </div>
 
@@ -136,7 +152,7 @@
                   <q-td class="text-right text-weight-bold">{{ formatMoney(totals.amortizacao) }}</q-td>
                   <q-td class="text-right text-weight-bold">{{ formatMoney(totals.juros) }}</q-td>
                   <q-td class="text-right text-weight-bold">{{ formatMoney(totals.prestacao) }}</q-td>
-                  <q-td class="text-right text-weight-bold text-negative">{{ formatMoney(finalBalance) }}</q-td>
+                  <q-td class="text-right text-weight-bold" :class="finalBalance > 0 ? 'text-negative' : 'text-positive'">{{ formatMoney(finalBalance) }}</q-td>
                   <q-td class="text-right"></q-td>
                   <template v-if="fullView">
                     <q-td></q-td>
@@ -199,11 +215,71 @@ const guarantees = ref([])
 const accounts = ref([])
 const amortization = ref([])
 
-const docCards = [
-  { tipo: 'contrato', title: 'Contrato de Concessão', subtitle: 'Contrato individual de crédito com confissão de dívida — 20 cláusulas', icon: 'gavel', color: 'primary' },
-  { tipo: 'termo', title: 'Termo de Compromisso', subtitle: 'Declaração de recebimento do valor do crédito', icon: 'handshake', color: 'teal' },
-  { tipo: 'garantias', title: 'Declaração de Garantias', subtitle: 'Lista de bens dados em garantia do empréstimo', icon: 'security', color: 'orange' }
-]
+// ── FLUXO 1: PACOTE DE CONCESSÃO (imutável) ──
+const concessao = ref(null)
+const gerando = ref(null)
+const docLabel = (key) => ({
+  termo: 'Termo de Compromisso',
+  garantias: 'Declaração de Garantias',
+  contrato: 'Contrato de Concessão',
+  plano: 'Plano Inicial'
+}[key] || key)
+
+async function fetchConcessao() {
+  if (!loan.value?.id) return
+  try {
+    const { data } = await api.get(`/api/loans/${loan.value.id}/concession`)
+    concessao.value = data?.result || null
+  } catch { concessao.value = null }
+}
+
+async function baixarConcessaoDoc(key) {
+  if (!loan.value?.id) return
+  gerando.value = key
+  try {
+    const response = await api.get(`/api/loans/${loan.value.id}/concession/${key}/pdf`, { responseType: 'blob' })
+    const ct = String(response.headers?.['content-type'] || '')
+    if (!ct.includes('application/pdf')) throw new Error('Documento não disponível no pacote')
+    // Download com NOME legível (Termo-de-Compromisso-conta-108.pdf) — o PDF
+    // vem sempre do BACKEND (pacote imutável); nada de pdfmake no browser.
+    const labels = { termo: 'Termo-de-Compromisso', garantias: 'Declaracao-de-Garantias', contrato: 'Contrato-de-Concessao', plano: 'Plano-Inicial' }
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${labels[key] || key}-conta-${loan.value.accountNumber || loan.value.id}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 30000)
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.response?.data?.message || e.message || 'Erro ao baixar documento do pacote', position: 'top' })
+  } finally {
+    gerando.value = null
+  }
+}
+
+async function baixarZip() {
+  if (!loan.value?.id) return
+  gerando.value = 'zip'
+  try {
+    const response = await api.get(`/api/loans/${loan.value.id}/concession/zip`, { responseType: 'blob' })
+    const ct = String(response.headers?.['content-type'] || '')
+    if (!ct.includes('zip')) throw new Error('ZIP não disponível')
+    const url = URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `concessao-conta-${loan.value.accountNumber || loan.value.id}.zip`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 30000)
+    $q.notify({ type: 'positive', message: 'Pacote completo baixado (imutável, com hash)', position: 'top' })
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.response?.data?.message || e.message || 'Erro ao baixar o ZIP', position: 'top' })
+  } finally {
+    gerando.value = null
+  }
+}
 
 const loanOptions = computed(() =>
   store.loans
@@ -333,6 +409,9 @@ async function loadLoanData(loanId) {
       const result = await loansStore.fetchAmortization(loanId, forfeit)
       amortization.value = result.installments || []
     } catch { amortization.value = [] }
+
+    // Pacote de concessão (fluxo 1 — imutável)
+    await fetchConcessao()
   } catch (e) {
     console.error('Erro ao carregar dados do crédito:', e)
     $q.notify({ type: 'negative', message: 'Erro ao carregar dados do crédito', position: 'top' })
@@ -354,13 +433,13 @@ onMounted(() => {
   }
 })
 
-// ── Gerar PDF — geração no BACKEND (pdfkit, layout do PDF oficial) via blob
-// autenticado. Os 4 documentos usam a mesma rota GET /api/loans/:id/documents/:tipo/pdf.
-async function gerar(tipo) {
+// ── Gerar PDF do extracto — geração no BACKEND (pdfkit, layout do PDF oficial)
+// via blob autenticado (rota existente GET /api/loans/:id/documents/extracto/pdf).
+async function gerarExtracto() {
   if (!loan.value?.id) return
-  generating.value = tipo
+  generating.value = 'extracto'
   try {
-    const response = await api.get(`/api/loans/${loan.value.id}/documents/${tipo}/pdf`, {
+    const response = await api.get(`/api/loans/${loan.value.id}/documents/extracto/pdf`, {
       responseType: 'blob'
     })
     // Guard: se o servidor devolveu JSON/HTML (erro, rota inexistente → SPA
@@ -380,8 +459,7 @@ async function gerar(tipo) {
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    const labels = { contrato: 'Contrato de Concessão', termo: 'Termo de Compromisso', garantias: 'Declaração de Garantias', extracto: 'Extracto do Crédito' }
-    $q.notify({ type: 'positive', message: `${labels[tipo]} gerado com sucesso`, position: 'top' })
+    $q.notify({ type: 'positive', message: 'Extracto do Crédito gerado com sucesso', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar documento:', e)
     $q.notify({ type: 'negative', message: 'Erro ao gerar documento: ' + (e.message || ''), position: 'top' })
@@ -392,15 +470,6 @@ async function gerar(tipo) {
 </script>
 
 <style lang="scss" scoped>
-// Hover dos 3 cartões legais
-.legal-card {
-  transition: transform 0.2s, box-shadow 0.2s;
-  &:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
-  }
-}
-
 // Tabela extracto 2026: header verde, sticky, linhas alternadas, hover verde
 .extract-table {
   :deep(thead th) {

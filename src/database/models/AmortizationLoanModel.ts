@@ -46,8 +46,14 @@ export const AmorizationLoanModel = db.define("amortization_loan", {
     comment: "Saldo devedor após o pagamento desta prestação (Sistema Francês)",
   },
   dueDate: {
-    type: DataTypes.STRING,
+    // V2: DATE real na BD (migração convertida de VARCHAR) — leitura normalizada
+    // como 'YYYY-MM-DD', sem hora nem bug de fuso GMT+2 (Maputo).
+    type: DataTypes.DATEONLY,
     allowNull: false,
+    get() {
+      const raw = this.getDataValue("dueDate");
+      return raw ? String(raw).slice(0, 10) : raw;
+    },
   },
   status: {
     type: DataTypes.INTEGER,

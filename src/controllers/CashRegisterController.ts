@@ -445,6 +445,30 @@ export const getDailySummary = async (req: Request, res: Response) => {
 };
 
 // Verificação de caixa aberto usada pelo middleware (export auxiliar p/ testes).
+/**
+ * GET /api/cash-registers/reconciliation?date=YYYY-MM-DD
+ * RECONCILIAÇÃO DO DIA — tranzactions vs movimentos de caixa vs recibos.
+ * O fecho diário usa a mesma função para bloquear divergências > 0,01 MZN.
+ */
+export const getReconciliation = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = await resolveIdentity(req);
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const { date } = req.query as any;
+    const day = date && /^\d{4}-\d{2}-\d{2}$/.test(String(date))
+      ? String(date)
+      : todayKey();
+    const { reconcileDay } = await import("../services/reconciliationService");
+    const result = await reconcileDay(Number(companyId), day);
+    return res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    console.error("[reconciliation] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao reconciliar o dia." });
+  }
+};
+
 export const hasOpenRegister = async (userId: number, companyId: number) => {
   return !!(await getOpenRegister(userId, companyId));
 };

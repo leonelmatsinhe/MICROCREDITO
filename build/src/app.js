@@ -1,4 +1,27 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -74,6 +97,20 @@ const bootstrap = () => __awaiter(void 0, void 0, void 0, function* () {
     }
     app.listen(PORT, () => {
         console.log(`MBR Server is running on PORT ${PORT}`);
+        // JOBS DO MÓDULO DE PAGAMENTOS V2 — accrual diário de mora (late_accruals)
+        // na janela 00:05 com catch-up horário idempotente (INSERT IGNORE por dia).
+        Promise.resolve().then(() => __importStar(require("./jobs/paymentJobsIndex"))).then(({ startPaymentJobs }) => startPaymentJobs())
+            .catch((jobsError) => console.error("[Jobs] Falha ao arrancar jobs de pagamentos:", (jobsError === null || jobsError === void 0 ? void 0 : jobsError.message) || jobsError));
+        // MIGRAÇÃO DE RECIBOS — recibos antigos (pré-backend-authoritative) sem
+        // pdf_path ganham PDF gerado no servidor (pdfkit), uma vez por arranque.
+        Promise.resolve().then(() => __importStar(require("./jobs/regenerateOldReceipts"))).then(({ startReciboMigrationJob }) => startReciboMigrationJob())
+            .catch((jobError) => console.error("[Jobs] Falha ao arrancar migração de recibos:", (jobError === null || jobError === void 0 ? void 0 : jobError.message) || jobError));
+        // PACOTE DE CONCESSÃO — backfill: créditos desembolsados sem pacote
+        // (desembolsados antes da funcionalidade) ganham o pacote imutável.
+        Promise.resolve().then(() => __importStar(require("./services/concessionPackageService"))).then(({ generateMissingPackages }) => setTimeout(() => {
+            generateMissingPackages(25).then((n) => console.log(`[Concessao] Backfill: ${n} pacote(s) gerado(s)`)).catch((e) => console.error("[Concessao] Backfill falhou:", (e === null || e === void 0 ? void 0 : e.message) || e));
+        }, 40 * 1000))
+            .catch((jobError) => console.error("[Jobs] Falha ao arrancar backfill de concessão:", (jobError === null || jobError === void 0 ? void 0 : jobError.message) || jobError));
         // Fila de SMS (BulkSMM): processar mensagens pendentes a cada 60s.
         // Sem BULKSMS_API_KEY no .env, a fila permanece intacta (sem efeitos).
         setInterval(() => {

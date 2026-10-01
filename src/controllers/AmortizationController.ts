@@ -12,6 +12,7 @@ import { installmentPanification } from "../utils/calculateLateAmount";
 import { enqueueDisbursementSms } from "../services/SmsGatewayService";
 import { evaluateKyc } from "../utils/kycDocuments";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
+import { PackageAlreadyIssuedError } from "../services/concessionPackageService";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
   try {
@@ -355,6 +356,30 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       });
     } catch (smsError) {
       console.error("Erro ao enfileirar SMS de desembolso:", smsError);
+    }
+
+    // ── FLUXO 1: PACOTE DE CONCESSÃO (IMUTÁVEL) — gerado no desembolso ──
+    // Documentos legais (Termo, Garantias, Contrato, Plano) com hash + QR.
+    // Best-effort: falha NÃO desfaz o desembolso (o job de arranque cobre o
+    // backfill); imutabilidade garantida pela constraint UNIQUE loanId.
+    try {
+      const jwt = await import("jsonwebtoken");
+      const decoded: any = jwt.verify(
+        (req.headers.authorization || "").split(" ")[1] || "",
+        process.env.APP_SECRET + ""
+      );
+      const { generateConcessionPackage } = await import("../services/concessionPackageService");
+      const pacote = await generateConcessionPackage({
+        loanId: Number(loanId),
+        companyId: Number(companyId),
+        createdBy: Number(decoded?.id) || null,
+        ip: req.ip || null,
+      });
+      console.log(`[Concessao] Pacote emitido para o crédito #${loanId} (hash ${String(pacote.package_hash).slice(0, 12)}…)`);
+    } catch (pkgError: any) {
+      if (!(pkgError instanceof PackageAlreadyIssuedError)) {
+        console.error("[Concessao] Falha ao gerar pacote (desembolso mantido):", pkgError?.message || pkgError);
+      }
     }
 
     // ── CAIXA DIÁRIO: movimento automático SAIDA / DESEMBOLSO ──

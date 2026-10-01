@@ -70,6 +70,9 @@ import {
   getLoanLateInterest,
   addTranzaction,
   updateTranzaction,
+  reverseTranzaction,
+  getInstallmentQuote,
+  checkReference,
 } from "./controllers/TranzactionController";
 
 import {
@@ -159,7 +162,13 @@ import {
 } from "./controllers/CustomerPortalController";
 
 import { customerContract } from "./controllers/PdfController";
-import { downloadLegalDoc } from "./controllers/LegalDocsController";
+import {
+  downloadLegalDoc,
+  concessionMeta,
+  concessionGenerate,
+  concessionDocPdf,
+  concessionZip,
+} from "./controllers/LegalDocsController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
 // FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
@@ -254,7 +263,11 @@ import {
   validar as validarRecibo,
   enviar as enviarRecibo,
   lookup as lookupRecibos,
+  reciboByTranzaction as reciboByTranzactionController,
 } from "./controllers/ReciboController";
+
+// PDF TABELAR GENÉRICO — relatórios do frontend gerados no backend (pdfkit)
+import { tablePdf } from "./controllers/TablePdfController";
 
 import { isAdmin, isPartner, isStaff } from "./middlewares/roles";
 import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
@@ -396,6 +409,8 @@ routes.get("/api/debug/companies", debugCompanies);
 // VALIDAÇÃO PÚBLICA DO RECIBO — é o destino do QR Code impresso no documento,
 // por isso não pode exigir sessão (tem de vir antes do middleware auth).
 routes.get("/api/recibos/validar", validarRecibo);
+// Alias curto usado no QR Code (mesma lógica, URL amigável para o fiscal).
+routes.get("/api/validar-recibo", validarRecibo);
 
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth);
@@ -438,8 +453,16 @@ routes.delete("/api/users/:id", destroy);
 routes.post("/api/loan/simulate", simulateLoan);
 routes.get("/api/loan/:id", findLoanByCustomer);
 // DOSSIÊ DO CRÉDITO (página de detalhe: pagamentos + recibos + prestações)
-// DOCUMENTOS LEGAIS DO CRÉDITO (pdfkit no backend, layout do PDF oficial):
-// contrato | termo | garantias | extracto
+// DOCUMENTOS LEGAIS DO CRÉDITO — DOIS FLUXOS:
+//   FLUXO 1 (IMUTÁVEL): pacote de concessão gerado 1× após desembolso,
+//   com hash + QR; endpoints próprios (meta, gerar, PDF, ZIP).
+//   FLUXO 2 (DINÂMICO): extracto on-demand, sempre actualizado, em memória.
+routes.get("/api/loans/:loanId/concession", isStaff, concessionMeta);
+routes.post("/api/loans/:loanId/concession/generate", isStaff, concessionGenerate);
+routes.get("/api/loans/:loanId/concession/zip", isStaff, concessionZip);
+routes.get("/api/loans/:loanId/concession/:key/pdf", isStaff, concessionDocPdf);
+// Compat: contrato | termo | garantias (do pacote se emitido; senão on-the-fly)
+// e extracto (dinâmico, sempre on-demand).
 routes.get("/api/loans/:loanId/documents/:tipo/pdf", downloadLegalDoc);
 routes.get("/api/loan/:id/detail", isStaff, loanDetail);
 routes.get("/api/loan/amortization/:id", getLoanAmortization);
@@ -521,6 +544,12 @@ routes.get("/api/monthllyTransactions/:id", findTransactionsByCompany);
 routes.get("/api/payments/:id/paginated", findPaginatedTransactions);
 routes.get("/api/payments/:companyId/all", findAllPaymentsOverview);
 routes.put("/api/tranzaction/:id", updateTranzaction);
+// Validação async de referência (frontend chama ao digitar) — ANTES de "/:id"
+routes.get("/api/tranzaction/loan/reference-check", auth, checkReference);
+// PAGAMENTOS V2 — quote oficial server-side (o frontend deixa de calcular mora)
+routes.get("/api/installments/:id/quote", auth, getInstallmentQuote);
+// ESTORNO FORMAL — só ADMIN; motivo obrigatório; transacção atómica
+routes.post("/api/tranzaction/:id/reverse", auth, reverseTranzaction);
 // Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA
 // (REEMBOLSO / JUROS_MORA / TAXA_ADMIN) são criados no controller.
 routes.post("/api/tranzaction", checkCashRegisterOpen, addTranzaction);
@@ -605,6 +634,9 @@ routes.delete("/api/wallets/:id", isAdmin, destroyWallet);
 routes.post("/api/users/parceiros", isAdmin, createPartner);
 routes.put("/api/users/parceiros/:id", isAdmin, updatePartner);
 
+// ==================== PDF TABELAR GENÉRICO (relatórios sem pdfMake) ====================
+routes.post("/api/reports/table-pdf", tablePdf);
+
 // ==================== RECIBOS (NUMERAÇÃO SEQUENCIAL LEGAL — AT) ====================
 routes.post("/api/recibos/gerar/:tranzactionId", isStaff, gerarRecibo);
 routes.get("/api/recibos/loan/:loanId", isStaff, recibosByLoan);
@@ -614,6 +646,8 @@ routes.get("/api/recibos/customer/:customerId", isStaff, recibosByCustomer);
 routes.post("/api/recibos/lookup", isStaff, lookupRecibos);
 routes.post("/api/recibos/:id/enviar", isStaff, enviarRecibo);
 routes.get("/api/recibos/:id/pdf", isStaff, reciboPdf);
+// Recibo de um pagamento — o frontend só consome isto (nunca gera PDF).
+routes.get("/api/tranzactions/:id/recibo", isStaff, reciboByTranzactionController);
 routes.get("/api/recibos/:id", isStaff, findRecibo);
 
 // ==================== RELATÓRIO DE FINANCIADOR (Admin) ====================

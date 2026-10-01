@@ -52,8 +52,14 @@ exports.TranzactionModel = db_1.db.define("tranzactions", {
         allowNull: false,
     },
     paymentDate: {
-        type: sequelize_1.DataTypes.STRING,
+        // V2: DATE real na BD (migração convertida de VARCHAR) — leitura normalizada
+        // como 'YYYY-MM-DD' (ver migração de datas em migrations/index.ts).
+        type: sequelize_1.DataTypes.DATEONLY,
         allowNull: false,
+        get() {
+            const raw = this.getDataValue("paymentDate");
+            return raw ? String(raw).slice(0, 10) : raw;
+        },
     },
     tranzactionReference: {
         type: sequelize_1.DataTypes.STRING,
@@ -99,5 +105,48 @@ exports.TranzactionModel = db_1.db.define("tranzactions", {
         allowNull: false,
         defaultValue: 0,
         comment: "Juros de mora efectivamente recebidos neste pagamento",
+    },
+    // ── PAGAMENTOS V2 (migração migratePaymentsV2) — sem estas definições o
+    // Sequelize IGNORA os campos nos create/update (silencioso!) ──
+    status: {
+        type: sequelize_1.DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: "CONFIRMED",
+        comment: "CONFIRMED | REVERSED (estorno formal)",
+    },
+    received_by: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "userId do JWT — quem registou o pagamento (auditoria)",
+    },
+    received_ip: {
+        type: sequelize_1.DataTypes.STRING(64),
+        allowNull: true,
+        comment: "IP de origem do registo (auditoria)",
+    },
+    idem_key: {
+        type: sequelize_1.DataTypes.STRING(80),
+        allowNull: true,
+        comment: "Idempotency-Key do pedido (anti-duplicação)",
+    },
+    reversed_by: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Admin que anulou o pagamento",
+    },
+    reversal_reason: {
+        type: sequelize_1.DataTypes.STRING(255),
+        allowNull: true,
+        comment: "Motivo obrigatório do estorno",
+    },
+    reversed_tranzaction_id: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Link à transacção de estorno (futuro)",
+    },
+    bank_account_id: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Conta de destino do pagamento (accounts.id — REEMBOLSO/MISTO/caixa)",
     },
 });

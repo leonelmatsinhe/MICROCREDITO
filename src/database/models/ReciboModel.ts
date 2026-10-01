@@ -57,6 +57,11 @@ export const ReciboModel = db.define(
     valor_desconto: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
     saldo_restante: { type: DataTypes.DECIMAL(15, 2), allowNull: false, defaultValue: 0 },
     pdf_url: { type: DataTypes.STRING(255), allowNull: true },
+    // Ciclo de vida legal: EMITIDO (default BD) → ANULADO (no estorno do
+    // pagamento). O recibo nunca é apagado — mantém-se para trilha de auditoria.
+    status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "EMITIDO" },
+    annulled_by_recibo_id: { type: DataTypes.INTEGER, allowNull: true },
+    annulment_reason: { type: DataTypes.STRING(255), allowNull: true },
     // ── Selo electrónico (compliance AT Moçambique) ──
     hash_at: {
       type: DataTypes.STRING(128),

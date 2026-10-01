@@ -13,6 +13,7 @@ import {
   getSystemRegister,
   getPortalAlert,
   getOpeningBalanceSuggestion,
+  getReconciliation,
 } from "../controllers/CashRegisterController";
 
 /**
@@ -30,6 +31,8 @@ import {
 const cashRoutes = Router();
 
 cashRoutes.get("/api/cash-registers/today", auth, getToday);
+// RECONCILIAÇÃO DO DIA — 3 fontes: tranzactions vs caixa vs recibos. ANTES de "/:id".
+cashRoutes.get("/api/cash-registers/reconciliation", auth, getReconciliation);
 cashRoutes.get("/api/cash-registers/history", auth, getHistory);
 cashRoutes.get("/api/cash-registers/daily-summary", auth, getDailySummary);
 // Caixa do Sistema (portal fora de expediente) — card do Caixa Central.

@@ -173,6 +173,26 @@ export const closeRegister = async (params: {
   // Recalcular a partir dos movimentos persistidos antes do fecho.
   const totals = await recalculateTotals(registerId);
 
+  // ── RECONCILIAÇÃO V2 — divergência > 0,01 MZN bloqueia o fecho ──
+  // Compara tranzactions do dia vs movimentos de caixa vs recibos emitidos.
+  try {
+    const { reconcileDay } = await import("./reconciliationService");
+    const day = register.getDataValue("opening_date") || todayKey();
+    const reconciliation = await reconcileDay(companyId, String(day).slice(0, 10));
+    if (!reconciliation.ok) {
+      throw {
+        code: "RECONCILIATION_FAILED",
+        message: `Fecho bloqueado: divergência entre transacções, caixa e recibos (${reconciliation.differences.movementsVsTranzactions.toFixed(2)} / ${reconciliation.differences.recibosVsTranzactions.toFixed(2)} MZN). Consulte /api/cash-registers/reconciliation.`,
+        reconciliation,
+      };
+    }
+  } catch (reconError: any) {
+    // Só o bloqueio de reconciliação propaga — falha do próprio serviço de
+    // reconciliação (ex.: tabela em migração) NÃO trava o fecho (legado segue).
+    if (reconError?.code === "RECONCILIATION_FAILED") throw reconError;
+    console.error("[closeRegister] Reconciliação indisponível (fecho segue):", reconError?.message || reconError);
+  }
+
   const openingBalance = Number(register.getDataValue("opening_balance")) || 0;
   // Fecho em dinheiro físico: inicial + entradas cash − saídas cash.
   const closingCalculated = round2(openingBalance + totals.totalCashIn - totals.totalCashOut);
@@ -324,6 +344,8 @@ export const recordPayment = async (params: {
   accountNumber?: number | string | null;
   paymentMethod?: string;
   bankAccountId?: number | null;
+  /** Pagamentos V2: saldo da conta já creditado na transacção SQL do pagamento. */
+  skipAccountLedger?: boolean;
 }): Promise<void> => {
   const { registerMovement, isElectronic } = await import("./treasuryService");
   const method = (params.paymentMethod || "CASH").toUpperCase();
@@ -345,6 +367,7 @@ export const recordPayment = async (params: {
     tranzactionId: params.tranzactionId ?? null,
     customerId: params.customerId ?? null,
     reference: { type: "amortization_loans", id: params.amortizationLoanId ?? null },
+    skipAccountLedger: !!params.skipAccountLedger,
   };
 
   const accountLabel = params.accountNumber ?? params.loanId ?? "-";

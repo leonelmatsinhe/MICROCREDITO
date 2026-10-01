@@ -38,6 +38,14 @@ export type MovementInput = {
   customerId?: number | null;
   automatic?: boolean;
   /**
+   * Pagamentos V2 (individual/bulk): o saldo da conta de destino já é
+   * incrementado DENTRO da transacção SQL do próprio pagamento (passo 10.b de
+   * addTranzaction / equivalente no bulk). Nesse caso o movimento de caixa
+   * é registado (totais bank_*) mas o ledger da conta NÃO é tocado de novo —
+   * evita crédito duplo do mesmo dinheiro.
+   */
+  skipAccountLedger?: boolean;
+  /**
    * Portal do mutuário: o pagamento do cliente TEM de ser aceite mesmo fora
    * do expediente. Com esta flag, se não houver caixa ABERTO do dia, o
    * movimento cai no "Caixa do Sistema" (criado automaticamente) e fica
@@ -52,6 +60,76 @@ export const isElectronic = (method: string): boolean =>
 
 // Arredonda para 2 casas (dinheiro).
 const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/**
+ * CRÉDITO ATÓMICO DA CONTA DE DESTINO — chamado DENTRO da transacção SQL do
+ * pagamento (passo 10.b de addTranzaction / loop de addTranzactionBulk).
+ *
+ * Bloqueia a linha da conta (SELECT ... FOR UPDATE), incrementa o saldo e
+ * cria o lançamento no extrato real (bank_transactions) — tudo no MESMO
+ * commit do pagamento (se algo falhar, rollback desfaz saldo e extrato).
+ * O movimento de caixa correspondente é registado pós-commit pelo
+ * recordPayment com skipAccountLedger → sem crédito duplicado do mesmo dinheiro.
+ */
+export const creditAccountInTransaction = async (params: {
+  companyId: number;
+  accountId: number;
+  amount: number;
+  description: string;
+  userId?: number | null;
+  cashRegisterId?: number | null;
+  referenceType?: string | null;
+  referenceId?: number | null;
+  transaction: any;
+}): Promise<{ newBalance: number }> => {
+  const {
+    companyId,
+    accountId,
+    amount,
+    description,
+    userId = null,
+    cashRegisterId = null,
+    referenceType = null,
+    referenceId = null,
+    transaction,
+  } = params;
+
+  const credit = round2(amount);
+  if (!(credit > 0)) {
+    throw { code: "INVALID_AMOUNT", message: "O valor a creditar deve ser maior que zero." };
+  }
+
+  const account: any = await AccountModel.findOne({
+    where: { id: Number(accountId), companyId: Number(companyId) },
+    transaction,
+    lock: transaction?.LOCK ? transaction.LOCK.UPDATE : undefined,
+  });
+  if (!account) {
+    throw { code: "ACCOUNT_NOT_FOUND", message: "Conta de destino não encontrada." };
+  }
+
+  const newBalance = round2((Number(account.getDataValue("balance")) || 0) + credit);
+  await account.update({ balance: newBalance }, { transaction });
+
+  await BankTransactionModel.create(
+    {
+      companyId: Number(companyId),
+      accountId: Number(accountId),
+      cashRegisterId: cashRegisterId ?? null,
+      type: "ENTRADA",
+      category: "REEMBOLSO_BANCO",
+      amount: credit,
+      balanceAfter: newBalance,
+      description: String(description || "").slice(0, 255),
+      referenceType: referenceType ?? null,
+      referenceId: referenceId ?? null,
+      createdBy: userId,
+    },
+    { transaction }
+  );
+
+  return { newBalance };
+};
 
 // Dia actual (YYYY-MM-DD) — igual ao resto do sistema.
 export const todayKey = (): string => new Date().toISOString().slice(0, 10);
@@ -134,6 +212,7 @@ export const registerMovement = async (input: MovementInput): Promise<any> => {
     customerId = null,
     automatic = false,
     allowWithoutOpenRegister = false,
+    skipAccountLedger = false,
   } = input;
 
   // ── Validações de entrada ──
@@ -227,7 +306,8 @@ export const registerMovement = async (input: MovementInput): Promise<any> => {
     );
 
     // ── Passo 4: dinheiro electrónico → bank_transactions + saldo real ──
-    if (account) {
+    // (skipAccountLedger: o saldo já foi creditado na transacção do pagamento)
+    if (account && !skipAccountLedger) {
       const current = Number(account.getDataValue("balance")) || 0;
       const delta = sign(type, amount);
       const newBalance = round2(current + delta);

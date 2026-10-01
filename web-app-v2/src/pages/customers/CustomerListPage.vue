@@ -483,91 +483,38 @@ function onCustomerSaved() {
   loadStats()
 }
 
+// PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
 async function exportPdf() {
   if (!customers.value || customers.value.length === 0) {
     $q.notify({ type: 'warning', message: 'Nenhum dado para exportar', position: 'top' })
     return
   }
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    // Importar header partilhado
-    const { buildCompanyHeader } = await import('@/utils/pdfHeader')
-    const { data: companyData } = await api.get(`/api/company/${authStore.companyId}`)
-    const company = companyData?.result || {}
-
-    // Buscar logo — mesma lógica do ContractDocumentsPage
-    let logoBase64 = null
-    const logo = company.companyLogo
-    if (logo && logo !== '/logo.png') {
-      try {
-        const token = localStorage.getItem('applicationMicroToken')
-        const headers = token ? { Authorization: `Bearer ${token}` } : {}
-        const resp = await fetch(logo, { headers })
-        const contentType = resp.headers.get('content-type') || ''
-        if (resp.ok && contentType.includes('image/')) {
-          const blob = await resp.blob()
-          logoBase64 = await new Promise(r => {
-            const reader = new FileReader()
-            reader.onload = () => r(reader.result)
-            reader.readAsDataURL(blob)
-          })
-        }
-      } catch {}
-    }
-
-    const header = buildCompanyHeader(company, logoBase64, 'LISTA DE MUTUÁRIOS')
-
-    const tableHeader = [
-      { text: 'Mutuário', style: 'tableHeader' },
-      { text: 'Pessoa de Contacto', style: 'tableHeader' },
-      { text: 'Emergência', style: 'tableHeader' },
-      { text: 'Bairro', style: 'tableHeader' },
-      { text: 'Estado', style: 'tableHeader' }
-    ]
-
-    const tableRows = customers.value.map(row => [
-      { text: row.customerName || '-', style: 'cellText' },
-      { text: row.customerEmergencyPerson || '-', style: 'cellText' },
-      { text: row.customerEmergencyContact || '-', style: 'cellText' },
-      { text: row.customerBairro || '-', style: 'cellText' },
-      { text: row.customerStatus === 1 ? 'Activo' : 'Inactivo', style: 'cellCenter' }
-    ])
-
-    const docDefinition = {
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      pageMargins: [20, 20, 20, 30],
-      content: [
-        ...header,
-        {
-          table: {
-            headerRows: 1,
-            widths: ['*', '*', '*', 80, 50],
-            body: [tableHeader, ...tableRows]
-          },
-          layout: 'grid'
-        },
-        { text: `Total: ${customers.value.length} mutuários`, style: 'totalLabel', margin: [0, 10, 0, 0] }
+    const { openTablePdf, tablePdfError } = await import('@/utils/tablePdf')
+    await openTablePdf({
+      title: 'LISTA DE MUTUÁRIOS',
+      meta: [`Total: ${customers.value.length} mutuários`],
+      orientation: 'landscape',
+      filename: 'lista-mutuarios',
+      columns: [
+        { label: 'Mutuário' },
+        { label: 'Pessoa de Contacto' },
+        { label: 'Emergência' },
+        { label: 'Bairro', width: 90 },
+        { label: 'Estado', width: 55, align: 'center' }
       ],
-      styles: {
-        sectionTitle: { fontSize: 12, bold: true, color: '#1b5e20' },
-        tableHeader: { fontSize: 9, bold: true, alignment: 'center', fillColor: '#e8eaf6' },
-        cellText: { fontSize: 9 },
-        cellCenter: { fontSize: 9, alignment: 'center' },
-        totalLabel: { fontSize: 10, bold: true, alignment: 'right' }
-      }
-    }
-
-    pdfMake.createPdf(docDefinition).open()
+      rows: customers.value.map(row => [
+        row.customerName || '-',
+        row.customerEmergencyPerson || '-',
+        row.customerEmergencyContact || '-',
+        row.customerBairro || '-',
+        row.customerStatus === 1 ? 'Activo' : 'Inactivo'
+      ])
+    })
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+    $q.notify({ type: 'negative', message: await (await import('@/utils/tablePdf')).tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
 }
 

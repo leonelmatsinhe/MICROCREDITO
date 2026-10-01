@@ -30,12 +30,16 @@ fuser -k "$PORT/tcp" 2>/dev/null || true
 sleep 1
 echo "  -> Porta $PORT livre."
 
-# 1. Preservar uploads (ficheiros sensíveis)
+# 1. Preservar uploads (ficheiros sensíveis) — NUNCA alterados pelo deploy
 echo ""
-echo "[1/6] A preservar pasta uploads..."
+echo "[1/6] A preservar pasta uploads (nao e alterada pelo deploy)..."
 if [ -d "uploads" ]; then
   cp -r uploads /tmp/uploads_backup_$(date +%s) 2>/dev/null || true
-  echo "  -> Backup de uploads criado em /tmp/"
+  echo "  -> Backup de uploads criado em /tmp/ (apenas por seguranca; a pasta permanece intocada no sitio)"
+fi
+if [ -f .gitignore ] && ! grep -qE '^/?uploads/?$' .gitignore; then
+  echo "uploads/" >> .gitignore
+  echo "  -> AVISO: 'uploads/' faltava no .gitignore; adicionado (evita que git pull sobrescreva documentos no VPS)."
 fi
 
 # 2. Pull do GitHub
@@ -71,18 +75,23 @@ npm install
 echo "  -> Dependencias do frontend atualizadas."
 
 # 4. Compilar backend (TypeScript -> build/)
+# A partir da RAIZ (tsconfig: rootDir "./" → build/src/app.js). Compilar dentro
+# de src/ mudava o rootDir e produzia build/src/... a partir de src (caminhos
+# __dirname/projectRoot errados no arranque).
 echo ""
 echo "[4/8] A compilar o backend (tsc)..."
-cd "$PROJECT_ROOT/src"
 npx tsc
-cd "$PROJECT_ROOT"
 echo "  -> Backend compilado."
 
 # 4.1 Aplicar migracoes de base de dados (idempotentes; tambem correm no arranque do servidor)
+# SKIP_WALLET_MIGRATION=1: o deploy NUNCA cria/altera carteiras de credito
+# existentes (seed KMAD/PME/COM/INT, conta do parceiro KMAD e backfill de taxas
+# ficam desligados). Para povoar carteiras num servidor novo, correr uma vez:
+#   SKIP_WALLET_MIGRATION=0 npm run migrate
 echo ""
-echo "[4.1/8] A aplicar migracoes de base de dados..."
-npm run migrate
-echo "  -> Migracoes aplicadas."
+echo "[4.1/8] A aplicar migracoes de base de dados (carteiras existentes intocaveis)..."
+SKIP_WALLET_MIGRATION=1 npm run migrate
+echo "  -> Migracoes aplicadas (carteiras existentes preservadas)."
 
 # 5. Compilar frontend (Vite -> public-v2/)
 echo ""

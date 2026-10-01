@@ -239,7 +239,7 @@ const loading = computed(() => paymentsStore.loading)
 const saving = computed(() => paymentsStore.saving)
 const payments = computed(() => paymentsStore.payments)
 const totalPaid = computed(() => paymentsStore.totalPaid)
-const totalLateInterest = computed(() => payments.value.reduce((sum, p) => sum + (p.latePaymentInterest || 0), 0))
+const totalLateInterest = computed(() => payments.value.reduce((sum, p) => sum + (Number(p.latePaymentInterest) || 0), 0))
 
 const lastPaymentDate = computed(() => {
   if (payments.value.length === 0) return '—'

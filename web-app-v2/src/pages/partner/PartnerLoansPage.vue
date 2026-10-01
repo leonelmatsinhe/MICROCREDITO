@@ -137,6 +137,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import { format } from 'date-fns'
+import { api } from '@/boot/axios'
 import { useWalletsStore } from '@/stores/wallets'
 
 const $q = useQuasar()
@@ -204,7 +205,7 @@ async function openDetail(loan) {
   detailDialog.value = true
   loadingDetail.value = true
   try {
-    const { data } = await (await import('@/boot/axios')).api.get('/api/partner/installments', { params: { loanId: loan.id } })
+    const { data } = await api.get('/api/partner/installments', { params: { loanId: loan.id } })
     detailInstallments.value = data.success ? data.result || [] : []
   } catch (error) {
     $q.notify({ type: 'negative', message: 'Erro ao carregar prestações', position: 'top' })

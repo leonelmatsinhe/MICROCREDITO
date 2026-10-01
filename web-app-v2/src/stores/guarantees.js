@@ -11,7 +11,10 @@ export const useGuaranteesStore = defineStore('guarantees', {
   getters: {
     hasGuarantees: (state) => state.guarantees.length > 0,
     guaranteeCount: (state) => state.guarantees.length,
-    totalGuaranteeValue: (state) => state.guarantees.reduce((sum, g) => sum + (g.purchaseAmount || 0), 0)
+    // purchaseAmount chega como string (DECIMAL do MySQL): converter com
+    // Number() antes de somar, senão "0 + '2.00'" concatena e o total vira NaN.
+    totalGuaranteeValue: (state) =>
+      state.guarantees.reduce((sum, g) => sum + (Number(g.purchaseAmount) || 0), 0)
   },
 
   actions: {

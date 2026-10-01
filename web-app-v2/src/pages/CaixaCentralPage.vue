@@ -1081,23 +1081,12 @@ function moneyRaw(value) {
   })
 }
 
+// PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
+// 1.º PDF: resumo + canal (Portal vs Balcão); 2.º PDF: movimentos do dia.
 async function exportPDF() {
   if (movements.value.length === 0) return
   try {
-    const companyId = authStore.companyId
-    if (companyId && !companyStore.hasCompany) {
-      await companyStore.fetchCompany(companyId).catch(() => {})
-    }
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    const { buildCompanyHeader, companyLogoBase64, commonStyles, tableLayout } = await import('@/utils/pdfHeader')
-    const company = companyStore.company || {}
-    const logoBase64 = await companyLogoBase64(company)
-
+    const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
     const reg = register.value
     const dayLabel = formatDay(reg.opening_date)
 
@@ -1118,131 +1107,60 @@ async function exportPDF() {
       )
     }
 
-    const summaryTable = {
-      table: {
-        widths: ['*', 'auto'],
-        body: summaryRows.map(([label, value]) => ([
-          { text: label, style: 'cellText' },
-          { text: value, style: 'cellRightBold' }
-        ]))
-      },
-      layout: 'grid',
-      margin: [0, 0, 0, 14]
-    }
-
     // Origem por movimento: Portal (Caixa do Sistema / etiqueta fora de expediente)
     // vs Balcão (cobranças presenciais dos operadores)
     const PORTAL_TAG = '[Portal — fora de expediente]'
     const isPortalMovement = (m) =>
       Boolean(m.isPortal) || String(m.description || '').includes(PORTAL_TAG)
 
-    const movementRows = movements.value.map(m => ([
-      { text: formatTime(m.createdAt), style: 'cellCenter' },
-      { text: methodLabel(m.paymentMethod), style: 'cellCenter' },
-      { text: categoryLabel(m.category), style: 'cellCenter' },
-      { text: m.description || '—', style: 'cellText' },
-      { text: accountLabelFor(m), style: 'cellCenter' },
-      { text: isPortalMovement(m) ? 'Portal' : 'Balcão', style: 'cellCenter', color: isPortalMovement(m) ? '#6a1b9a' : '#37474f' },
-      {
-        text: (m.type === 'ENTRADA' ? '+ ' : '− ') + moneyRaw(m.amount) + ' MZN',
-        style: m.type === 'ENTRADA' ? 'inPositive' : 'inNegative'
-      }
-    ]))
-
-    const totalRow = [
-      { text: 'TOTAIS', colSpan: 6, style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      { text: '', style: 'totalCell' },
-      {
-        text: `cash +${moneyRaw(reg.total_cash_in)}/−${moneyRaw(reg.total_cash_out)} · bank +${moneyRaw(reg.total_bank_in)}/−${moneyRaw(reg.total_bank_out)}`,
-        style: 'totalCellRight'
-      }
-    ]
-
-    const movementHeader = [
-      { text: 'Hora', style: 'tableHeader' },
-      { text: 'Método', style: 'tableHeader' },
-      { text: 'Categoria', style: 'tableHeader' },
-      { text: 'Descrição', style: 'tableHeader' },
-      { text: 'Conta', style: 'tableHeader' },
-      { text: 'Origem', style: 'tableHeader' },
-      { text: 'Valor', style: 'tableHeader' }
-    ]
-
     // ── Separação Portal vs Balcão (entradas) ──
-    // Portal = movimentos do Caixa do Sistema (fora de expediente). Balcão = restantes.
     const totalIn = movements.value.reduce((s, m) => s + (m.type === 'ENTRADA' ? Number(m.amount) || 0 : 0), 0)
     const portalIn = movements.value.filter(isPortalMovement).reduce((s, m) => s + (m.type === 'ENTRADA' ? Number(m.amount) || 0 : 0), 0)
     const inPersonIn = round2(totalIn - portalIn)
 
-    const channelSection = [
-      { text: 'PAGAMENTOS — PORTAL vs BALCÃO (entradas)', fontSize: 10, bold: true, color: '#1a237e', margin: [0, 8, 0, 5] },
-      {
-        table: {
-          widths: ['*', 'auto', 'auto'],
-          body: [
-            [
-              { text: 'Canal', style: 'cellText' },
-              { text: 'Entradas', style: 'cellRightBold' },
-              { text: '% do total', style: 'cellRightBold' }
-            ],
-            [
-              { text: 'Portal (fora de expediente)', style: 'cellText', color: '#6a1b9a' },
-              { text: moneyRaw(portalIn) + ' MZN', style: 'cellRightBold', color: '#6a1b9a' },
-              { text: totalIn > 0 ? ((portalIn / totalIn) * 100).toFixed(1) + '%' : '—', style: 'cellRightBold' }
-            ],
-            [
-              { text: 'Balcão (presencial)', style: 'cellText' },
-              { text: moneyRaw(inPersonIn) + ' MZN', style: 'cellRightBold' },
-              { text: totalIn > 0 ? ((inPersonIn / totalIn) * 100).toFixed(1) + '%' : '—', style: 'cellRightBold' }
-            ],
-            [
-              { text: 'TOTAL', style: 'totalCell' },
-              { text: moneyRaw(totalIn) + ' MZN', style: 'totalCellRight' },
-              { text: '100%', style: 'totalCellRight' }
-            ]
-          ]
-        },
-        layout: 'grid',
-        margin: [0, 0, 0, 14]
-      }
+    const channelRows = [
+      ['Portal (fora de expediente)', moneyRaw(portalIn) + ' MZN', totalIn > 0 ? ((portalIn / totalIn) * 100).toFixed(1) + '%' : '—'],
+      ['Balcão (presencial)', moneyRaw(inPersonIn) + ' MZN', totalIn > 0 ? ((inPersonIn / totalIn) * 100).toFixed(1) + '%' : '—'],
+      ['TOTAL', moneyRaw(totalIn) + ' MZN', '100%']
     ]
 
-    const docDefinition = {
-      pageSize: 'A4',
-      pageMargins: [24, 20, 24, 30],
-      content: [
-        ...buildCompanyHeader(company, logoBase64, `Caixa Central — ${dayLabel}`),
-        { text: `${movements.value.length} movimento(s) · ${reg.status}`, fontSize: 8, color: '#444', margin: [0, 0, 0, 8] },
-        summaryTable,
-        ...channelSection,
-        { text: 'MOVIMENTOS DO DIA', fontSize: 10, bold: true, color: '#1a237e', margin: [0, 0, 0, 5] },
-        {
-          table: {
-            headerRows: 1,
-            widths: [35, 40, 60, '*', 50, 40, 78],
-            body: [movementHeader, ...movementRows, totalRow]
-          },
-          layout: tableLayout,
-          fontSize: 7
-        }
-      ],
-      styles: {
-        ...commonStyles,
-        inPositive: { fontSize: 7, alignment: 'right', bold: true, color: '#2e7d32' },
-        inNegative: { fontSize: 7, alignment: 'right', bold: true, color: '#c62828' }
-      },
-      defaultStyle: { font: 'Roboto' }
-    }
+    await downloadTablePdf({
+      title: `Caixa Central — ${dayLabel}`,
+      meta: [`${movements.value.length} movimento(s) · ${reg.status}`],
+      filename: `caixa-central-${reg.opening_date}-resumo`,
+      columns: [{ label: 'Resumo do caixa', width: 250 }, { label: 'Valor', align: 'right' }],
+      rows: [...summaryRows.map(([l, v]) => [String(l), String(v)]), [], ['PAGAMENTOS — PORTAL vs BALCÃO (entradas)', '', ''], ['Canal', 'Entradas', '% do total'], ...channelRows]
+    }, `caixa-central-${reg.opening_date}-resumo.pdf`)
 
-    pdfMake.createPdf(docDefinition).download(`caixa-central-${reg.opening_date}.pdf`)
+    await downloadTablePdf({
+      title: `Caixa Central — Movimentos (${dayLabel})`,
+      meta: [`cash +${moneyRaw(reg.total_cash_in)}/−${moneyRaw(reg.total_cash_out)} · bank +${moneyRaw(reg.total_bank_in)}/−${moneyRaw(reg.total_bank_out)} MZN`],
+      filename: `caixa-central-${reg.opening_date}-movimentos`,
+      columns: [
+        { label: 'Hora', width: 50 },
+        { label: 'Método', width: 65 },
+        { label: 'Categoria', width: 70 },
+        { label: 'Descrição' },
+        { label: 'Conta', width: 60, align: 'center' },
+        { label: 'Origem', width: 50, align: 'center' },
+        { label: 'Valor', width: 80, align: 'right' }
+      ],
+      rows: movements.value.map(m => [
+        formatTime(m.createdAt),
+        methodLabel(m.paymentMethod),
+        categoryLabel(m.category),
+        m.description || '—',
+        accountLabelFor(m),
+        isPortalMovement(m) ? 'Portal' : 'Balcão',
+        `${m.type === 'ENTRADA' ? '+' : '-'} ${moneyRaw(m.amount)} MZN`
+      ])
+    }, `caixa-central-${reg.opening_date}-movimentos.pdf`)
+
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF do caixa:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+    const { tablePdfError } = await import('@/utils/tablePdf')
+    $q.notify({ type: 'negative', message: await tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
 }
 

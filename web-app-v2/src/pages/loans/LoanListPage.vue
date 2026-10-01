@@ -1429,73 +1429,32 @@ async function exportPDF() {
     return
   }
   try {
-    const pdfMakeMod = await import('pdfmake/build/pdfmake')
-    const pdfMake = pdfMakeMod.default
-    const pdfFontsMod = await import('pdfmake/build/vfs_fonts')
-    const pdfFonts = pdfFontsMod.default
-    if (pdfMake.vfs === undefined) pdfMake.vfs = pdfFonts.pdfMake ? pdfFonts.pdfMake.vfs : pdfFonts
-
-    const { buildCompanyHeader, companyLogoBase64 } = await import('@/utils/pdfHeader')
+    // PDF GERADO NO BACKEND — POST /api/reports/table-pdf (pdfkit no servidor).
+    const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
     const cfg = exportConfig()
     const title = `Créditos ${segment.value.label}`
-    const company = companyStore.company || {}
-    // O pdfmake não renderiza URLs — o logo tem de vir em base64 (ver companyLogoBase64)
-    const logoBase64 = await companyLogoBase64(company)
-
-    const body = [
-      cfg.headers.map(h => ({ text: h, style: 'tableHeader' })),
-      ...rows.map(row => cfg.keys.map((k, i) => ({
-        text: cfg.money[i] ? moneyRaw(row[k]) : String(row[k] ?? '—'),
-        style: cfg.money[i] ? 'cellRight' : (cfg.align[i] === 'center' ? 'cellCenter' : 'cellText')
-      })))
-    ]
-
-    // Linha de totais (colunas monetárias)
-    const totalRow = cfg.keys.map((k, i) => {
-      if (!cfg.money[i]) return { text: i === 0 ? 'TOTAL' : '', style: 'totalCell' }
-      const sum = rows.reduce((acc, r) => acc + (Number(r[k]) || 0), 0)
-      return { text: moneyRaw(sum), style: 'totalCellRight' }
-    })
-    body.push(totalRow)
-
     const dateStr = new Date().toISOString().slice(0, 10)
-    const docDefinition = {
-      pageSize: 'A4',
-      pageOrientation: 'landscape',
-      pageMargins: [24, 20, 24, 30],
-      content: [
-        ...buildCompanyHeader(company, logoBase64, `${title} — ${dateStr}`),
-        {
-          text: rows.length > 1 ? `${rows.length} créditos` : '1 crédito',
-          fontSize: 8,
-          color: '#444',
-          margin: [0, 0, 0, 8]
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: cfg.widths,
-            body
-          },
-          layout: 'grid',
-          fontSize: 7
-        }
-      ],
-      styles: {
-        cellText: { fontSize: 7 },
-        cellCenter: { fontSize: 7, alignment: 'center' },
-        cellRight: { fontSize: 7, alignment: 'right' },
-        tableHeader: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e8eaf6' },
-        totalCell: { fontSize: 7, bold: true, alignment: 'center', fillColor: '#e0e0e0' },
-        totalCellRight: { fontSize: 7, bold: true, alignment: 'right', fillColor: '#e0e0e0' }
-      }
-    }
 
-    pdfMake.createPdf(docDefinition).download(`creditos-${segment.value.key}-${dateStr}.pdf`)
+    await downloadTablePdf({
+      title,
+      meta: [`Emitido em ${dateStr}`, rows.length > 1 ? `${rows.length} créditos` : '1 crédito'],
+      orientation: 'landscape',
+      filename: `creditos-${segment.value.key}-${dateStr}`,
+      columns: cfg.headers.map((h, i) => ({
+        label: h,
+        width: cfg.widths?.[i] ? Math.round(cfg.widths[i] * 0.85) : undefined,
+        align: cfg.money[i] ? 'right' : (cfg.align?.[i] === 'center' ? 'center' : 'left')
+      })),
+      rows: rows.map(row => cfg.keys.map((k, i) => (cfg.money[i] ? moneyRaw(row[k]) : String(row[k] ?? '—')))),
+      totalsRow: cfg.keys.map((k, i) => {
+        if (!cfg.money[i]) return i === 0 ? 'TOTAL' : ''
+        return moneyRaw(rows.reduce((acc, r) => acc + (Number(r[k]) || 0), 0))
+      })
+    }, `creditos-${segment.value.key}-${dateStr}.pdf`)
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF:', e)
-    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
+    $q.notify({ type: 'negative', message: await (await import('@/utils/tablePdf')).tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
   }
 }
 

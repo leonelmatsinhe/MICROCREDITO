@@ -48,6 +48,28 @@ Para **cada** empresa são criadas 5 carteiras:
 E, na empresa operacional, a conta de teste do parceiro KMAD:
 **`parceiro@kmad.co.mz` / `Mbrm@2025`** (perfil *Parceiro Financiador*, ligada à carteira `KMAD`).
 
+> **Deploy em produção (VPS / Dokploy) — carteiras existentes intocáveis**
+>
+> O seed acima corre **apenas** em empresas que ainda não têm **nenhuma**
+> carteira. Empresas já configuradas (ex.: produção, com carteiras criadas ou
+> editadas pelo Admin) **nunca** são alteradas por deploy ou restart.
+> Para desligar por completo a migração de carteiras (seed, conta KMAD e
+> backfill de taxas), definir a variável de ambiente:
+>
+> ```bash
+> SKIP_WALLET_MIGRATION=1
+> ```
+>
+> - `deploy.sh` já exporta `SKIP_WALLET_MIGRATION=1` no passo `npm run migrate`.
+> - No **Dokploy**, adicionar `SKIP_WALLET_MIGRATION=1` nos *Environment Variables* do serviço.
+> - Para povoar carteiras num servidor **novo**, correr uma vez:
+>   `SKIP_WALLET_MIGRATION=0 npm run migrate`
+>
+> A pasta `uploads/` (imagens e documentos) também **não é alterada** pelo
+> deploy: está no `.gitignore` e no `.dockerignore` — no Dokploy deve ser um
+> **volume persistente** montado em `/app/uploads` (ou `UPLOADS_DIR`), para
+> sobreviver a cada rebuild da imagem.
+
 ---
 
 ## 3. Fluxo do Admin (MBRM)

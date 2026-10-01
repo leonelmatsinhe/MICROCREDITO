@@ -43,15 +43,26 @@ const latePaymentInterest = (installment, fine, referenceDate) => {
 };
 const installmentPanification = (installments, forfeit, referenceDate) => {
     const installmentPlan = [];
-    // Calculate total loan amount from all installments
-    const totalLoanAmount = installments.reduce((sum, el) => sum + (parseFloat(el.installment) || 0), 0);
+    // ── BASE DO SALDO = CAPITAL (Σ amortização), NÃO Σ prestações ──
+    // BUG antigo: totalLoanAmount somava as PRESTAÇÕES (capital + juros),
+    // logo o saldo da última linha ficava "600" (8100 − 7500) em vez de 0,00.
+    // Σ amortização é o capital exacto (o gerador Price fecha ao cêntimo).
+    // Fallback: planos sem amortization → capital estimado = prestações − juros.
+    const sumOf = (pick) => installments.reduce((sum, el) => sum + (pick(el) || 0), 0);
+    let totalCapitalAmount = sumOf((el) => parseFloat(el.amortization));
+    if (totalCapitalAmount <= 0) {
+        totalCapitalAmount = Math.round((sumOf((el) => parseFloat(el.installment)) - sumOf((el) => parseFloat(el.rateAmount))) * 100) / 100;
+    }
     // Track cumulative amortization to calculate remaining balance dynamically
     let cumulativeAmortization = 0;
     installments.forEach((element, index) => {
         const amortizationAmount = parseFloat(element.amortization) || 0;
-        // Remaining balance = Total loan - sum of amortization portions of all installments up to this one
-        const calculatedRemainingBalance = totalLoanAmount - cumulativeAmortization - amortizationAmount;
+        // Remaining balance = Capital total - soma das amortizações até esta linha
+        const calculatedRemainingBalance = totalCapitalAmount - cumulativeAmortization - amortizationAmount;
         cumulativeAmortization += amortizationAmount;
+        // Última linha fecha SEMPRE em 0,00 — absorve o cêntimo de
+        // arredondamento que possa ter sobrado no plano.
+        const isLast = index === installments.length - 1;
         const installment = {
             id: element.id,
             loanId: element.loanId,
@@ -62,8 +73,9 @@ const installmentPanification = (installments, forfeit, referenceDate) => {
             rateAmount: parseFloat(element.rateAmount) || 0,
             installment: parseFloat(element.installment) || 0,
             paidAmount: parseFloat(element.paidAmount) || 0,
-            // Saldo devedor calculado dinamicamente (Sistema Francês)
-            remainingBalance: Math.max(0, Math.round(calculatedRemainingBalance * 100) / 100),
+            // Saldo devedor calculado dinamicamente (Sistema Francês);
+            // a última linha é forçada a 0,00.
+            remainingBalance: isLast ? 0 : Math.max(0, Math.round(calculatedRemainingBalance * 100) / 100),
             lateDays: calculatePendingDays(element, referenceDate),
             latePaymentInterest: latePaymentInterest(element, forfeit, referenceDate),
             dueDate: element.dueDate,

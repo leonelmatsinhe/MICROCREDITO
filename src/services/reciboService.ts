@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import moment from "moment";
 import { Op, Transaction } from "sequelize";
 import { db } from "../database/db";
+import { AT_CERTIFICADO_ENABLED } from "../config/certificacao";
 import { ReciboModel } from "../database/models/ReciboModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { LoanModel } from "../database/models/LoanModel";
@@ -14,6 +15,7 @@ import { CompanyModel } from "../database/models/CompanyModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { FinancingWalletModel } from "../database/models/FinancingWalletModel";
 import { AccountModel } from "../database/models/AccountModel";
+import { AuditLogModel } from "../database/models/paymentsV2Models";
 
 /**
  * RECIBOS — NUMERAÇÃO SEQUENCIAL LEGAL (AUTORIDADE TRIBUTÁRIA DE MOÇAMBIQUE)
@@ -24,12 +26,17 @@ import { AccountModel } from "../database/models/AccountModel";
  *    `SELECT ... FOR UPDATE` e só é incrementado se o recibo for realmente
  *    gravado (ROLLBACK devolve o número — não abre buraco na numeração legal);
  *  · SELO ELECTRÓNICO: hash SHA-256 dos dados do recibo + código de validação +
- *    QR Code que abre a página pública de validação (`/validar`);
+ *    QR Code que abre a página pública de validação (`/validar`) — calculados e
+ *    gravados na BD SEMPRE; a APRESENTAÇÃO no PDF depende da feature flag
+ *    AT_CERTIFICADO_ENABLED (config/certificacao.ts — TODO AT: ativar quando
+ *    tiver Certificado AT 2026/001);
  *  · um recibo por pagamento individual, com capital, juros, mora e desconto
  *    discriminados;
  *  · PDF moderno com identificação do emitente (logotipo + NUIT), dados do
  *    cliente, carteira de financiamento, decomposição do pagamento, extrato das
- *    prestações pendentes e rodapé legal com hash.
+ *    prestações pendentes e rodapé legal. Os elementos do selo AT (QR, hash,
+ *    código, link de validação, texto do Decreto n.º 22/2023) só são impressos
+ *    com AT_CERTIFICADO_ENABLED=true — ver config/certificacao.ts.
  */
 
 const round2 = (value: number): number => Math.round((Number(value) || 0) * 100) / 100;
@@ -235,9 +242,14 @@ export const buildQrContent = (params: {
  * Garante que o recibo tem o selo electrónico (hash, código de validação,
  * conteúdo e PNG do QR Code). Idempotente: se já tiver hash, devolve como está
  * — o selo é calculado uma única vez, no momento da emissão.
+ *
+ * NOTA (feature flag AT): o selo é calculado e gravado na BD SEMPRE — mesmo
+ * com AT_CERTIFICADO_ENABLED=false. A flag controla apenas se os elementos
+ * aparecem no PDF (ver renderReciboPdf) — quando a licença chegar, os recibos
+ * passam a mostrá-los sem regenerar nada no banco de dados.
  */
-export const ensureReciboSeal = async (reciboId: number, force = false): Promise<any> => {
-  const recibo: any = (await ReciboModel.findByPk(reciboId, { raw: true })) as any;
+export const ensureReciboSeal = async (reciboId: number, force = false, transaction?: Transaction | null): Promise<any> => {
+  const recibo: any = (await ReciboModel.findByPk(reciboId, { raw: true, ...(transaction ? { transaction } : {}) })) as any;
   if (!recibo) return null;
   const faltaSelo = !recibo.hash_at || !recibo.qr_code_url;
   const faltaMetodo = !recibo.metodo_pagamento_desc && !!recibo.tranzactionId;
@@ -311,10 +323,10 @@ export const ensureReciboSeal = async (reciboId: number, force = false): Promise
       ...(metodoLabel ? { metodo_pagamento: metodoLabel } : {}),
       ...(metodoDesc ? { metodo_pagamento_desc: metodoDesc } : {}),
     },
-    { where: { id: reciboId } }
+    { where: { id: reciboId }, ...(transaction ? { transaction } : {}) }
   );
 
-  return (await ReciboModel.findByPk(reciboId, { raw: true })) as any;
+  return (await ReciboModel.findByPk(reciboId, { raw: true, ...(transaction ? { transaction } : {}) })) as any;
 };
 
 /** Recibo pelo hash ou pelo número (utilizado pela validação pública do QR). */
@@ -393,20 +405,20 @@ export type ReciboDetalhe = {
 };
 
 /** Lê um recibo com todo o contexto necessário para o PDF/extrato. */
-export const getReciboDetalhe = async (id: number): Promise<ReciboDetalhe | null> => {
-  const recibo: any = await ReciboModel.findByPk(id, { raw: true });
+export const getReciboDetalhe = async (id: number, transaction?: Transaction | null): Promise<ReciboDetalhe | null> => {
+  const recibo: any = await ReciboModel.findByPk(id, { raw: true, ...(transaction ? { transaction } : {}) });
   if (!recibo) return null;
 
   const companyId = Number(recibo.companyId);
-  const empresa: any = (await CompanyModel.findByPk(companyId, { raw: true })) || {};
+  const empresa: any = (await CompanyModel.findByPk(companyId, { raw: true, ...(transaction ? { transaction } : {}) })) || {};
   const cliente: any = recibo.customerId
-    ? (await CustomerModel.findByPk(Number(recibo.customerId), { raw: true })) || {}
+    ? (await CustomerModel.findByPk(Number(recibo.customerId), { raw: true, ...(transaction ? { transaction } : {}) })) || {}
     : {};
   const credito: any = recibo.loanId
-    ? (await LoanModel.findByPk(Number(recibo.loanId), { raw: true })) || {}
+    ? (await LoanModel.findByPk(Number(recibo.loanId), { raw: true, ...(transaction ? { transaction } : {}) })) || {}
     : {};
   const carteira: any = recibo.walletId
-    ? (await FinancingWalletModel.findByPk(Number(recibo.walletId), { raw: true })) || {}
+    ? (await FinancingWalletModel.findByPk(Number(recibo.walletId), { raw: true, ...(transaction ? { transaction } : {}) })) || {}
     : {};
 
   let prestacoesPendentes: any[] = [];
@@ -415,6 +427,7 @@ export const getReciboDetalhe = async (id: number): Promise<ReciboDetalhe | null
       where: { loanId: Number(recibo.loanId), status: { [Op.in]: [0, -1] } },
       order: [["dueDate", "ASC"], ["id", "ASC"]],
       raw: true,
+      ...(transaction ? { transaction } : {}),
     })) as any[];
   }
 
@@ -532,6 +545,173 @@ export const generateReciboForTranzaction = async (params: {
   return (await ReciboModel.findByPk(reciboId, { raw: true })) || recibo;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EMISSÃO ATÓMICA — DENTRO DA TRANSACTION DO PAGAMENTO
+// ---------------------------------------------------------------------------
+// REGRA DE OURO: recibo é documento fiscal. O pagamento só existe com o seu
+// recibo: numeração reservada com FOR UPDATE, selo (hash/QR) e PDF gerados
+// dentro da MESMA transaction — se o PDF falhar, o pagamento inteiro sofre
+// rollback (nunca há pagamento sem recibo nem recibo sem pagamento).
+// ---------------------------------------------------------------------------
+
+export type ReciboEmitido = {
+  id: number;
+  numero: string;
+  hash: string;
+  pdf_url: string;
+  qr_url: string | null;
+  at_validation_code: string | null;
+};
+
+/**
+ * Emite o recibo legal do pagamento DENTRO da transaction indicada.
+ * Chamado por addTranzaction com a transaction `t` do pagamento.
+ * Lança em qualquer falha → rollback total do pagamento.
+ */
+export const emitReciboInTransaction = async (params: {
+  tranzactionId: number;
+  companyId: number;
+  createdBy?: number | null;
+  ip?: string | null;
+  transaction: Transaction;
+}): Promise<ReciboEmitido> => {
+  const { tranzactionId, companyId, transaction } = params;
+
+  // Idempotência: um recibo por tranzaction (mesmo dentro da transaction).
+  const existing: any = await ReciboModel.findOne({
+    where: { tranzactionId, companyId },
+    transaction,
+  });
+  if (existing) {
+    const selado = await ensureReciboSeal(Number(existing.getDataValue("id")), false, transaction);
+    return {
+      id: Number(existing.getDataValue("id")),
+      numero: String(existing.getDataValue("numero")),
+      hash: String(selado?.hash_at || existing.getDataValue("hash_at") || ""),
+      pdf_url: String(existing.getDataValue("pdf_url") || ""),
+      qr_url: (existing.getDataValue("qr_code_url") as string) || null,
+      at_validation_code: (existing.getDataValue("at_validation_code") as string) || null,
+    };}
+
+  // A tranzaction foi criada NA MESMA transaction do pagamento — a leitura
+  // tem de usar essa conexão (sem isto, findByPk noutra conexão devolveria
+  // null para a linha ainda não committada).
+  const tranzaction: any = await TranzactionModel.findByPk(tranzactionId, { raw: true, transaction });
+  if (!tranzaction) throw new Error("Pagamento não encontrado para emissão do recibo.");
+  if (Number(tranzaction.companyId) !== Number(companyId)) {
+    throw new Error("Pagamento não pertence a esta empresa.");
+  }
+
+  const loan: any = tranzaction.loanId
+    ? (await LoanModel.findByPk(Number(tranzaction.loanId), { raw: true })) || {}
+    : {};
+  const customer: any = tranzaction.customerId
+    ? (await CustomerModel.findByPk(Number(tranzaction.customerId), { raw: true })) || {}
+    : {};
+  const effectiveWalletId = Number(tranzaction.walletId) || Number(loan.walletId) || null;
+  const wallet: any = effectiveWalletId
+    ? (await FinancingWalletModel.findByPk(Number(effectiveWalletId), { raw: true })) || {}
+    : {};
+
+  const valorPago = round2(Number(tranzaction.amount) || 0);
+  const valorJuros = round2(Number(tranzaction.interestRateAmount) || 0);
+  const valorMora = round2(Number(tranzaction.mora_amount) || Number(tranzaction.latePaymentInterest) || 0);
+  const valorDesconto = round2(Number(tranzaction.discountAmount) || 0);
+  const valorCapital = round2(Math.max(0, valorPago - valorJuros));
+
+  let saldoRestante = 0;
+  if (tranzaction.loanId) {
+    const pendentes: any[] = (await AmorizationLoanModel.findAll({
+      where: { loanId: Number(tranzaction.loanId), status: { [Op.in]: [0, -1] } },
+      attributes: ["installment", "paidAmount"],
+      raw: true,
+      transaction,
+    })) as any[];
+    saldoRestante = round2(
+      pendentes.reduce((total, item) => total + Math.max(0, Number(item.installment) - Number(item.paidAmount || 0)), 0)
+    );
+  }
+
+  const metodo = await resolvePaymentMethod(tranzaction.paymentMethod, Number(companyId));
+  const ano = Number(moment(tranzaction.paymentDate || undefined).year()) || new Date().getFullYear();
+  const serie = "REC";
+
+  // 1) Número sequencial legal — FOR UPDATE dentro da MESMA transaction.
+  const { sequencia, numero } = await reserveSequence(transaction, Number(companyId), ano, serie);
+
+  // 2) Registo do recibo (ainda sem hash/pdf — entram em seguida).
+  const created: any = await ReciboModel.create(
+    {
+      companyId: Number(companyId),
+      numero,
+      serie,
+      sequencia,
+      ano,
+      tranzactionId: Number(tranzactionId),
+      loanId: tranzaction.loanId ? Number(tranzaction.loanId) : null,
+      customerId: tranzaction.customerId ? Number(tranzaction.customerId) : null,
+      walletId: effectiveWalletId,
+      customer_name: customer.customerName || null,
+      customer_nuit: customer.customerNuit || null,
+      customer_account: tranzaction.accountNumber ? String(tranzaction.accountNumber) : null,
+      wallet_nome: wallet.nome || null,
+      metodo_pagamento: metodo.label,
+      metodo_pagamento_desc: metodo.description,
+      referencia: tranzaction.tranzactionReference || null,
+      valor_pago: valorPago,
+      valor_capital: valorCapital,
+      valor_juros: valorJuros,
+      valor_mora: valorMora,
+      valor_desconto: valorDesconto,
+      saldo_restante: saldoRestante,
+      created_by: params.createdBy ?? null,
+      status: "EMITIDO",
+    },
+    { transaction }
+  );
+  const reciboId = Number(created.getDataValue("id"));
+
+  // 3) Selo electrónico (hash + QR + código AT) — na mesma transaction.
+  const selado = await ensureReciboSeal(reciboId, false, transaction);
+
+  // 4) PDF (pdfkit) — na mesma transaction. Falha → rollback do pagamento.
+  const pdfUrl = await renderReciboPdf(reciboId, { transaction });
+  if (!pdfUrl) throw new Error("Falha ao gerar o PDF do recibo.");
+  await ReciboModel.update({ pdf_url: pdfUrl }, { where: { id: reciboId }, transaction });
+
+  // 5) Auditoria da emissão (userId + ip do pedido) — mesma transaction.
+  try {
+    await AuditLogModel.create(
+      {
+        user_id: params.createdBy ?? null,
+        company_id: Number(companyId),
+        ip: params.ip || null,
+        action: "RECIBO_EMIT",
+        entity: "recibos",
+        entity_id: reciboId,
+        before_data: null,
+        after_data: {
+          numero,
+          tranzactionId,
+          valor: valorPago,
+          hash: String(selado?.hash_at || ""),
+          pdf_url: pdfUrl,
+        },
+      },
+      { transaction }
+    );
+  } catch { /* audit nunca bloqueia o recibo */ }
+
+  return {
+    id: reciboId,
+    numero,
+    hash: String(selado?.hash_at || ""),
+    pdf_url: pdfUrl,
+    qr_url: (selado?.qr_code_url as string) || null,
+    at_validation_code: (selado?.at_validation_code as string) || null,
+  };
+};
+
 /** Recibos de um crédito (mais recentes primeiro). */
 export const listRecibosByLoan = async (companyId: number, loanId: number) =>
   (await ReciboModel.findAll({
@@ -562,8 +742,8 @@ export const listRecibosByCustomer = async (companyId: number, customerId: numbe
 
 const COLORS = {
   primary: "#0f6b2f",
-  primaryDark: "#0b4f23",
-  light: "#e8f5e9",
+  primaryDark: "#1a3c2a",
+  light: "#eef6f0",
   lime: "#f1f8e9",
   border: "#e0e0e0",
   orange: "#ef6c00",
@@ -571,7 +751,7 @@ const COLORS = {
   amber: "#b45309",
   grey: "#757575",
   dark: "#1f2937",
-  zebra: "#f9fbe7",
+  zebra: "#f7faf8",
 };
 
 /** Cor da badge de cada carteira de financiamento. */
@@ -620,10 +800,14 @@ export const renderReciboPdf = async (
   reciboId: number,
   // `compress: false` gera um PDF inspeccionável (usado na verificação do
   // layout); em produção o PDF vai comprimido, como até aqui.
-  options: { compress?: boolean } = {}
+  // `transaction` quando o PDF é gerado DENTRO da transacção do pagamento —
+  // o recibo ainda não foi committado, por isso as leituras têm de usar a
+  // MESMA conexão (senão findByPk noutra conexão devolveria null).
+  options: { compress?: boolean; transaction?: Transaction | null } = {}
 ): Promise<string | null> => {
-  const selado = await ensureReciboSeal(reciboId);
-  const detalhe = await getReciboDetalhe(reciboId);
+  const tx = options.transaction || null;
+  const selado = await ensureReciboSeal(reciboId, false, tx);
+  const detalhe = await getReciboDetalhe(reciboId, tx);
   if (!detalhe) return null;
   const { recibo, empresa, cliente, credito, carteira, prestacoesPendentes } = detalhe;
   if (!recibo) return null;
@@ -631,9 +815,13 @@ export const renderReciboPdf = async (
   const companyId = Number(recibo.companyId);
   const outDir = docsDir();
   await fs.promises.mkdir(outDir, { recursive: true });
+  // Sufixo de revisão do layout (`-r2`): ao mudar o desenho do recibo, os
+  // pdf_url gravados na BD deixam de apontar para ficheiros existentes — assim
+  // TODOS os recibos já emitidos são regenerados UMA vez com o layout actual
+  // (na primeira descarga ou no job de arranque), sem consumir numeração.
   const fileName = options.compress === false
     ? `verificacao-recibo-${String(recibo.numero).replace(/[^A-Za-z0-9-]/g, "")}.pdf`
-    : `recibo-${String(recibo.numero).replace(/[^A-Za-z0-9-]/g, "")}.pdf`;
+    : `recibo-${String(recibo.numero).replace(/[^A-Za-z0-9-]/g, "")}-r2.pdf`;
   const outPath = path.join(outDir, fileName);
 
   const doc = new PDFDocument({
@@ -652,11 +840,15 @@ export const renderReciboPdf = async (
   const atCode = String(selado?.at_validation_code || recibo.at_validation_code || "—");
   const cert = String(selado?.software_certification || recibo.software_certification || SOFTWARE_CERTIFICATION);
   const url = hash ? validationUrl({ numero: String(recibo.numero), hash }) : "";
+  // TODO AT: Ativar quando tiver Certificado AT 2026/001
+  // O selo (hash, código, QR, link) é SEMPRE calculado e gravado na BD — a flag
+  // controla apenas se APARECE no PDF apresentado ao mutuário.
+  const mostrarSelo = AT_CERTIFICADO_ENABLED;
 
-  /** Marca de água diagonal — repetida em cada página. */
+  /** Marca de água diagonal — repetida em cada página (bem clara, não estorva a leitura). */
   const marcaDeAgua = () => {
     doc.save();
-    doc.opacity(0.055).fillColor(COLORS.primary).fontSize(70).font("Helvetica-Bold");
+    doc.opacity(0.03).fillColor(COLORS.primary).fontSize(70).font("Helvetica-Bold");
     doc.rotate(-32, { origin: [doc.page.width / 2, doc.page.height / 2] });
     doc.text(String(empresa.companyName || "Mais Mola").toUpperCase(), 60, doc.page.height / 2 - 40, {
       width: doc.page.width - 120,
@@ -679,23 +871,32 @@ export const renderReciboPdf = async (
 
   /**
    * Nova página do recibo. Nas páginas de continuação repete-se a identificação
-   * legal (número do recibo + mutuário) — exigência de rastreabilidade da AT.
+   * legal (mini logo + número do recibo + mutuário) — a página 2 nunca é
+   * "órfã": identifica o documento mesmo destacada do resto.
    */
   const newPage = (continuacao: boolean) => {
     doc.addPage();
     marcaDeAgua();
     if (continuacao) {
+      let miniX = left;
+      const miniLogo = logoPath;
+      if (miniLogo) {
+        try {
+          doc.image(miniLogo, left, 40, { fit: [26, 26] });
+          miniX = left + 32;
+        } catch { /* logotipo inválido — segue sem imagem */ }
+      }
       doc.fillColor(COLORS.primary).font("Helvetica-Bold").fontSize(9).text(
         `RECIBO DE PAGAMENTO N.º ${recibo.numero} — continuação`,
-        left,
+        miniX,
         40,
-        { width: pageWidth, lineBreak: false }
+        { width: pageWidth - (miniX - left), lineBreak: false }
       );
       doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7.5).text(
         `${nomeCliente} · NUIT ${recibo.customer_nuit || cliente.customerNuit || "—"}`,
-        left,
+        miniX,
         53,
-        { width: pageWidth, lineBreak: false }
+        { width: pageWidth - (miniX - left), lineBreak: false }
       );
       y = 70;
     } else {
@@ -703,9 +904,12 @@ export const renderReciboPdf = async (
     }
   };
 
-  // ── Cabeçalho: emitente + QR Code ──
+  // ── Cabeçalho: emitente (+ QR Code quando há selo AT) ──
+  // Sem selo AT o cabeçalho é mais compacto (110pt em vez de 128) — ganha-se
+  // espaço para a tabela do extrato na página 1.
+  const headerH = mostrarSelo ? 128 : 110;
   marcaDeAgua();
-  doc.roundedRect(left, 40, pageWidth, 128, 10).fill(COLORS.lime);
+  doc.roundedRect(left, 40, pageWidth, headerH, 10).fill(COLORS.lime);
   const logoPath = companyLogoPath(empresa.companyLogo);
   let textLeft = left + 14;
   if (logoPath) {
@@ -714,7 +918,11 @@ export const renderReciboPdf = async (
       textLeft += 80;
     } catch { /* logotipo inválido — segue sem imagem */ }
   }
-  const textWidth = pageWidth - (textLeft - left) - 132;
+  // TODO AT: Com o selo activo, um ficheiro nomeado "qr" em uploads/img é
+  // embutido no PDF. Sem selo AT, um PNG transparente "mbr-mark.png" nessa
+  // pasta aparece como marca d'água leve no canto superior direito (sem QR).
+  // Sem selo AT, o texto do cabeçalho ocupa toda a largura (não há QR à direita).
+  const textWidth = pageWidth - (textLeft - left) - (mostrarSelo ? 132 : 14);
   doc.fillColor(COLORS.primary).font("Helvetica-Bold").fontSize(15);
   doc.text(String(empresa.companyName || "Instituição de Microcrédito"), textLeft, 62, { width: textWidth });
   doc.font("Helvetica").fontSize(8.5).fillColor(COLORS.dark);
@@ -734,31 +942,48 @@ export const renderReciboPdf = async (
     { width: textWidth }
   );
 
-  // QR Code (maior, com moldura branca para leitura fiável em papel)
-  const qrSize = 110;
-  const qrX = right - qrSize - 12;
-  const qrY = 46;
-  const qrPath = selado?.qr_code_url
-    ? path.join(process.cwd(), "uploads", String(selado.qr_code_url).replace(/^\//, ""))
-    : null;
-  doc.rect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10).fill("#ffffff");
-  if (qrPath && fs.existsSync(qrPath)) {
-    try { doc.image(qrPath, qrX, qrY, { width: qrSize, height: qrSize }); } catch { /* segue sem QR */ }
-  } else {
-    doc.rect(qrX, qrY, qrSize, qrSize).fill(COLORS.border);
-    doc.fillColor(COLORS.grey).fontSize(7).text("QR indisponível", qrX, qrY + qrSize / 2 - 4, {
-      width: qrSize,
+  // Marca d'água leve no canto superior direito (substitui o QR quando a
+  // certificação AT está desligada).
+  if (!mostrarSelo) {
+    const markPath = path.join(process.cwd(), "uploads", "img", "mbr-mark.png");
+    if (fs.existsSync(markPath)) {
+      try {
+        doc.opacity(0.1).image(markPath, right - 78, 48, { width: 66, height: 66 });
+        doc.opacity(1);
+      } catch { /* marca opcional — segue sem ela */ }
+    }
+  }
+
+  // ── QR Code de validação ──
+  // TODO AT: Ativar quando tiver Certificado AT 2026/001 — o QR é gerado e
+  // gravado em uploads/recibos sempre, mas só é impresso com a flag AT activa.
+  if (mostrarSelo) {
+    // QR maior, com moldura branca para leitura fiável em papel.
+    const qrSize = 110;
+    const qrX = right - qrSize - 12;
+    const qrY = 46;
+    const qrPath = selado?.qr_code_url
+      ? path.join(process.cwd(), "uploads", String(selado.qr_code_url).replace(/^\//, ""))
+      : null;
+    doc.rect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10).fill("#ffffff");
+    if (qrPath && fs.existsSync(qrPath)) {
+      try { doc.image(qrPath, qrX, qrY, { width: qrSize, height: qrSize }); } catch { /* segue sem QR */ }
+    } else {
+      doc.rect(qrX, qrY, qrSize, qrSize).fill(COLORS.border);
+      doc.fillColor(COLORS.grey).fontSize(7).text("QR indisponível", qrX, qrY + qrSize / 2 - 4, {
+        width: qrSize,
+        align: "center",
+      });
+    }
+    doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text("Valide por QR Code", qrX - 8, qrY + qrSize + 3, {
+      width: qrSize + 16,
       align: "center",
+      lineBreak: false,
     });
   }
-  doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text("Valide por QR Code", qrX - 8, qrY + qrSize + 3, {
-    width: qrSize + 16,
-    align: "center",
-    lineBreak: false,
-  });
 
   // ── Faixa de título ──
-  const titleY = 176;
+  const titleY = mostrarSelo ? 176 : 158;
   doc.roundedRect(left, titleY, pageWidth, 46, 8).fill(COLORS.primary);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(15);
   doc.text("RECIBO DE PAGAMENTO", left + 14, titleY + 9, { width: pageWidth * 0.5, lineBreak: false });
@@ -774,36 +999,42 @@ export const renderReciboPdf = async (
   });
 
   // ── Faixa do selo electrónico ──
-  // A hash SHA-256 tem 64 caracteres: é impressa em DUAS linhas de 32, com a
-  // etiqueta alinhada ao bloco — assim nunca é cortada nem empurra as restantes
-  // linhas da faixa (era o defeito do layout anterior).
-  const sealY = titleY + 54;
-  const sealH = 54;
-  doc.roundedRect(left, sealY, pageWidth, sealH, 8).fillAndStroke(COLORS.light, "#c8e6c9");
-  doc.strokeColor("#c8e6c9").lineWidth(0.7);
-  const labelX = left + 12;
-  const labelW = 116;
-  const sealValueX = left + 134;
-  const sealValueW = pageWidth - 146;
-  const hashParts = (hash || "—").match(/.{1,32}/g) || ["—"];
-  doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(6.8);
-  doc.text("HASH AT (SHA-256)", labelX, sealY + 8, { width: labelW, lineBreak: false });
-  doc.fillColor(COLORS.dark).font("Courier-Bold").fontSize(6.6);
-  hashParts.slice(0, 2).forEach((part, index) => {
-    doc.text(part, sealValueX, sealY + 7 + index * 8, { width: sealValueW, lineBreak: false });
-  });
-  doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(6.8);
-  doc.text("CÓDIGO DE VALIDAÇÃO", labelX, sealY + 26, { width: labelW, lineBreak: false });
-  doc.fillColor(COLORS.dark).font("Courier").fontSize(6.8);
-  doc.text(`${atCode}  ·  ${cert}`, sealValueX, sealY + 25, { width: sealValueW, lineBreak: false });
-  doc.fillColor(COLORS.grey).font("Helvetica").fontSize(6.4);
-  doc.text(url ? `Valide em ${url}` : "Validação por QR Code", labelX, sealY + 40, {
-    width: pageWidth - 24,
-    lineBreak: false,
-  });
+  // TODO AT: Ativar quando tiver Certificado AT 2026/001 — hash, código de
+  // validação e link de validação ficam gravados na BD mas só são impressos
+  // quando AT_CERTIFICADO_ENABLED=true.
+  let sealY = titleY + 54;
+  if (mostrarSelo) {
+    // A hash SHA-256 tem 64 caracteres: é impressa em DUAS linhas de 32, com a
+    // etiqueta alinhada ao bloco — assim nunca é cortada nem empurra as restantes
+    // linhas da faixa (era o defeito do layout anterior).
+    const sealH = 54;
+    doc.roundedRect(left, sealY, pageWidth, sealH, 8).fillAndStroke(COLORS.light, "#c8e6c9");
+    doc.strokeColor("#c8e6c9").lineWidth(0.7);
+    const labelX = left + 12;
+    const labelW = 116;
+    const sealValueX = left + 134;
+    const sealValueW = pageWidth - 146;
+    const hashParts = (hash || "—").match(/.{1,32}/g) || ["—"];
+    doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(6.8);
+    doc.text("HASH AT (SHA-256)", labelX, sealY + 8, { width: labelW, lineBreak: false });
+    doc.fillColor(COLORS.dark).font("Courier-Bold").fontSize(6.6);
+    hashParts.slice(0, 2).forEach((part, index) => {
+      doc.text(part, sealValueX, sealY + 7 + index * 8, { width: sealValueW, lineBreak: false });
+    });
+    doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(6.8);
+    doc.text("CÓDIGO DE VALIDAÇÃO", labelX, sealY + 26, { width: labelW, lineBreak: false });
+    doc.fillColor(COLORS.dark).font("Courier").fontSize(6.8);
+    doc.text(`${atCode}  ·  ${cert}`, sealValueX, sealY + 25, { width: sealValueW, lineBreak: false });
+    doc.fillColor(COLORS.grey).font("Helvetica").fontSize(6.4);
+    doc.text(url ? `Valide em ${url}` : "Validação por QR Code", labelX, sealY + 40, {
+      width: pageWidth - 24,
+      lineBreak: false,
+    });
+    sealY += sealH;
+  }
 
   // ── Cartões de dados ──
-  let y = sealY + sealH + 2;
+  let y = sealY + 2;
 
   const card = (height: number, options: { fill?: string; stroke?: string } = {}) => {
     doc.roundedRect(left, y, pageWidth, height, 8)
@@ -840,6 +1071,13 @@ export const renderReciboPdf = async (
   // Cartão 2 — Crédito e carteira de financiamento
   card(76);
   cardTitle("Crédito e carteira de financiamento");
+  // Isenção de IVA (operações de microcrédito) — no canto direito do título.
+  doc.fillColor(COLORS.grey).font("Helvetica").fontSize(6.8)
+    .text("Isento de IVA — art. 9.º do CIVA (código do IVA: 4)", left, y + 10, {
+      width: pageWidth - 12,
+      align: "right",
+      lineBreak: false,
+    });
   field("Crédito n.º", String(pick(credito, "id") || recibo.loanId || "—"), left + 12, y + 30, 100);
   field("Montante do crédito", fmtMoney(pick(credito, "amount")), left + 122, y + 30, 150, true);
   const taxaCredito = Number(pick(credito, "interestRate")) || 0;
@@ -889,13 +1127,13 @@ export const renderReciboPdf = async (
   }
   y += 84;
 
-  // Cartão 3 — Pagamento recebido (destacado). As três linhas de campos ficam
-  // espaçadas de forma a que nenhum valor toque no rótulo seguinte (7pt).
-  card(106, { fill: COLORS.lime, stroke: "#a5d6a7" });
+  // Cartão 3 — Pagamento recebido (destacado). Valor pago em tipo grande
+  // (#1a3c2a), breakdown à direita — hierarquia visual em vez de verde claro.
+  card(106, { fill: mostrarSelo ? COLORS.lime : "#f4f9f5", stroke: mostrarSelo ? "#a5d6a7" : "#cfe3d5" });
   cardTitle("Pagamento recebido");
-  doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text("Valor pago", left + 12, y + 26, { width: 200 });
-  doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(16).text(fmtMoney(recibo.valor_pago), left + 12, y + 34, {
-    width: 250,
+  doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text("Valor pago", left + 12, y + 22, { width: 200 });
+  doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(32).text(fmtMoney(recibo.valor_pago), left + 12, y + 31, {
+    width: 260,
   });
   field("Capital", fmtMoney(recibo.valor_capital), left + 280, y + 26, 110);
   field("Juros", fmtMoney(recibo.valor_juros), left + 395, y + 26, 110);
@@ -910,22 +1148,39 @@ export const renderReciboPdf = async (
   doc.fillColor(COLORS.orange).font("Helvetica").fontSize(7).text("Saldo devedor após este pagamento", left + 285, y + 74, {
     width: 200,
   });
-  doc.fillColor(COLORS.orange).font("Helvetica-Bold").fontSize(11).text(fmtMoney(recibo.saldo_restante), left + 285, y + 84, {
-    width: 200,
-  });
+  doc.fillColor(Number(recibo.saldo_restante) > 0 ? COLORS.orange : COLORS.primaryDark)
+    .font("Helvetica-Bold")
+    .fontSize(11)
+    .text(fmtMoney(recibo.saldo_restante), left + 285, y + 84, {
+      width: 200,
+    });
   y += 114;
 
   // ── Extrato do crédito — prestações pendentes ──
-  doc.fillColor(COLORS.primary).font("Helvetica-Bold").fontSize(9).text("EXTRATO DO CRÉDITO — PRESTAÇÕES PENDENTES", left, y, {
-    width: pageWidth,
-  });
+  // PAGINAÇÃO INTELIGENTE — MÁXIMO 2 PÁGINAS:
+  //   · ≤6 prestações → tudo na página 1 (com fecho);
+  //   · 7..24 → página 1 com início do extrato, página 2 com o resto + fecho;
+  //   · >24 (ex.: 36x) → modo COMPACTO (fonte 7.5, linhas de 11pt) para caber
+  //     sempre em 2 páginas. Nunca há 3ª página nem página órfã de assinaturas.
+  const totalPrestacoes = prestacoesPendentes.length;
+  const compacto = totalPrestacoes > 24;
+  const LINE = compacto ? 11 : 14; // altura de linha da tabela
+  const fonteTabela = compacto ? 7.5 : 8;
+
+  doc.fillColor(COLORS.primary).font("Helvetica-Bold").fontSize(9).text(
+    totalPrestacoes > 0
+      ? `EXTRATO DO CRÉDITO — PRESTAÇÕES PENDENTES (${totalPrestacoes} prestações)`
+      : "EXTRATO DO CRÉDITO — PRESTAÇÕES PENDENTES",
+    left,
+    y,
+    { width: pageWidth }
+  );
   y += 15;
 
   const colX = [left + 6, left + 60, left + 150, left + 245, left + 330, left + 415];
   const colW = [54, 90, 95, 85, 85, 100];
-  const LINE = 13;
-  // Altura reservada ao fecho (total pendente + texto legal + assinaturas).
-  const FECHO_H = 150;
+  // Altura reservada ao fecho (total pendente + assinaturas; + texto legal AT).
+  const FECHO_H = mostrarSelo ? 150 : 95;
 
   const drawTableHeader = () => {
     doc.roundedRect(left, y, pageWidth, 16, 4).fill(COLORS.primary);
@@ -939,39 +1194,62 @@ export const renderReciboPdf = async (
     y += 16;
   };
 
+  // Capacidades por página (linhas): página 1 deve deixar FECHO_H se a tabela
+  // couber toda; senão DIVIDE ao meio (ex.: 18 prestações → ~9 + 9) garantindo
+  // que o resto cabe na página 2 com espaço para o fecho — nunca há 3ª página.
+  const CAP_P1_COM_FECHO = Math.max(1, Math.floor((contentBottom - y - FECHO_H) / LINE));
+  const CAP_P1 = Math.max(1, Math.floor((contentBottom - y) / LINE));
+  // Página 2: mini-cabeçalho + header da tabela + linha "Mostrando…" + fecho.
+  const CAP_P2 = Math.max(1, Math.floor((contentBottom - (mostrarSelo ? 150 : 86)) / LINE));
+  const metade = Math.ceil(totalPrestacoes / 2);
+  let capPrimeira: number;
+  if (totalPrestacoes <= CAP_P1_COM_FECHO) {
+    capPrimeira = CAP_P1_COM_FECHO;
+  } else {
+    // Divide balanceado; garante resto ≤ CAP_P2 e ≥1 linha em cada página.
+    capPrimeira = Math.min(CAP_P1, metade);
+    capPrimeira = Math.max(capPrimeira, Math.min(totalPrestacoes - 1, totalPrestacoes - CAP_P2));
+    capPrimeira = Math.min(capPrimeira, totalPrestacoes - 1);
+  }
+
   drawTableHeader();
 
-  // ── Paginação do extrato ──
-  // O extrato lista TODAS as prestações pendentes. Quando o espaço de uma
-  // página acaba, abre-se a seguinte com o cabeçalho da tabela repetido — a
-  // tabela nunca é cortada nem se sobrepõe ao rodapé legal.
-  const CAP_CONTINUACAO = Math.max(1, Math.floor((contentBottom - 88) / LINE));
-  const capPrimeiraCompleta = Math.max(1, Math.floor((contentBottom - y) / LINE));
-  const capPrimeiraComFecho = Math.max(1, Math.floor((contentBottom - y - FECHO_H) / LINE));
-  const capPrimeira =
-    prestacoesPendentes.length <= capPrimeiraComFecho ? capPrimeiraComFecho : capPrimeiraCompleta;
-
-  if (prestacoesPendentes.length === 0) {
-    doc.fillColor(COLORS.grey).font("Helvetica").fontSize(8).text("Crédito sem prestações pendentes.", left + 6, y + 6);
-    y += 22;
+  if (totalPrestacoes === 0) {
+    // Badge de crédito liquidado — em vez de texto solto em tabela vazia.
+    const liquidado = "Crédito liquidado — sem prestações pendentes";
+    const badgeW = doc.font("Helvetica-Bold").fontSize(8).widthOfString(liquidado) + 30;
+    doc.roundedRect(left + 6, y + 2, badgeW, 18, 9).fill("#e3f2e8");
+    doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(8)
+      .text(liquidado, left + 6, y + 7, { width: badgeW, align: "center", lineBreak: false });
+    y += 26;
   } else {
     const hoje = moment().startOf("day");
     let capacidade = capPrimeira;
     let nestaPagina = 0;
+    let imprimidas = 0;
 
     prestacoesPendentes.forEach((item, index) => {
       if (nestaPagina >= capacidade) {
+        // Quebra para a página 2 com mini-cabeçalho MBR (nunca página órfã).
         newPage(true);
         y = 72;
         drawTableHeader();
-        capacidade = CAP_CONTINUACAO;
+        capacidade = CAP_P2;
         nestaPagina = 0;
+        // Contador de progresso do extrato (ex.: "Mostrando 1-12 de 18").
+        doc.fillColor(COLORS.grey).font("Helvetica").fontSize(6.8)
+          .text(`Mostrando 1–${imprimidas} de ${totalPrestacoes} — continuação na página 2`, left, y + 1, {
+            width: pageWidth,
+            align: "right",
+            lineBreak: false,
+          });
+        y += 10;
       }
       const pendente = Math.max(0, Number(item.installment) - Number(item.paidAmount || 0));
       const vencimento = moment(String(item.dueDate));
       const atraso = vencimento.isValid() && vencimento.isBefore(hoje);
       if (index % 2 === 1) doc.rect(left, y, pageWidth, LINE).fill(COLORS.zebra);
-      doc.fillColor(COLORS.dark).font("Helvetica").fontSize(8);
+      doc.fillColor(COLORS.dark).font("Helvetica").fontSize(fonteTabela);
       // `installmentOrder` vem da base já formatado ("2ª"); se vier um número,
       // acrescenta-se o ordinal — nunca deixar sair "NaNª" no recibo.
       const ordemBruta = (item as any).installmentOrder;
@@ -994,14 +1272,30 @@ export const renderReciboPdf = async (
       doc.fillColor(cor).text(estado, badgeX, y + 4.4, { width: w, align: "center", lineBreak: false });
       y += LINE;
       nestaPagina += 1;
+      imprimidas += 1;
     });
+
+    // Rodapé do extrato na página onde a tabela termina ("Mostrando 1–X de Y").
+    doc.fillColor(COLORS.grey).font("Helvetica").fontSize(6.8)
+      .text(`Mostrando 1–${imprimidas} de ${totalPrestacoes}`, left, y + 3, {
+        width: pageWidth,
+        align: "right",
+        lineBreak: false,
+      });
+    y += 14;
   }
 
-  // ── Fecho: total pendente + rodapé legal + assinaturas ──
-  // Se o fecho não couber depois da tabela, passa para uma página nova em vez
-  // de se sobrepor ao texto legal (era o defeito do layout anterior).
-  if (y + FECHO_H > contentBottom) {
-    newPage(false);
+  // ── Fecho: total pendente + (texto legal AT) + assinaturas ──
+  // O fecho vai SEMPRE na página onde a tabela termina se couber; senão abre-se
+  // a página 2 (máximo absoluto do documento — a capacidade CAP_P2 da tabela
+  // já reserva espaço para este bloco). Sem 3ª página, sem página órfã.
+  if (y + FECHO_H > contentBottom + 8) {
+    if (doc.bufferedPageRange().count === 1) {
+      newPage(false);
+      y = 56;
+    } else {
+      y = Math.min(y, contentBottom - 40); // 2 páginas é o limite — encaixa
+    }
   }
 
   y += 10;
@@ -1014,18 +1308,25 @@ export const renderReciboPdf = async (
   );
   y += 34;
 
-  doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text(
-    "Recibo emitido electronicamente com numeração sequencial por empresa e ano, nos termos da legislação fiscal em vigor em " +
-      "Moçambique (Autoridade Tributária de Moçambique — Regulamento de Facturação, Decreto n.º 22/2023 de 12 de Maio). " +
-      "Este documento serve de comprovativo do pagamento identificado acima e não substitui a factura. " +
-      `Hash de validação: ${hash || "—"}. Processado por computador. Software certificado: ${cert}.` +
-      (url ? ` Valide este recibo em ${url} ou escaneie o QR Code.` : ""),
-    left,
-    y,
-    { width: pageWidth, align: "justify", lineGap: 1.2 }
-  );
-
-  const sigY = Math.min(doc.y + 22, contentBottom - 30);
+  // TODO AT: Ativar quando tiver Certificado AT 2026/001 — o texto legal do
+  // Decreto n.º 22/2023, a hash e o link de validação só entram no documento
+  // quando a instituição tiver o certificado AT.
+  let sigY: number;
+  if (mostrarSelo) {
+    doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text(
+      "Recibo emitido electronicamente com numeração sequencial por empresa e ano, nos termos da legislação fiscal em vigor em " +
+        "Moçambique (Autoridade Tributária de Moçambique — Regulamento de Facturação, Decreto n.º 22/2023 de 12 de Maio). " +
+        "Este documento serve de comprovativo do pagamento identificado acima e não substitui a factura. " +
+        `Hash de validação: ${hash || "—"}. Processado por computador. Software certificado: ${cert}.` +
+        (url ? ` Valide este recibo em ${url} ou escaneie o QR Code.` : ""),
+      left,
+      y,
+      { width: pageWidth, align: "justify", lineGap: 1.2 }
+    );
+    sigY = Math.min(doc.y + 22, contentBottom - 30);
+  } else {
+    sigY = y + 14;
+  }
   doc.moveTo(left, sigY).lineTo(left + 190, sigY).strokeColor(COLORS.grey).lineWidth(0.6).stroke();
   doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text(
     `Assinatura / carimbo do emitente\n${fmtDateTimeMaputo(emissao)}`,
@@ -1037,13 +1338,23 @@ export const renderReciboPdf = async (
   doc.text("Assinatura do mutuário\nData: ____ / ____ / ________", right - 190, sigY + 3, { width: 195 });
 
   // ── Faixa de rodapé fixa em TODAS as páginas (com Página X de Y) ──
-  // Em duas linhas: uma única linha com todos os dados ultrapassava a largura
-  // da página e era cortada nas margens.
+  // A última página fecha o documento ("Documento processado por computador…");
+  // as anteriores indicam continuação ("Continua na página seguinte").
   const range = doc.bufferedPageRange();
-  const footerLines = (pagina: number) => [
-    `${empresa.companyName || "MBRM"} · NUIT ${empresa.companyNuit || "—"} · Documento válido com QR Code e Hash AT · Sistema v2.0`,
-    `${recibo.numero} · Hash: ${hash ? `${hash.slice(0, 24)}…` : "—"} · Emitido em ${fmtDateTimeMaputo(emissao)} · Página ${pagina} de ${range.count}`,
-  ];
+  const footerLines = (pagina: number) => {
+    const ultima = pagina === range.count;
+    const continuidade = ultima ? "Documento processado por computador" : "Continua na página seguinte";
+    if (mostrarSelo) {
+      return [
+        `${empresa.companyName || "MBRM"} · NUIT ${empresa.companyNuit || "—"} · Documento válido com QR Code e Hash AT · Sistema v2.0.9`,
+        `${recibo.numero} · Hash: ${hash ? `${hash.slice(0, 24)}…` : "—"} · Emitido em ${fmtDateTimeMaputo(emissao)} · ${continuidade} · Página ${pagina}/${range.count}`,
+      ];
+    }
+    return [
+      `${empresa.companyName || "MBRM"} · NUIT ${empresa.companyNuit || "—"} · ${continuidade} — MBR Microcrédito — Sistema v2.0.9 · Página ${pagina}/${range.count}`,
+      `${recibo.numero} · Emitido em ${fmtDateTimeMaputo(emissao)}`,
+    ];
+  };
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
     doc.moveTo(left, footerY - 10).lineTo(right, footerY - 10).strokeColor(COLORS.border).lineWidth(0.5).stroke();
