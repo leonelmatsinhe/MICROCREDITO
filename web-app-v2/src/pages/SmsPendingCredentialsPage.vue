@@ -142,36 +142,77 @@
 
     <!-- Ver mensagem -->
     <q-dialog v-model="showMessageDialog">
-      <q-card style="border-radius: 12px; min-width: 360px; max-width: 90vw">
-        <q-card-section class="bg-primary text-white row items-center" style="border-radius: 12px 12px 0 0">
-          <q-icon name="sms" size="20px" class="q-mr-sm" />
-          <div class="text-h6">Mensagem</div>
+      <q-card style="border-radius: 12px; min-width: 440px; max-width: 92vw">
+        <!-- Header verde institucional com badge de estado -->
+        <q-card-section class="row items-center q-py-sm" style="background: #1B5E20; border-radius: 12px 12px 0 0">
+          <q-icon name="sms" size="20px" color="white" class="q-mr-sm" />
+          <div class="text-h6 text-white">Mensagem</div>
+          <q-chip
+            v-if="selectedRow"
+            :color="headerChipColor(selectedRow.status)"
+            text-color="white"
+            size="sm"
+            dense
+            class="q-ml-sm"
+          >{{ statusLabel(selectedRow.status) }}</q-chip>
           <q-space />
-          <q-btn flat round dense icon="close" @click="showMessageDialog = false" />
+          <q-btn flat round dense icon="close" color="white" @click="showMessageDialog = false" />
         </q-card-section>
-        <q-card-section v-if="selectedRow">
-          <div class="q-mb-xs">
-            <div class="text-caption text-grey-6">Nome</div>
-            <div class="text-weight-medium" style="font-size: 13px">{{ customerName(selectedRow) }}</div>
+
+        <q-card-section v-if="selectedRow" class="q-pb-none">
+          <div class="row q-col-gutter-md">
+            <div class="col-6">
+              <div class="text-caption text-grey-6">Nome</div>
+              <div class="text-weight-medium" style="font-size: 13px">{{ customerName(selectedRow) }}</div>
+            </div>
+            <div class="col-6">
+              <div class="text-caption text-grey-6">Tipo</div>
+              <div class="text-weight-medium" style="font-size: 13px">{{ messageTypeLabel(selectedRow.messageType) }}</div>
+            </div>
           </div>
-          <div class="q-mb-xs">
-            <div class="text-caption text-grey-6">Tipo</div>
-            <div class="text-weight-medium" style="font-size: 13px">{{ messageTypeLabel(selectedRow.messageType) }}</div>
-          </div>
-          <div class="q-mb-sm">
+          <div class="q-mt-sm">
             <div class="text-caption text-grey-6">Telefone</div>
-            <div class="text-weight-medium" style="font-size: 13px">{{ phoneLabel(selectedRow) }}</div>
+            <a
+              v-if="whatsappLink(selectedRow)"
+              :href="whatsappLink(selectedRow)"
+              target="_blank"
+              rel="noopener"
+              class="row items-center no-wrap msg-wa-link"
+            >
+              <q-icon name="phone" size="14px" class="q-mr-xs" />
+              <span class="text-weight-medium" style="font-size: 13px">{{ phoneLabel(selectedRow) }}</span>
+              <q-icon name="open_in_new" size="12px" class="q-ml-xs" />
+              <q-tooltip>Abrir conversa no WhatsApp</q-tooltip>
+            </a>
+            <div v-else class="text-weight-medium" style="font-size: 13px">—</div>
           </div>
-          <div v-if="selectedRow.errorMessage" class="q-mb-sm">
+          <div v-if="selectedRow.errorMessage" class="q-mt-sm">
             <div class="text-caption text-grey-6">Erro</div>
             <div class="text-negative text-caption" style="font-size: 12px; white-space: pre-wrap">{{ selectedRow.errorMessage }}</div>
           </div>
-          <q-card flat bordered class="message-body-card">
-            <q-card-section class="q-py-sm">
-              <div class="message-body-text">{{ selectedRow.messageBody }}</div>
+        </q-card-section>
+
+        <q-card-section v-if="selectedRow">
+          <q-card flat class="message-body-card">
+            <q-card-section style="padding: 12px">
+              <div class="message-body-text" style="font-size: 14px">{{ selectedRow.messageBody }}</div>
             </q-card-section>
           </q-card>
         </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
+          <q-btn flat no-caps label="Fechar" color="grey-8" @click="showMessageDialog = false" />
+          <q-btn
+            unelevated
+            no-caps
+            icon="replay"
+            label="Reenviar SMS"
+            :color="companySmsEnabled ? 'green-8' : 'grey-5'"
+            :disable="!companySmsEnabled || requeueingId === selectedRow?.id"
+            :loading="requeueingId === selectedRow?.id"
+            @click="resendFromDialog"
+          />
+        </q-card-actions>
       </q-card>
     </q-dialog>
   </div>
@@ -267,6 +308,14 @@ function statusLabel(status) {
 function statusColor(status) {
   return { queued: 'orange', processing: 'blue', failed: 'negative', sent: 'positive' }[status] || 'grey'
 }
+function headerChipColor(status) {
+  return { queued: 'orange-8', processing: 'blue-8', failed: 'negative', sent: 'green-8' }[status] || 'grey-7'
+}
+// Link wa.me — o campo guarda o número internacional sem '+' (ex.: 258844458500)
+function whatsappLink(row) {
+  const digits = String(row?.customer?.customerPhone || row?.phone || '').replace(/\D/g, '')
+  return digits.length >= 9 ? `https://wa.me/${digits}` : null
+}
 function messageTypeLabel(type) {
   const labels = {
     password_reset: 'Senha de acesso',
@@ -280,10 +329,14 @@ function messageTypeLabel(type) {
 }
 function formatDateTime(dateStr) {
   if (!dateStr) return '—'
-  return new Date(dateStr).toLocaleString('pt-MZ', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  })
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return '—'
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  return `${dd}/${mm}/${yyyy} ${hh}:${mi}`
 }
 
 function viewMessage(row) {
@@ -321,14 +374,26 @@ async function requeue(row) {
     const { data } = await api.post(`/api/sms-gateway/pending-credentials/${row.id}/requeue`)
     $q.notify({ type: 'positive', message: data.message || 'SMS reposto na fila', position: 'top' })
     await fetchPending()
+    return true
   } catch (error) {
     $q.notify({
       type: 'negative',
       message: error.response?.data?.message || 'Erro ao repor SMS na fila',
       position: 'top'
     })
+    return false
   } finally {
     requeueingId.value = null
+  }
+}
+
+// Reenvio a partir do modal — actualiza o badge do modal após repor.
+async function resendFromDialog() {
+  const row = selectedRow.value
+  if (!row) return
+  const ok = await requeue(row)
+  if (ok && selectedRow.value === row) {
+    selectedRow.value = { ...row, status: 'queued', retries: 0 }
   }
 }
 
@@ -465,5 +530,18 @@ body.body--dark .message-body-card {
   .message-body-text {
     color: #e2e8f0;
   }
+}
+
+.msg-wa-link {
+  color: #1B5E20;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+body.body--dark .msg-wa-link {
+  color: #81c784;
 }
 </style>
