@@ -64,8 +64,9 @@ const fmtDate = (value) => {
     return parsed.isValid() ? parsed.format("DD/MM/YYYY") : String(value);
 };
 /**
- * Data/hora de emissão no fuso de Moçambique, com o fuso explícito no documento
- * (UTC+2 fixo — não depende do fuso configurado no servidor).
+ * Data/hora de emissão no fuso de Moçambique (UTC+2 fixo — não depende do
+ * fuso configurado no servidor). O fuso NUNCA aparece no texto: o mutuário
+ * lê "01/10/2026 13:54", sem "(África/Maputo)".
  */
 const MAPUTO_UTC_OFFSET_MIN = 120;
 const fmtDateTimeMaputo = (value) => {
@@ -74,7 +75,7 @@ const fmtDateTimeMaputo = (value) => {
     const parsed = value instanceof Date ? moment_1.default.utc(value) : moment_1.default.utc(String(value));
     if (!parsed.isValid())
         return String(value);
-    return `${parsed.utcOffset(MAPUTO_UTC_OFFSET_MIN).format("DD/MM/YYYY HH:mm")} (África/Maputo)`;
+    return parsed.utcOffset(MAPUTO_UTC_OFFSET_MIN).format("DD/MM/YYYY HH:mm");
 };
 /**
  * Telefone moçambicano legível: `25884562587` → `+258 84 562 587`.
@@ -639,14 +640,6 @@ const WALLET_COLORS = {
     pink: "#db2777",
     cyan: "#0891b2",
 };
-/** Iniciais do mutuário para o avatar do recibo (ex.: "Kanyacudie Ozias Uau" → "KO"). */
-const initialsOf = (name) => String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => { var _a; return ((_a = part[0]) === null || _a === void 0 ? void 0 : _a.toUpperCase()) || ""; })
-    .join("") || "MB";
 /** Caminho local do logotipo da empresa (companies.companyLogo → uploads/...). */
 const companyLogoPath = (logo) => {
     if (!logo)
@@ -689,7 +682,7 @@ options = {}) => __awaiter(void 0, void 0, void 0, function* () {
     // (na primeira descarga ou no job de arranque), sem consumir numeração.
     const fileName = options.compress === false
         ? `verificacao-recibo-${String(recibo.numero).replace(/[^A-Za-z0-9-]/g, "")}.pdf`
-        : `recibo-${String(recibo.numero).replace(/[^A-Za-z0-9-]/g, "")}-r2.pdf`;
+        : `recibo-${String(recibo.numero).replace(/[^A-Za-z0-9-]/g, "")}-r3.pdf`;
     const outPath = path_1.default.join(outDir, fileName);
     const doc = new pdfkit_1.default({
         margin: 40,
@@ -895,21 +888,22 @@ options = {}) => __awaiter(void 0, void 0, void 0, function* () {
         doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text(label, x, fy, { width });
         doc.fillColor(COLORS.dark).font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(9).text(value, x, fy + 9, { width });
     };
-    // Cartão 1 — Mutuário (com avatar de iniciais)
-    card(76);
+    // Cartão 1 — Mutuário (nome em largura total; SEM avatar de iniciais —
+    // removido a pedido: o recibo legal não precisa de avatar e o retrato do
+    // mutuário é o logotipo institucional no cabeçalho). Linha de endereço
+    // quando o mutuário o tem registado.
+    card(92);
     cardTitle("Mutuário");
-    field("Nome", nomeCliente, left + 12, y + 30, pageWidth * 0.55, true);
+    field("Nome", nomeCliente, left + 12, y + 30, pageWidth - 24, true);
     field("NUIT", String(recibo.customer_nuit || cliente.customerNuit || "—"), left + 12, y + 52, 120);
     field("Conta", String(recibo.customer_account || cliente.accountNumber || "—"), left + 150, y + 52, 120);
     field("Telefone", fmtPhone(cliente.customerPhone || cliente.phoneNumber || cliente.phone), left + 290, y + 52, 150);
-    // Avatar
-    const avatarX = right - 46;
-    doc.circle(avatarX, y + 40, 18).fill(COLORS.light);
-    doc.fillColor(COLORS.primary).font("Helvetica-Bold").fontSize(12).text(initialsOf(nomeCliente), avatarX - 18, y + 34, {
-        width: 36,
-        align: "center",
-    });
-    y += 84;
+    const enderecoMutuario = [
+        String(cliente.customerAddress || "").trim(),
+        String(cliente.customerBairro || "").trim(),
+    ].filter(Boolean).join(" — ");
+    field("Endereço", enderecoMutuario || "—", left + 12, y + 72, pageWidth - 24);
+    y += 100;
     // Cartão 2 — Crédito e carteira de financiamento
     card(76);
     cardTitle("Crédito e carteira de financiamento");
@@ -973,7 +967,9 @@ options = {}) => __awaiter(void 0, void 0, void 0, function* () {
     card(106, { fill: mostrarSelo ? COLORS.lime : "#f4f9f5", stroke: mostrarSelo ? "#a5d6a7" : "#cfe3d5" });
     cardTitle("Pagamento recebido");
     doc.fillColor(COLORS.grey).font("Helvetica").fontSize(7).text("Valor pago", left + 12, y + 22, { width: 200 });
-    doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(32).text(fmtMoney(recibo.valor_pago), left + 12, y + 31, {
+    // 20px bold (era 32 — estourava o cartão com valores altos). Continua
+    // destacado em #1a3c2a, sem colidir com o breakdown à direita.
+    doc.fillColor(COLORS.primaryDark).font("Helvetica-Bold").fontSize(20).text(fmtMoney(recibo.valor_pago), left + 12, y + 31, {
         width: 260,
     });
     field("Capital", fmtMoney(recibo.valor_capital), left + 280, y + 26, 110);
