@@ -179,7 +179,7 @@ const router = useRouter()
 
 const logoError = ref(false)
 const search = ref('')
-const expanded = ref({ geral: true, credito: true, financeiro: false, financiamento: false, relatorios: false, sistema: false })
+const expanded = ref({ geral: true,    credito: true, microcredito: true, financeiro: false, financiamento: false, relatorios: false, sistema: false })
 
 const FAVORITES_KEY = 'mbr_sidebar_favorites'
 const favorites = ref([])
@@ -232,6 +232,12 @@ const groups = computed(() => {
         ]
       },
       {
+        id: 'microcredito',
+        label: 'Microcrédito',
+        icon: 'savings',
+        items: [{ to: '/admin/microcredito/dashboard', icon: 'space_dashboard', label: 'Microcrédito BM' }]
+      },
+      {
         id: 'sistema',
         label: 'Sistema',
         icon: 'settings',
@@ -246,10 +252,15 @@ const groups = computed(() => {
       label: 'Geral',
       icon: 'space_dashboard',
       items: [{ to: '/dashboard', icon: 'space_dashboard', label: 'Painel' }]
-    },
-    {
-      id: 'credito',
-      label: 'Gestão de Crédito',
+    },      {
+        id: 'microcredito',
+        label: 'Microcrédito',
+        icon: 'savings',
+        items: [{ to: '/admin/microcredito/dashboard', icon: 'space_dashboard', label: 'Painel Microcrédito BM' }]
+      },
+      {
+        id: 'credito',
+        label: 'Gestão de Crédito',
       icon: 'account_balance_wallet',
       items: [
         { to: '/mutuarios', icon: 'groups', label: 'Mutuários' },
@@ -300,6 +311,7 @@ const groups = computed(() => {
   ]
 
   if (role === 1) return all
+  if ([2, 3].includes(role)) return all.filter((group) => group.id === 'geral' || group.id === 'credito' || group.id === 'microcredito')
 
   // Gestor: painel + mutuários + créditos; Operador: painel + mutuários.
   if (role === 3) {
@@ -318,10 +330,15 @@ const groups = computed(() => {
       label: 'Geral',
       icon: 'space_dashboard',
       items: [{ to: '/dashboard', icon: 'space_dashboard', label: 'Painel' }]
-    },
-    {
-      id: 'credito',
-      label: 'Gestão de Crédito',
+    },      {
+        id: 'microcredito',
+        label: 'Microcrédito',
+        icon: 'savings',
+        items: [{ to: '/admin/microcredito/dashboard', icon: 'space_dashboard', label: 'Painel Microcrédito BM' }]
+      },
+      {
+        id: 'credito',
+        label: 'Gestão de Crédito',
       icon: 'account_balance_wallet',
       items: [{ to: '/mutuarios', icon: 'groups', label: 'Mutuários' }]
     }

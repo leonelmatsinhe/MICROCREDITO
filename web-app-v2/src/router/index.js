@@ -26,6 +26,7 @@ const PortalPaymentsPage = () => import('@/pages/portal/PortalPaymentsPage.vue')
 const PortalProfilePage = () => import('@/pages/portal/PortalProfilePage.vue')
 const ContractDocumentsPage = () => import('@/pages/loans/ContractDocumentsPage.vue')
 const ReportsBMPage = () => import('@/pages/ReportsBMPage.vue')
+const MicrocreditPage = () => import('@/pages/MicrocreditPage.vue')
 const InstallmentsControlPage = () => import('@/pages/InstallmentsControlPage.vue')
 const PaymentsPage = () => import('@/pages/PaymentsPage.vue')
 const CaixaPage = () => import('@/pages/CaixaPage.vue')
@@ -196,6 +197,14 @@ const routes = [
     component: ReportsBMPage,
     meta: { requiresAuth: true, allowedRoles: [1] }
   },
+  // Módulo isolado de microcrédito + reporte trimestral BM.
+  { path: '/admin/microcredito', redirect: '/admin/microcredito/dashboard' },
+  ...['dashboard', 'clientes', 'creditos', 'pagamentos', 'financiamentos', 'reportes'].map((section) => ({
+    path: `/admin/microcredito/${section}`,
+    name: `Microcredit${section[0].toUpperCase()}${section.slice(1)}`,
+    component: MicrocreditPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
+  })),
   {
     path: '/settings',
     name: 'Settings',

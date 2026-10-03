@@ -273,6 +273,7 @@ import { tablePdf } from "./controllers/TablePdfController";
 
 import { isAdmin, isPartner, isStaff } from "./middlewares/roles";
 import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
+import * as MicrocreditController from "./controllers/MicrocreditController";
 
 
 const routes = express.Router();
@@ -590,6 +591,30 @@ routes.delete("/api/notifications/:id", deleteNotification);
 
 // Dashboard agregado (KPIs, PAR, risco e alertas)
 routes.get("/api/dashboard/:companyId", getDashboardOverview);
+
+// Módulo de microcrédito — tenant resolvido exclusivamente pelo utilizador autenticado.
+routes.get("/api/microcredito/dashboard", isStaff, MicrocreditController.dashboard);
+routes.get("/api/microcredito/clientes", isStaff, MicrocreditController.clients);
+routes.post("/api/microcredito/clientes", isStaff, MicrocreditController.createClient);
+routes.put("/api/microcredito/clientes/:id", isStaff, MicrocreditController.updateClient);
+routes.delete("/api/microcredito/clientes/:id", isStaff, MicrocreditController.removeClient);
+routes.get("/api/microcredito/creditos", isStaff, MicrocreditController.credits);
+routes.post("/api/microcredito/creditos", isStaff, MicrocreditController.createMicrocredit);
+routes.post("/api/microcredito/creditos/:creditId/abater", isStaff, MicrocreditController.writeOff);
+routes.get("/api/microcredito/tenant", isStaff, MicrocreditController.tenantMetadata);
+routes.get("/api/microcredito/pagamentos", isStaff, MicrocreditController.payments);
+routes.post("/api/microcredito/creditos/:creditId/pagamentos", isStaff, MicrocreditController.registerPayment);
+routes.get("/api/microcredito/financiamentos", isStaff, MicrocreditController.funding);
+routes.post("/api/microcredito/financiamentos", isStaff, MicrocreditController.createFunding);
+routes.put("/api/microcredito/financiamentos/:id", isStaff, MicrocreditController.updateFunding);
+routes.delete("/api/microcredito/financiamentos/:id", isStaff, MicrocreditController.removeFunding);
+routes.get("/api/microcredito/movimentos", isStaff, MicrocreditController.movements);
+routes.post("/api/microcredito/movimentos", isStaff, MicrocreditController.createMovement);
+routes.put("/api/microcredito/movimentos/:id", isStaff, MicrocreditController.updateMovement);
+routes.get("/api/microcredito/configuracao", isStaff, MicrocreditController.config);
+routes.put("/api/microcredito/configuracao", isStaff, MicrocreditController.config);
+routes.get("/api/microcredito/reportes/preview", isStaff, MicrocreditController.previewReport);
+routes.post("/api/microcredito/reportes/gerar", isStaff, MicrocreditController.generateReport);
 
 // Relatório Banco de Moçambique
 routes.get("/api/reports/banco-mocambique/:companyId", getBMReport);
