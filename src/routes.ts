@@ -595,6 +595,7 @@ routes.get("/api/dashboard/:companyId", getDashboardOverview);
 // Módulo de microcrédito — tenant resolvido exclusivamente pelo utilizador autenticado.
 routes.get("/api/microcredito/dashboard", isStaff, MicrocreditController.dashboard);
 routes.get("/api/microcredito/clientes", isStaff, MicrocreditController.clients);
+// Leitura sempre do core. Escritas legadas respondem 410 para evitar registos paralelos.
 routes.post("/api/microcredito/clientes", isStaff, MicrocreditController.createClient);
 routes.put("/api/microcredito/clientes/:id", isStaff, MicrocreditController.updateClient);
 routes.delete("/api/microcredito/clientes/:id", isStaff, MicrocreditController.removeClient);

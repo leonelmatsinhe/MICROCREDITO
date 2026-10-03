@@ -3,6 +3,7 @@ import fs from "fs";
 import ExcelJS from "exceljs";
 import { QueryTypes, Transaction } from "sequelize";
 import { db } from "../database/db";
+import { ReporteBMMapperService } from "./ReporteBMMapperService";
 
 export const MICRO_SECTORS = ["Comércio", "Agricultura", "Pecuária", "Indústria", "Serviços", "Consumo", "Outros"] as const;
 export const PAYMENT_METHODS = ["M-Pesa", "BCI", "eMola", "Dinheiro"] as const;
@@ -72,7 +73,7 @@ const updateLoanSnapshot = async (tenantId: number, creditId: number, transactio
   await execute("UPDATE creditos SET capital_em_divida = ?, juro_em_divida = ?, total_em_divida = ?, dias_atraso = ?, classe_risco = ?, estado = ? WHERE tenant_id = ? AND id = ?", [principal, interest, round2(principal + interest), daysLate, riskClassForDays(daysLate), status, tenantId, creditId], transaction);
 };
 
-export const listClients = (tenantId: number) => selects("SELECT * FROM clientes_microcredito WHERE tenant_id = ? ORDER BY nome", [tenantId]);
+export const listClients = (tenantId: number) => ReporteBMMapperService.listCustomers(tenantId);
 export const saveClient = async (tenantId: number, userId: number, body: any, id?: number) => {
   if (!String(body.nome || "").trim()) throw new Error("O nome do cliente é obrigatório.");
   const sex = VALID_SEX.includes(body.sexo) ? body.sexo : "Outro";
@@ -90,7 +91,7 @@ export const deleteClient = async (tenantId: number, id: number) => {
   if (!result.affectedRows) throw new Error("Cliente inexistente ou com créditos associados; não pode ser removido.");
 };
 
-export const listCredits = (tenantId: number) => selects("SELECT c.*, cl.nome AS cliente_nome FROM creditos c INNER JOIN clientes_microcredito cl ON cl.id=c.cliente_id AND cl.tenant_id=c.tenant_id WHERE c.tenant_id=? ORDER BY c.data_concessao DESC,c.id DESC", [tenantId]);
+export const listCredits = (tenantId: number) => ReporteBMMapperService.listCredits(tenantId);
 export const createCredit = async (tenantId: number, userId: number, body: any) => {
   const principal = num(body.montante_capital), rate = num(body.taxa_juro_mensal), months = Number(body.prazo_meses), issued = String(body.data_concessao || "");
   if (!Number.isFinite(principal) || principal <= 0 || !Number.isFinite(rate) || rate < 0 || rate > 100 || !Number.isInteger(months) || months < 1 || months > 120 || !validDate(issued)) throw new Error("Dados do crédito inválidos.");
@@ -122,7 +123,7 @@ export const createCredit = async (tenantId: number, userId: number, body: any) 
   } catch (error) { await t.rollback(); throw error; }
 };
 
-export const listPayments = (tenantId: number) => selects("SELECT e.*, c.codigo, cl.nome AS cliente_nome, p.numero_prestacao FROM microcredit_payment_events e JOIN creditos c ON c.id=e.credito_id AND c.tenant_id=e.tenant_id JOIN clientes_microcredito cl ON cl.id=c.cliente_id AND cl.tenant_id=c.tenant_id JOIN pagamentos_credito p ON p.id=e.prestacao_id AND p.tenant_id=e.tenant_id WHERE e.tenant_id=? ORDER BY e.data_pagamento DESC,e.id DESC", [tenantId]);
+export const listPayments = (tenantId: number) => ReporteBMMapperService.listPayments(tenantId);
 export const postPayment = async (tenantId: number, userId: number, creditId: number, body: any) => {
   const amount = round2(num(body.montante));
   const date = String(body.data_pagamento || new Date().toISOString().slice(0, 10));
@@ -154,7 +155,7 @@ export const postPayment = async (tenantId: number, userId: number, creditId: nu
   } catch (error) { await t.rollback(); throw error; }
 };
 
-export const listFunding = (tenantId: number) => selects("SELECT * FROM fontes_financiamento WHERE tenant_id=? ORDER BY data_entrada DESC,id DESC", [tenantId]);
+export const listFunding = (tenantId: number) => ReporteBMMapperService.listFunding(tenantId);
 export const saveFunding = async (tenantId: number, body: any, id?: number) => {
   if (!VALID_FUNDING.includes(body.tipo) || !String(body.descricao || "").trim() || !(num(body.montante) > 0) || !validDate(body.data_entrada)) throw new Error("Dados do financiamento inválidos.");
   const category = VALID_CATEGORIES.includes(body.categoria_periodo) ? body.categoria_periodo : null;
@@ -181,11 +182,8 @@ export const saveMovement = async (tenantId: number, body: any, id?: number) => 
   const [r]: any = await db.query("INSERT INTO movimentos_financeiros_operador (tenant_id,tipo,mes,data,montante) VALUES (?,?,?,?,?)", { replacements: [tenantId, body.tipo, month, body.data, num(body.montante)] });
   return (await selects("SELECT * FROM movimentos_financeiros_operador WHERE tenant_id=? AND id=?", [tenantId, r.insertId]))[0];
 };
-export const listMovements = (tenantId: number, start?: string, end?: string) => {
-  if (start && end) { requireDateRange(start, end); return selects("SELECT * FROM movimentos_financeiros_operador WHERE tenant_id=? AND data BETWEEN ? AND ? ORDER BY data DESC", [tenantId, start, end]); }
-  return selects("SELECT * FROM movimentos_financeiros_operador WHERE tenant_id=? ORDER BY data DESC LIMIT 300", [tenantId]);
-};
-export const readConfig = async (tenantId: number) => (await selects("SELECT * FROM config_microcredito WHERE tenant_id=?", [tenantId]))[0] || { tenant_id: tenantId, taxa_juro_min: 0, taxa_juro_max: 0, prazo_min: 1, prazo_max: 6, capital_inicial: 0, capital_actual: 0 };
+export const listMovements = (tenantId: number, start?: string, end?: string) => ReporteBMMapperService.listMovements(tenantId, start, end);
+export const readConfig = (tenantId: number) => ReporteBMMapperService.getCoreCreditRanges(tenantId);
 export const saveConfig = async (tenantId: number, body: any) => {
   const minRate = num(body.taxa_juro_min), maxRate = num(body.taxa_juro_max), minTerm = Number(body.prazo_min), maxTerm = Number(body.prazo_max);
   if (minRate < 0 || maxRate < minRate || !Number.isInteger(minTerm) || !Number.isInteger(maxTerm) || minTerm < 1 || maxTerm < minTerm || num(body.capital_inicial) < 0 || num(body.capital_actual) < 0) throw new Error("Configuração de taxas/prazos/capital inválida.");
@@ -290,11 +288,7 @@ const reportData = async (tenantId: number, start: string, end: string) => {
   return result;
 };
 
-export const getTenantMetadata = async (tenantId: number, operator: string) => {
-  const [company] = await selects("SELECT c.*,p.name AS provincia_nome,(SELECT COUNT(*) FROM users u WHERE u.companyId=c.id AND u.userRole IN (1,2,3) AND u.status=1 AND u.is_active=1) AS trabalhadores FROM companies c LEFT JOIN provinces p ON p.id=c.provinceId WHERE c.id=?", [tenantId]);
-  if (!company) throw new Error("Empresa do utilizador não encontrada.");
-  return { id: tenantId, name: company.companyName, address: company.companyAddress || "", province: company.provincia_nome || "", phone: company.companyPhone || company.phone || "", email: company.companyEmail || company.email || "", nuit: company.companyNuit || company.nuit || "", workers: num(company.trabalhadores), startDate: company.created_at || company.createdAt || "", operator };
-};
+export const getTenantMetadata = (tenantId: number, operator: string) => ReporteBMMapperService.getTenantMetadata(tenantId, operator);
 
 export const writeOffCredit = async (tenantId: number, creditId: number, date: string) => {
   if (!validDate(date)) throw new Error("Data de abate inválida.");
@@ -315,6 +309,8 @@ export const writeOffCredit = async (tenantId: number, creditId: number, date: s
 };
 
 export const getDashboard = async (tenantId: number) => {
+  return ReporteBMMapperService.getDashboard(tenantId);
+  /* Legacy implementation retained below for compatibility reference only; the parallel tables are no longer a report/dashboard source.
   const creditsToRefresh = await selects("SELECT id FROM creditos WHERE tenant_id=? AND estado <> 'Abatido'", [tenantId]);
   const t = await db.transaction();
   try { for (const credit of creditsToRefresh) await updateLoanSnapshot(tenantId, Number(credit.id), t); await t.commit(); }
@@ -333,13 +329,11 @@ export const getDashboard = async (tenantId: number) => {
   const nameById = new Map(overdueNames.map((row: any) => [Number(row.id), row.nome]));
   const overdue = lateCredits.map((loan: any) => ({ ...loan, cliente_nome: nameById.get(Number(loan.cliente_id)) || "", classe_risco: riskClassForDays(Number(loan.dias_atraso)) }));
   return { portfolio: round2(portfolio), riskAmount: round2(risk), riskPercent: portfolio ? round2(risk * 100 / portfolio) : 0, activeClients: num(clients[0]?.total), activeCredits: active.length, sectors, riskClasses: classes, overdue };
+  */
 };
 
-export const getQuarterlyReport = async (tenantId: number, userName: string, start: string, end: string) => {
-  const report: any = await reportData(tenantId, start, end);
-  report.operator = userName || "";
-  return report;
-};
+export const getQuarterlyReport = async (tenantId: number, userName: string, start: string, end: string) =>
+  ReporteBMMapperService.getQuarterlyReport(tenantId, userName, start, end);
 
 const formatDate = (date: string) => { const [y,m,d] = date.split("-"); return `${d}/${m}/${y}`; };
 const money = (v: any) => round2(num(v));
@@ -383,6 +377,15 @@ export const buildQuarterlyWorkbook = async (report: any) => {
   sheet.getCell("C91").value = format(report.capital.initial); sheet.getCell("C92").value = format(report.capital.current);
   for (let i=0;i<3;i++) { sheet.getCell(`C${97+i}`).value = format(report.assets.cash[i]); sheet.getCell(`D${97+i}`).value = format(report.assets.banks[i]); sheet.getCell(`E${97+i}`).value = format(report.assets.other[i]); }
   for (let i=0;i<3;i++) { const [year,month]=report.period.months[i].split("-"); sheet.getCell(`${String.fromCharCode(67+i)}96`).value=`Mês ${i+1} (${month}/${year})`; }
+  if (Array.isArray(report.dataWarnings) && report.dataWarnings.length) {
+    const quality = workbook.addWorksheet("Qualidade dos dados");
+    quality.addRow(["Avisos de mapeamento BM", "Período", `${report.period.start} — ${report.period.end}`]);
+    quality.addRow(["Campo", "Estado", "Observação"]);
+    report.dataWarnings.forEach((warning: string) => quality.addRow(["Dados não mapeados / ressalvas", "Revisão necessária", warning]));
+    quality.columns = [{ width: 36 }, { width: 24 }, { width: 110 }];
+    quality.getRow(1).font = { bold: true };
+    quality.getRow(2).font = { bold: true };
+  }
   return { buffer: await workbook.xlsx.writeBuffer(), worksheet: sheet.name };
 };
 export const toReportFileSlug = (name: string) => String(name || "empresa").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "empresa";

@@ -22,6 +22,7 @@ import {
   writeOffCredit,
   toReportFileSlug,
 } from "../services/microcreditService";
+import { ReporteBMMapperService } from "../services/ReporteBMMapperService";
 
 const context = (req: Request) => {
   const user = getCurrentUser(req);
@@ -44,27 +45,24 @@ const handler = (action: (req: Request, res: Response) => Promise<any>) => async
 
 export const dashboard = handler(async (req, res) => res.json({ success: true, result: await getDashboard(context(req).tenantId) }));
 export const clients = handler(async (req, res) => res.json({ success: true, result: await listClients(context(req).tenantId) }));
-export const createClient = handler(async (req, res) => res.status(201).json({ success: true, result: await saveClient(context(req).tenantId, context(req).userId, req.body || {}) }));
-export const updateClient = handler(async (req, res) => res.json({ success: true, result: await saveClient(context(req).tenantId, context(req).userId, req.body || {}, Number(req.params.id)) }));
-export const removeClient = handler(async (req, res) => { await deleteClient(context(req).tenantId, Number(req.params.id)); return res.json({ success: true }); });
+const legacyWriteDisabled = (_req: Request, res: Response) => res.status(410).json({ success: false, message: "Escrita desactivada para impedir dados paralelos. Use o módulo core correspondente." });
+export const createClient = legacyWriteDisabled;
+export const updateClient = legacyWriteDisabled;
+export const removeClient = legacyWriteDisabled;
 export const credits = handler(async (req, res) => res.json({ success: true, result: await listCredits(context(req).tenantId) }));
-export const createMicrocredit = handler(async (req, res) => { const c = context(req); return res.status(201).json({ success: true, result: await createCredit(c.tenantId, c.userId, req.body || {}) }); });
-export const writeOff = handler(async (req, res) => { const c = context(req); return res.json({ success: true, result: await writeOffCredit(c.tenantId, Number(req.params.creditId), String(req.body?.data_abatimento || "")) }); });
+export const createMicrocredit = legacyWriteDisabled;
+export const writeOff = legacyWriteDisabled;
 export const tenantMetadata = handler(async (req, res) => { const c = context(req); return res.json({ success: true, result: await getTenantMetadata(c.tenantId, c.userName) }); });
 export const payments = handler(async (req, res) => res.json({ success: true, result: await listPayments(context(req).tenantId) }));
-export const registerPayment = handler(async (req, res) => { const c = context(req); return res.status(201).json({ success: true, result: await postPayment(c.tenantId, c.userId, Number(req.params.creditId), req.body || {}) }); });
+export const registerPayment = legacyWriteDisabled;
 export const funding = handler(async (req, res) => res.json({ success: true, result: await listFunding(context(req).tenantId) }));
-export const createFunding = handler(async (req, res) => res.status(201).json({ success: true, result: await saveFunding(context(req).tenantId, req.body || {}) }));
-export const updateFunding = handler(async (req, res) => res.json({ success: true, result: await saveFunding(context(req).tenantId, req.body || {}, Number(req.params.id)) }));
-export const removeFunding = handler(async (req, res) => { await deleteFunding(context(req).tenantId, Number(req.params.id)); return res.json({ success: true }); });
+export const createFunding = legacyWriteDisabled;
+export const updateFunding = legacyWriteDisabled;
+export const removeFunding = legacyWriteDisabled;
 export const movements = handler(async (req, res) => res.json({ success: true, result: await listMovements(context(req).tenantId, req.query.dataInicio as string, req.query.dataFim as string) }));
-export const createMovement = handler(async (req, res) => res.status(201).json({ success: true, result: await saveMovement(context(req).tenantId, req.body || {}) }));
-export const updateMovement = handler(async (req, res) => res.json({ success: true, result: await saveMovement(context(req).tenantId, req.body || {}, Number(req.params.id)) }));
-export const config = handler(async (req, res) => {
-  const tenantId = context(req).tenantId;
-  if (req.method === "GET") return res.json({ success: true, result: await readConfig(tenantId) });
-  return res.json({ success: true, result: await saveConfig(tenantId, req.body || {}) });
-});
+export const createMovement = legacyWriteDisabled;
+export const updateMovement = legacyWriteDisabled;
+export const config = handler(async (req, res) => res.json({ success: true, result: await readConfig(context(req).tenantId) }));
 export const previewReport = handler(async (req, res) => {
   const c = context(req); const { dataInicio, dataFim } = req.query as any;
   const [result, tenant] = await Promise.all([
@@ -82,6 +80,7 @@ export const generateReport = handler(async (req, res) => {
   ]);
   report.tenant = tenant;
   const workbook = await buildQuarterlyWorkbook(report);
+  await ReporteBMMapperService.logReportGeneration({ userId: c.userId, companyId: c.tenantId, ip: req.ip || String(req.headers["x-forwarded-for"] || ""), start: report.period.start, end: report.period.end, name: report.tenant.name });
   const periodEnd = new Date(`${report.period.end}T00:00:00Z`);
   const quarter = Math.floor(periodEnd.getUTCMonth() / 3) + 1;
   const filename = `BM_Reporte_${toReportFileSlug(report.tenant.name)}_${periodEnd.getUTCFullYear()}-T${quarter}.xlsx`;
