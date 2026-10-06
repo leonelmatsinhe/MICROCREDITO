@@ -802,6 +802,7 @@ const runMigrations = () => __awaiter(void 0, void 0, void 0, function* () {
     // Idempotência, auditoria append-only, alocação de pagamentos, motor de
     // mora (regras por empresa + accrual diário) e crédito a favor do cliente.
     yield migratePaymentsV2(results);
+    yield migrateMicrocredit(results);
     return results;
 });
 exports.runMigrations = runMigrations;
@@ -809,6 +810,135 @@ exports.runMigrations = runMigrations;
  * PAGAMENTOS V2 — todas as estruturas novas do módulo de pagamentos.
  * Idempotente: cada bloco verifica a existência antes de criar.
  */
+const migrateMicrocredit = (results) => __awaiter(void 0, void 0, void 0, function* () {
+    yield createTableIfMissing("clientes_microcredito", `CREATE TABLE clientes_microcredito (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    nome VARCHAR(255) NOT NULL,
+    tipo_doc VARCHAR(40) NULL,
+    numero_doc VARCHAR(100) NULL,
+    data_nascimento DATE NULL,
+    sexo ENUM('Homem','Mulher','Outro') NOT NULL DEFAULT 'Outro',
+    telefone VARCHAR(40) NULL,
+    email VARCHAR(150) NULL,
+    endereco VARCHAR(255) NULL,
+    provincia VARCHAR(100) NULL,
+    distrito VARCHAR(100) NULL,
+    bairro VARCHAR(100) NULL,
+    sector_actividade ENUM('Comércio','Agricultura','Pecuária','Indústria','Serviços','Consumo','Outros') NOT NULL DEFAULT 'Outros',
+    estado ENUM('Activo','Inactivo') NOT NULL DEFAULT 'Activo',
+    data_registo DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    criado_por INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_microclientes_tenant (tenant_id, estado),
+    UNIQUE KEY uq_microclientes_document (tenant_id, numero_doc)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    yield createTableIfMissing("creditos", `CREATE TABLE creditos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    cliente_id INT NOT NULL,
+    codigo VARCHAR(40) NOT NULL,
+    montante_capital DECIMAL(15,2) NOT NULL,
+    taxa_juro_mensal DECIMAL(8,4) NOT NULL,
+    prazo_meses INT NOT NULL,
+    data_concessao DATE NOT NULL,
+    data_vencimento DATE NOT NULL,
+    sector_finalidade ENUM('Comércio','Agricultura','Pecuária','Indústria','Serviços','Consumo','Outros') NOT NULL DEFAULT 'Outros',
+    estado ENUM('Vigente','Reembolsado','Em_Risco','Abatido','Atrasado') NOT NULL DEFAULT 'Vigente',
+    capital_em_divida DECIMAL(15,2) NOT NULL DEFAULT 0,
+    juro_em_divida DECIMAL(15,2) NOT NULL DEFAULT 0,
+    total_em_divida DECIMAL(15,2) NOT NULL DEFAULT 0,
+    juros_total DECIMAL(15,2) NOT NULL DEFAULT 0,
+    capital_abatido DECIMAL(15,2) NOT NULL DEFAULT 0,
+    juro_abatido DECIMAL(15,2) NOT NULL DEFAULT 0,
+    data_abatimento DATE NULL,
+    dias_atraso INT NOT NULL DEFAULT 0,
+    classe_risco ENUM('I','II','III','IV') NULL,
+    data_ultimo_pagamento DATE NULL,
+    agente_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_microcredit_code (tenant_id, codigo),
+    INDEX idx_microcredit_tenant_status (tenant_id, estado),
+    INDEX idx_microcredit_period (tenant_id, data_concessao),
+    CONSTRAINT fk_microcredit_client FOREIGN KEY (cliente_id) REFERENCES clientes_microcredito(id) ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    yield createTableIfMissing("pagamentos_credito", `CREATE TABLE pagamentos_credito (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    credito_id INT NOT NULL,
+    numero_prestacao INT NOT NULL,
+    data_vencimento DATE NOT NULL,
+    capital_previsto DECIMAL(15,2) NOT NULL,
+    juro_previsto DECIMAL(15,2) NOT NULL,
+    total_previsto DECIMAL(15,2) NOT NULL,
+    data_pagamento DATE NULL,
+    capital_pago DECIMAL(15,2) NOT NULL DEFAULT 0,
+    juro_pago DECIMAL(15,2) NOT NULL DEFAULT 0,
+    total_pago DECIMAL(15,2) NOT NULL DEFAULT 0,
+    forma ENUM('M-Pesa','BCI','eMola','Dinheiro') NULL,
+    estado ENUM('Pendente','Parcial','Pago') NOT NULL DEFAULT 'Pendente',
+    dias_atraso INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_microinstallment_tenant_due (tenant_id, credito_id, data_vencimento),
+    CONSTRAINT fk_microinstallment_credit FOREIGN KEY (credito_id) REFERENCES creditos(id) ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    yield createTableIfMissing("microcredit_payment_events", `CREATE TABLE microcredit_payment_events (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    credito_id INT NOT NULL,
+    prestacao_id INT NOT NULL,
+    data_pagamento DATE NOT NULL,
+    capital_pago DECIMAL(15,2) NOT NULL DEFAULT 0,
+    juro_pago DECIMAL(15,2) NOT NULL DEFAULT 0,
+    forma ENUM('M-Pesa','BCI','eMola','Dinheiro') NOT NULL,
+    registado_por INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_micropayment_tenant_date (tenant_id, data_pagamento),
+    INDEX idx_micropayment_credit (tenant_id, credito_id),
+    CONSTRAINT fk_microevent_credit FOREIGN KEY (credito_id) REFERENCES creditos(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_microevent_installment FOREIGN KEY (prestacao_id) REFERENCES pagamentos_credito(id) ON DELETE RESTRICT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    yield createTableIfMissing("fontes_financiamento", `CREATE TABLE fontes_financiamento (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    tipo ENUM('Proprio','Alheio_Nacional','Alheio_Estrangeiro') NOT NULL,
+    descricao VARCHAR(255) NOT NULL,
+    montante DECIMAL(15,2) NOT NULL,
+    data_entrada DATE NOT NULL,
+    origem VARCHAR(255) NULL,
+    categoria_periodo ENUM('Emprestimo','Donativo','Aumento_Capital') NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_microfinance_tenant_date (tenant_id, data_entrada)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    yield createTableIfMissing("movimentos_financeiros_operador", `CREATE TABLE movimentos_financeiros_operador (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id INT NOT NULL,
+    tipo ENUM('Caixa','Bancos','Outros_Activos') NOT NULL,
+    mes TINYINT NOT NULL,
+    data DATE NOT NULL,
+    montante DECIMAL(15,2) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_micromovement_tenant_date (tenant_id, data)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    yield createTableIfMissing("config_microcredito", `CREATE TABLE config_microcredito (
+    tenant_id INT PRIMARY KEY,
+    taxa_juro_min DECIMAL(8,4) NOT NULL DEFAULT 0,
+    taxa_juro_max DECIMAL(8,4) NOT NULL DEFAULT 0,
+    prazo_min INT NOT NULL DEFAULT 1,
+    prazo_max INT NOT NULL DEFAULT 6,
+    capital_inicial DECIMAL(15,2) NOT NULL DEFAULT 0,
+    capital_actual DECIMAL(15,2) NOT NULL DEFAULT 0,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`, results);
+    // As seis entidades do módulo usam a chave da empresa autenticada como tenant_id.
+    for (const table of ["clientes_microcredito", "creditos", "pagamentos_credito", "microcredit_payment_events", "fontes_financiamento", "movimentos_financeiros_operador", "config_microcredito"]) {
+        yield addIndexIfMissing(table, `idx_${table}_tenant`, ["tenant_id"], results);
+    }
+});
 const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, function* () {
     var _m;
     // ── 1. IDEMPOTÊNCIA — header Idempotency-Key no POST de pagamento ──

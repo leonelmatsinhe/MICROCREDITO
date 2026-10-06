@@ -1,4 +1,27 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -65,6 +88,7 @@ const ReciboController_1 = require("./controllers/ReciboController");
 const TablePdfController_1 = require("./controllers/TablePdfController");
 const roles_1 = require("./middlewares/roles");
 const ExcelExportController_1 = require("./controllers/ExcelExportController");
+const MicrocreditController = __importStar(require("./controllers/MicrocreditController"));
 const routes = express_1.default.Router();
 exports.routes = routes;
 // CAIXA DIÁRIO — sub-router isolado (tabelas cash_registers / cash_movements)
@@ -351,6 +375,30 @@ routes.put("/api/notifications/markAllRead/:companyId", NotificationController_1
 routes.delete("/api/notifications/:id", NotificationController_1.deleteNotification);
 // Dashboard agregado (KPIs, PAR, risco e alertas)
 routes.get("/api/dashboard/:companyId", DashboardController_1.getDashboardOverview);
+// Módulo de microcrédito — tenant resolvido exclusivamente pelo utilizador autenticado.
+routes.get("/api/microcredito/dashboard", roles_1.isStaff, MicrocreditController.dashboard);
+routes.get("/api/microcredito/clientes", roles_1.isStaff, MicrocreditController.clients);
+// Leitura sempre do core. Escritas legadas respondem 410 para evitar registos paralelos.
+routes.post("/api/microcredito/clientes", roles_1.isStaff, MicrocreditController.createClient);
+routes.put("/api/microcredito/clientes/:id", roles_1.isStaff, MicrocreditController.updateClient);
+routes.delete("/api/microcredito/clientes/:id", roles_1.isStaff, MicrocreditController.removeClient);
+routes.get("/api/microcredito/creditos", roles_1.isStaff, MicrocreditController.credits);
+routes.post("/api/microcredito/creditos", roles_1.isStaff, MicrocreditController.createMicrocredit);
+routes.post("/api/microcredito/creditos/:creditId/abater", roles_1.isStaff, MicrocreditController.writeOff);
+routes.get("/api/microcredito/tenant", roles_1.isStaff, MicrocreditController.tenantMetadata);
+routes.get("/api/microcredito/pagamentos", roles_1.isStaff, MicrocreditController.payments);
+routes.post("/api/microcredito/creditos/:creditId/pagamentos", roles_1.isStaff, MicrocreditController.registerPayment);
+routes.get("/api/microcredito/financiamentos", roles_1.isStaff, MicrocreditController.funding);
+routes.post("/api/microcredito/financiamentos", roles_1.isStaff, MicrocreditController.createFunding);
+routes.put("/api/microcredito/financiamentos/:id", roles_1.isStaff, MicrocreditController.updateFunding);
+routes.delete("/api/microcredito/financiamentos/:id", roles_1.isStaff, MicrocreditController.removeFunding);
+routes.get("/api/microcredito/movimentos", roles_1.isStaff, MicrocreditController.movements);
+routes.post("/api/microcredito/movimentos", roles_1.isStaff, MicrocreditController.createMovement);
+routes.put("/api/microcredito/movimentos/:id", roles_1.isStaff, MicrocreditController.updateMovement);
+routes.get("/api/microcredito/configuracao", roles_1.isStaff, MicrocreditController.config);
+routes.put("/api/microcredito/configuracao", roles_1.isStaff, MicrocreditController.config);
+routes.get("/api/microcredito/reportes/preview", roles_1.isStaff, MicrocreditController.previewReport);
+routes.post("/api/microcredito/reportes/gerar", roles_1.isStaff, MicrocreditController.generateReport);
 // Relatório Banco de Moçambique
 routes.get("/api/reports/banco-mocambique/:companyId", BMReportController_1.getBMReport);
 // Download do Excel com bordas/fontes reais (cópia fiel do modelo)

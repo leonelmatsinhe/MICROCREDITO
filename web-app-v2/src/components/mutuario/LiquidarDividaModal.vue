@@ -290,7 +290,9 @@ watch(() => form.value.paymentMethod, () => {
   if (first) selectedBankAccount.value = first
 })
 
-const dateOptions = (date) => date <= todayDate
+// q-date entrega a data ao "options" sempre em "YYYY/MM/DD" (independente da mask),
+// por isso convertemos para "YYYY-MM-DD" antes de comparar com todayDate.
+const dateOptions = (date) => date.replaceAll('/', '-') <= todayDate
 const checkReferenceDuplicate = async () => false // liquidação usa 1 referência para N transacções
 
 const referenceRules = computed(() => [

@@ -343,7 +343,9 @@ const onDateChange = () => {
   }
   fetchQuote()
 }
-const dateOptions = (date) => date <= todayDate
+// q-date entrega a data ao "options" sempre em "YYYY/MM/DD" (independente da mask),
+// por isso convertemos para "YYYY-MM-DD" antes de comparar com todayDate.
+const dateOptions = (date) => date.replaceAll('/', '-') <= todayDate
 
 // ── VALIDAÇÕES ──
 const checkReferenceDuplicate = async (val) => {
