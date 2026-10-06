@@ -18,7 +18,7 @@
         <q-btn flat round dense icon="close" class="text-white" @click="close" />
       </q-card-section>
 
-      <q-card-section class="q-px-lg q-py-md scroll" style="max-height: 68vh">
+      <q-card-section class="q-px-lg q-py-md scroll" style="max-height: calc(92vh - 150px)">
         <!-- ── SECÇÃO 1: RESUMO FINANCEIRO ── -->
         <div class="pm-section-title">
           <q-icon name="insights" size="15px" class="q-mr-xs" /> Resumo Financeiro
@@ -70,13 +70,13 @@
           </div>
         </div>
 
-        <q-separator class="q-my-md" />
+        <q-separator class="q-my-sm" />
 
         <!-- ── SECÇÃO 2: DADOS DO PAGAMENTO ── -->
         <div class="pm-section-title">
           <q-icon name="edit_note" size="15px" class="q-mr-xs" /> Dados do Pagamento
         </div>
-        <q-form ref="formRef" greedy class="row q-col-gutter-md" @submit.prevent>
+        <q-form ref="formRef" greedy class="row q-col-gutter-sm" @submit.prevent>
           <div class="col-12 col-sm-6">
             <q-input
               :model-value="formatDateShort(form.paymentDate)" dense outlined readonly label="Data de pagamento"
@@ -143,7 +143,7 @@
           <div class="col-12 col-sm-6">
             <q-input
               v-model.number="form.amountReceived" dense outlined type="number" min="0"
-              label="Valor a pagar *" prefix="MZN" :max="maxPayable"
+              label="Valor a pagar *" prefix="MZN"
               :rules="amountRules"
             >
               <template v-slot:prepend><q-icon name="sell" size="18px" /></template>
@@ -197,6 +197,21 @@
               <template v-slot:avatar><q-icon name="warning" color="orange-8" /></template>
               Pagamento parcial: ficará um saldo devedor de
               <strong>{{ formatMoney(Math.max(0, saldoEmFalta + quoteLate - (Number(form.amountReceived) || 0))) }}</strong>
+            </q-banner>
+          </div>
+
+          <div class="col-12" v-if="belowInstallmentAlert">
+            <q-banner class="pm-banner-warning" rounded dense>
+              <template v-slot:avatar><q-icon name="warning" color="orange-8" /></template>
+              Valor abaixo da prestação (<strong>{{ formatMoney(installment?.installment || 0) }}</strong>) — ficará saldo devedor.
+            </q-banner>
+          </div>
+
+          <div class="col-12" v-if="overpayPreview > 0">
+            <q-banner class="pm-banner-info" rounded dense>
+              <template v-slot:avatar><q-icon name="info" color="primary" /></template>
+              Excesso de <strong>{{ formatMoney(overpayPreview) }}</strong> será usado para abater a prestação seguinte
+              — ou, se não houver mais prestações em aberto, creditado à conta do mutuário.
             </q-banner>
           </div>
         </q-form>
@@ -369,9 +384,38 @@ const referenceRules = computed(() => {
   ]
 })
 const amountRules = computed(() => [
-  v => Number(v) > 0 || 'Valor inválido',
-  v => !maxPayable.value || Number(v) <= Number(maxPayable.value) + 0.005 || `Máximo ${formatMoney(maxPayable.value)} (excesso exige confirmação no servidor)`
+  v => Number(v) > 0 || 'Valor inválido'
+  // Excesso é permitido: é automaticamente abatido na prestação seguinte
+  // (ou creditado ao mutuário se não houver mais prestações em aberto).
 ])
+// Excesso face ao total devido desta prestação (capital + juros + mora).
+const overpayPreview = computed(() => {
+  if (props.mode === 'discount') return 0
+  return Math.max(0, Math.round(((Number(form.value.amountReceived) || 0) - (maxPayable.value || 0)) * 100) / 100)
+})
+// ── AUTO-PREENCHIMENTO DO VALOR (modo "full") ──
+// Ao abrir e sempre que a quote for recalculada (ex.: mora actualizada pelo
+// servidor), o campo "Valor a pagar" segue o total devido (capital + juros +
+// mora), desde que o utilizador não o tenha alterado manualmente.
+const lastAutoAmount = ref(0)
+const syncAutoAmount = () => {
+  if (props.mode !== 'full') return
+  const amt = totalDevido.value
+  if (Number(form.value.amountReceived) === lastAutoAmount.value) {
+    form.value.amountReceived = amt
+  }
+  lastAutoAmount.value = amt
+}
+watch(totalDevido, syncAutoAmount)
+
+// ── ALERTA SIMPLES: valor digitado abaixo da prestação ──
+const belowInstallmentAlert = computed(() => {
+  if (props.mode !== 'full') return false // parcial/desconto já têm o seu próprio aviso
+  const installmentValue = Number(props.installment?.installment || 0)
+  const amount = Number(form.value.amountReceived) || 0
+  return installmentValue > 0 && amount > 0 && amount < installmentValue
+})
+
 // ── COMPROVATIVO (máx. 5 MB) ──
 watch(() => form.value.receiptFile, (file) => {
   if (file && file.size > 5 * 1024 * 1024) {
@@ -385,15 +429,18 @@ const idempotencyKey = ref('')
 const openReset = () => {
   form.value = defaultForm()
   selectedBankAccount.value = null
+  // Limpa a quote anterior ANTES de calcular o valor inicial — evita herdar
+  // a mora/total da prestação previamente aberta no modal.
+  store.quote = null
   const autoAmount = props.mode === 'full'
-    ? Math.round((saldoEmFalta.value + quoteLate.value) * 100) / 100
+    ? totalDevido.value
     : props.mode === 'discount' ? saldoEmFalta.value : Math.round(saldoEmFalta.value / 2 * 100) / 100
   form.value.amountReceived = autoAmount
+  lastAutoAmount.value = autoAmount
   fetchAccounts()
   // Idempotency-Key POR TENTATIVA: o servidor devolve a resposta original em
   // retries com a mesma chave — duplo clique nunca duplica o pagamento.
   idempotencyKey.value = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`)
-  store.quote = null
   fetchQuote()
 }
 watch(show, (v) => { if (v) openReset() })
@@ -436,11 +483,11 @@ const submit = async () => {
         : Math.min(remaining, Number(form.value.discountFixed) || 0)
       amount = Math.min(amount, Math.round((remaining - discountAmount) * 100) / 100)
       discountApplied = discountAmount > 0
-    } else {
-      // Tecto = total devido (saldo + mora da quote). Limitar ao saldo SEM mora
-      // deixava a mora por pagar e a prestação caía em parcial.
-      amount = Math.min(amount, maxPayable.value || saldoEmFalta.value)
     }
+    // Fora do desconto, o valor pode exceder o total devido (maxPayable):
+    // o excesso é automaticamente abatido na prestação seguinte pelo servidor,
+    // ou creditado ao mutuário se não houver mais prestações em aberto.
+    const acceptOverpay = props.mode !== 'discount' && amount > (maxPayable.value || saldoEmFalta.value) + 0.005
 
     const resposta = await store.payInstallment({
       companyId: props.customer.companyId,
@@ -460,11 +507,20 @@ const submit = async () => {
       staffName: form.value.staffName || '',
       paymentDate: form.value.paymentDate,
       discountApplied,
-      discountAmount
+      discountAmount,
+      acceptOverpay
     })
 
     close()
     emit('pagamento-realizado', resposta)
+    const applied = resposta?.allocation?.overpayAppliedToNextInstallments || []
+    const asCredit = Number(resposta?.allocation?.overpayAsCredit) || 0
+    if (applied.length > 0) {
+      const ordens = applied.map(a => a.installmentOrder).join(', ')
+      $q.notify({ type: 'positive', message: `Excesso abatido na(s) prestação(ões) ${ordens}.`, position: 'top' })
+    } else if (asCredit > 0) {
+      $q.notify({ type: 'positive', message: `Excesso de ${formatMoney(asCredit)} creditado ao mutuário.`, position: 'top' })
+    }
   } catch (e) {
     $q.notify({ type: 'negative', message: e.response?.data?.message || e.message || 'Erro ao registar pagamento', position: 'top' })
   } finally {
@@ -475,10 +531,13 @@ const submit = async () => {
 
 <style lang="scss" scoped>
 .pm-card {
-  width: 750px;
+  width: 900px;
   max-width: 95vw;
+  max-height: 95vh;
   border-radius: 16px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .pm-header {
   background: #1a3c2a;
@@ -537,6 +596,11 @@ const submit = async () => {
   background: #fff7ed;
   color: #9a3412;
   border: 1px solid #fed7aa;
+}
+.pm-banner-info {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
 }
 .pm-confirm-btn {
   background: #2e7d32;

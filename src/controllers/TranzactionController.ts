@@ -899,15 +899,99 @@ const addTranzaction = async (req: Request, res: Response) => {
         { transaction: t }
       );
 
-      // ── 11. EXCESSO → customer_credits (troco nunca desaparece) ──
-      if (overpayAmount > 0 && acceptOverpay) {
+      // ── 11. EXCESSO → abate a(s) próxima(s) prestação(ões) pendente(s) do
+      // mesmo crédito (ordem crescente); só vai para customer_credits o que
+      // sobrar depois de esgotar todas as prestações em aberto (troco nunca
+      // desaparece, mas prioriza-se a liquidação antecipada do crédito).
+      const { DebtModel } = await import("../database/models/DebtModel");
+      let remainingOverpay = overpayAmount;
+      const overpayAllocations: Array<{ amortizationLoanId: number; installmentOrder: any; amount: number; fullyPaid: boolean }> = [];
+      if (remainingOverpay > 0 && acceptOverpay) {
+        const pendingInstallments: any[] = await AmorizationLoanModel.findAll({
+          where: {
+            loanId: installment.getDataValue("loanId"),
+            id: { [Op.ne]: Number(amortizationLoanId) },
+            status: { [Op.ne]: 1 }, // ainda não totalmente paga
+          },
+          order: [["installmentOrder", "ASC"]],
+          transaction: t,
+          lock: t.LOCK.UPDATE,
+        });
+        for (const next of pendingInstallments) {
+          if (remainingOverpay <= 0) break;
+          const nextValue = round2(num(next.getDataValue("installment")));
+          const nextPaid = round2(num(next.getDataValue("paidAmount")));
+          const nextOwed = round2(Math.max(0, nextValue - nextPaid));
+          if (nextOwed <= 0) continue;
+          const applyToNext = round2(Math.min(remainingOverpay, nextOwed));
+          const newNextPaid = round2(nextPaid + applyToNext);
+          const nextFull = moneyGte(newNextPaid, nextValue);
+          const nextDebtAmount = round2(Math.max(0, nextValue - newNextPaid));
+          await AmorizationLoanModel.update(
+            {
+              status: nextFull ? 1 : -1,
+              paidAmount: newNextPaid,
+              remainingBalance: nextFull ? 0 : nextDebtAmount,
+            },
+            { where: { id: next.getDataValue("id") }, transaction: t }
+          );
+          // Mesma transacção/recibo original — só regista a alocação na
+          // prestação seguinte (sem duplicar o dinheiro já recebido).
+          await PaymentAllocationModel.create(
+            {
+              payment_id: tranzactionId,
+              amortization_loan_id: Number(next.getDataValue("id")),
+              component: "CAPITAL",
+              amount: applyToNext,
+            },
+            { transaction: t }
+          );
+          if (nextFull) {
+            await DebtModel.destroy({ where: { amortisationId: next.getDataValue("id") }, transaction: t });
+          } else {
+            const nextDebt: any = await DebtModel.findOne({
+              where: { amortisationId: next.getDataValue("id") },
+              transaction: t,
+            });
+            if (nextDebt) {
+              await DebtModel.update(
+                { debtAmount: nextDebtAmount },
+                { where: { id: nextDebt.getDataValue("id") }, transaction: t }
+              );
+            } else {
+              await DebtModel.create(
+                {
+                  companyId: loanCompanyId,
+                  customerId: installment.getDataValue("customerId"),
+                  accountNumber: String(accountNumber),
+                  loanId: realLoanId,
+                  amortisationId: Number(next.getDataValue("id")),
+                  debtAmount: nextDebtAmount,
+                  updatedBy: String(body.staffName || ""),
+                  dateInserted: payDate,
+                },
+                { transaction: t }
+              );
+            }
+          }
+          overpayAllocations.push({
+            amortizationLoanId: Number(next.getDataValue("id")),
+            installmentOrder: next.getDataValue("installmentOrder"),
+            amount: applyToNext,
+            fullyPaid: nextFull,
+          });
+          remainingOverpay = round2(remainingOverpay - applyToNext);
+        }
+      }
+      // Sobra sem prestação seguinte onde abater → crédito a favor do cliente.
+      if (remainingOverpay > 0 && acceptOverpay) {
         await CustomerCreditModel.create(
           {
             company_id: loanCompanyId,
             customer_id: Number(installment.getDataValue("customerId")),
             account_number: Number(accountNumber),
-            amount: overpayAmount,
-            remaining_amount: overpayAmount,
+            amount: remainingOverpay,
+            remaining_amount: remainingOverpay,
             source_payment_id: tranzactionId,
             status: "ACTIVE",
           },
@@ -932,7 +1016,6 @@ const addTranzaction = async (req: Request, res: Response) => {
       );
 
       // ── 13. Dívida parcial — mesma transacção ──
-      const { DebtModel } = await import("../database/models/DebtModel");
       if (!isFullPayment) {
         const existingDebt: any = await DebtModel.findOne({
           where: { amortisationId: Number(amortizationLoanId) },
@@ -978,6 +1061,8 @@ const addTranzaction = async (req: Request, res: Response) => {
             amount: appliedAmount,
             latePaymentInterest,
             overpayAmount,
+            overpayAppliedToNextInstallments: overpayAllocations,
+            overpayAsCredit: remainingOverpay,
             reference: refNormalized,
           },
         },
@@ -1002,6 +1087,8 @@ const addTranzaction = async (req: Request, res: Response) => {
         appliedAmount,
         latePaymentInterest,
         overpayAmount,
+        overpayAppliedToNextInstallments: overpayAllocations,
+        overpayAsCredit: remainingOverpay,
         walletId,
         realLoanId,
         bankAccountId,
@@ -1116,6 +1203,8 @@ const addTranzaction = async (req: Request, res: Response) => {
         applied: result.appliedAmount,
         lateInterest: result.latePaymentInterest,
         overpay: result.overpayAmount,
+        overpayAppliedToNextInstallments: result.overpayAppliedToNextInstallments || [],
+        overpayAsCredit: result.overpayAsCredit || 0,
       },
       recibo: recibo ? { id: Number(recibo.id), numero: recibo.numero, hash: recibo.hash || null, pdf_url: `/api/recibos/${Number(recibo.id)}/pdf`, pdf_path: recibo.pdf_url || null, qr_url: recibo.qr_url || null } : null,
     };
