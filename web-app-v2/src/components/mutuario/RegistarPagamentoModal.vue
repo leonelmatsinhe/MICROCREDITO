@@ -262,12 +262,18 @@ const show = computed({
 
 const paying = ref(false)
 const formRef = ref(null)
-const todayDate = new Date().toISOString().slice(0, 10)
+const localToday = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 const form = ref(defaultForm())
 
 function defaultForm() {
   return {
-    paymentDate: todayDate,
+    paymentDate: localToday(),
     paymentMethod: null,
     paymentReference: '',
     amountReceived: 0,
@@ -358,9 +364,15 @@ const onDateChange = () => {
   }
   fetchQuote()
 }
-// q-date entrega a data ao "options" sempre em "YYYY/MM/DD" (independente da mask),
-// por isso convertemos para "YYYY-MM-DD" antes de comparar com todayDate.
-const dateOptions = (date) => date.replaceAll('/', '-') <= todayDate
+// QDate fornece a data do dia como YYYY/MM/DD; comparar por segmentos evita
+// incompatibilidade de separadores e mantém a data local do sistema.
+const dateOptions = (date) => {
+  const [year, month, day] = date.split('/').map(Number)
+  const [todayYear, todayMonth, todayDay] = localToday().split('-').map(Number)
+  return year < todayYear || (year === todayYear && (
+    month < todayMonth || (month === todayMonth && day <= todayDay)
+  ))
+}
 
 // ── VALIDAÇÕES ──
 const checkReferenceDuplicate = async (val) => {
