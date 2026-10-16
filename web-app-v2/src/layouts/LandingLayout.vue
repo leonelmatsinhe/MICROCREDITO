@@ -8,18 +8,11 @@
     <header class="glass-nav">
       <div class="nav-inner">
         <div class="landing-brand row items-center no-wrap cursor-pointer" @click="goTop">
-          <img src="@/assets/logo.png" alt="Mais Mola" width="36" height="36" class="brand-logo" />
-          <div class="q-ml-sm gt-xs">
-            <div class="landing-brand-name">Mais Mola</div>
-            <div class="landing-brand-sub">Gestão de Microcrédito</div>
-          </div>
+          <img src="@/assets/logo-mbr.jpg" alt="MBR Microcrédito" class="brand-logo" />
+          <div class="landing-brand-name q-ml-sm gt-xs">Gestão de Microcrédito</div>
         </div>
 
         <q-space />
-
-        <nav class="nav-links gt-sm">
-          <a v-for="item in menu" :key="item" href="#" class="nav-link" @click.prevent>{{ item }}</a>
-        </nav>
 
         <q-btn
           unelevated
@@ -46,10 +39,6 @@
     <q-dialog v-model="mobileMenu" position="right" full-height>
       <q-card class="mobile-menu-card" style="width: 260px; max-width: 80vw">
         <q-list padding>
-          <q-item v-for="item in menu" :key="item" clickable v-close-popup @click="goEntrar">
-            <q-item-section>{{ item }}</q-item-section>
-          </q-item>
-          <q-separator class="q-my-sm" />
           <q-item>
             <q-item-section>
               <q-btn unelevated color="green-10" rounded no-caps label="Entrar" v-close-popup @click="goEntrar" />
@@ -82,8 +71,6 @@ const uiStore = useUiStore()
 const isDark = computed(() => uiStore.isDark)
 
 const mobileMenu = ref(false)
-
-const menu = ['Produto', 'Recursos', 'Preços']
 
 function goTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -193,18 +180,19 @@ body.body--dark .glass-nav {
   gap: 10px;
 }
 
-/* O logótipo tem de ficar nítido sobre a navbar de vidro clara: tile branco
-   com contorno e sombra, sem opacidade nem filtro, para o ícone manter a cor. */
+/* Logótipo horizontal (MBR Microcrédito): altura fixa e largura automática, para
+   não deformar a imagem. O JPG já traz fundo branco — daí o raio e a sombra,
+   que o destacam da navbar de vidro sem precisar de moldura. */
 .brand-logo {
-  border-radius: 10px;
+  height: 38px;
+  width: auto;
+  border-radius: 8px;
   object-fit: contain;
-  background: #ffffff;
-  padding: 3px;
   box-shadow: 0 1px 4px rgba(11, 61, 46, 0.22);
   outline: 1px solid rgba(11, 61, 46, 0.12);
 }
 
-/* Classes próprias (não `.brand-name`/`.brand-sub`): a sidebar do staff define
+/* Classe própria (não `.brand-name`): a sidebar do staff define
    `.brand-name { color: #fff }` em CSS GLOBAL e, como a página de login monta a
    sidebar, o nome da marca ficava branco sobre a navbar clara — daí o aspecto
    desbotado. Com nome próprio o header ganha contraste garantido. */
@@ -216,40 +204,7 @@ body.body--dark .glass-nav {
   letter-spacing: 0.1px;
 }
 
-/* «Gestão de Microcrédito» em verde escuro (#14532D), peso 600 — legível sobre
-   a navbar de vidro, sem depender da cor herdada. */
-.landing-brand-sub {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.25px;
-  color: #14532d;
-  line-height: 1.25;
-}
-
 body.body--dark .landing-brand-name { color: #ffffff; }
-body.body--dark .landing-brand-sub { color: rgba(255, 255, 255, 0.78); }
-
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  margin-left: 32px;
-}
-
-.nav-link {
-  font-size: 13px;
-  font-weight: 500;
-  color: #24425a;
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.nav-link:hover {
-  color: #0b3d2e;
-}
-
-body.body--dark .nav-link { color: rgba(255, 255, 255, 0.75); }
-body.body--dark .nav-link:hover { color: #bfff00; }
 
 .entrar-btn {
   box-shadow: 0 8px 20px rgba(11, 61, 46, 0.25);
