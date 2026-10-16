@@ -6,12 +6,7 @@
           <!-- ============ COLUNA ESQUERDA — MARKETING ============ -->
           <div class="col-12 col-md-6">
             <div class="hero-copy">
-              <q-badge color="lime" text-color="green-10" rounded class="cert-badge q-pa-sm">
-                <q-icon name="verified" size="14px" class="q-mr-xs" />
-                ✓ Certificado AT 2026 • REC-{{ currentYear }}-84321
-              </q-badge>
-
-              <h1 class="hero-title text-h2 text-weight-bolder q-mt-md q-mb-none">
+              <h1 class="hero-title text-h2 text-weight-bolder q-mb-none">
                 Gestão de microcrédito<br />
                 <span class="hero-title-accent">simples, segura</span> e eficiente
               </h1>
@@ -183,11 +178,8 @@
 
               <q-separator class="q-my-md" style="opacity: 0.4" />
 
-              <!-- Rodapé: selo de segurança + copyright -->
+              <!-- Rodapé: copyright -->
               <div class="column items-center q-gutter-xs">
-                <q-chip outline color="green-9" text-color="green-10" icon="lock" size="12px" class="security-chip">
-                  UUIDv7 • SHA-256 • QR Code AT
-                </q-chip>
                 <div class="text-caption text-grey-6" style="font-size: 11px">
                   © {{ currentYear }} Mais Mola
                 </div>
@@ -882,13 +874,6 @@ async function handleCustomerLogin() {
   max-width: 560px;
 }
 
-.cert-badge {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  box-shadow: 0 4px 14px rgba(11, 61, 46, 0.18);
-}
-
 .hero-title {
   color: #0b3d2e;
   line-height: 1.15 !important;
@@ -978,10 +963,6 @@ body.body--dark .login-glass-card .text-h6 {
 .register-link .text-underline {
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-.security-chip {
-  border-radius: 20px;
 }
 
 .login-error {

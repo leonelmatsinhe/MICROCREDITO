@@ -7,11 +7,11 @@
     <!-- ===================== NAVBAR GLASS ===================== -->
     <header class="glass-nav">
       <div class="nav-inner">
-        <div class="brand row items-center no-wrap cursor-pointer" @click="goTop">
+        <div class="landing-brand row items-center no-wrap cursor-pointer" @click="goTop">
           <img src="@/assets/logo.png" alt="Mais Mola" width="36" height="36" class="brand-logo" />
           <div class="q-ml-sm gt-xs">
-            <div class="brand-name">Mais Mola</div>
-            <div class="brand-sub">Gestão de Microcrédito</div>
+            <div class="landing-brand-name">Mais Mola</div>
+            <div class="landing-brand-sub">Gestão de Microcrédito</div>
           </div>
         </div>
 
@@ -83,7 +83,7 @@ const isDark = computed(() => uiStore.isDark)
 
 const mobileMenu = ref(false)
 
-const menu = ['Produto', 'Recursos', 'Segurança AT', 'Preços']
+const menu = ['Produto', 'Recursos', 'Preços']
 
 function goTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -185,29 +185,49 @@ body.body--dark .glass-nav {
   align-items: center;
 }
 
+/* Header da landing sem colidir com a sidebar: lá `.brand` traz padding e
+   min-height de menu lateral, que não pertencem a este cabeçalho. */
+.landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* O logótipo tem de ficar nítido sobre a navbar de vidro clara: tile branco
+   com contorno e sombra, sem opacidade nem filtro, para o ícone manter a cor. */
 .brand-logo {
   border-radius: 10px;
   object-fit: contain;
-  background: white;
+  background: #ffffff;
   padding: 3px;
+  box-shadow: 0 1px 4px rgba(11, 61, 46, 0.22);
+  outline: 1px solid rgba(11, 61, 46, 0.12);
 }
 
-.brand-name {
+/* Classes próprias (não `.brand-name`/`.brand-sub`): a sidebar do staff define
+   `.brand-name { color: #fff }` em CSS GLOBAL e, como a página de login monta a
+   sidebar, o nome da marca ficava branco sobre a navbar clara — daí o aspecto
+   desbotado. Com nome próprio o header ganha contraste garantido. */
+.landing-brand-name {
   font-size: 15px;
-  font-weight: 700;
-  color: #0b3d2e;
+  font-weight: 800;
+  color: #0b4d2e;
   line-height: 1.2;
+  letter-spacing: 0.1px;
 }
 
-.brand-sub {
-  font-size: 10px;
-  letter-spacing: 0.4px;
-  color: #4a5b68;
-  line-height: 1.2;
+/* «Gestão de Microcrédito» em verde escuro (#14532D), peso 600 — legível sobre
+   a navbar de vidro, sem depender da cor herdada. */
+.landing-brand-sub {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.25px;
+  color: #14532d;
+  line-height: 1.25;
 }
 
-body.body--dark .brand-name { color: #ffffff; }
-body.body--dark .brand-sub { color: rgba(255, 255, 255, 0.6); }
+body.body--dark .landing-brand-name { color: #ffffff; }
+body.body--dark .landing-brand-sub { color: rgba(255, 255, 255, 0.78); }
 
 .nav-links {
   display: flex;
