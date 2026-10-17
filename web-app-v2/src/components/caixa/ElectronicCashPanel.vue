@@ -35,6 +35,16 @@
               </template>
             </div>
           </div>
+          <q-btn
+            flat
+            no-caps
+            icon="picture_as_pdf"
+            label="Relatório do Dia"
+            :loading="loadingReport"
+            @click="exportReport"
+          >
+            <q-tooltip>Reconciliação bancária do dia por conta (PDF)</q-tooltip>
+          </q-btn>
           <q-btn flat no-caps icon="history" label="Histórico" @click="$router.push('/caixa/historico')" />
         </q-card-section>
       </q-card>
@@ -239,7 +249,15 @@
             label="Observações (opcional)"
             hint="Ex.: transferência ainda em trânsito, comissão bancária, etc."
           />
-          <div class="row justify-end">
+          <div class="row justify-end q-gutter-sm">
+            <q-btn
+              flat
+              no-caps
+              icon="picture_as_pdf"
+              label="Relatório do Dia"
+              :loading="loadingReport"
+              @click="exportReport"
+            />
             <q-btn
               color="negative"
               unelevated
@@ -317,6 +335,7 @@ const $q = useQuasar()
 const loading = ref(false)
 const loadingView = ref(false)
 const loadingAccounts = ref(false)
+const loadingReport = ref(false)
 const saving = ref(false)
 
 const accounts = ref([])
@@ -421,6 +440,85 @@ async function loadView() {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao carregar o dia electrónico', position: 'top' })
   } finally {
     loadingView.value = false
+  }
+}
+
+/**
+ * RELATÓRIO DO DIA — RECONCILIAÇÃO BANCÁRIA POR CONTA (PDF no backend).
+ * Saldo inicial, movimentos do sistema, saldo teórico, saldo real do banco e
+ * diferença de cada conta com actividade no dia + linha de totais.
+ */
+async function exportReport() {
+  loadingReport.value = true
+  try {
+    const { data } = await api.get('/api/cash-register/electronic/report', { params: { date: day.value } })
+    const report = data?.result
+    if (!data?.success || !report) {
+      $q.notify({ type: 'negative', message: data?.message || 'Erro ao obter o relatório do dia', position: 'top' })
+      return
+    }
+    if (!report.accounts.length) {
+      $q.notify({
+        type: 'warning',
+        message: 'Sem movimentos nem dia aberto em nenhuma conta nesta data.',
+        position: 'top'
+      })
+      return
+    }
+
+    const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
+    const payload = {
+      title: `Reconciliação Bancária Diária — ${formatDay(report.day)}`,
+      subtitle: 'Caixa Electrónico Manual — saldos por conta bancária',
+      meta: [
+        `Data: ${formatDay(report.day)}`,
+        `Contas com actividade: ${report.accounts.length}`,
+        `Contas reconciliadas: ${report.totals.contas_reconciliadas}`
+      ],
+      columns: [
+        { label: 'Conta bancária', width: 170 },
+        { label: 'Mov.', width: 40, align: 'center' },
+        { label: 'Estado', width: 80, align: 'center' },
+        { label: 'Saldo inicial', width: 80, align: 'right' },
+        { label: 'Entradas', width: 75, align: 'right' },
+        { label: 'Saídas', width: 75, align: 'right' },
+        { label: 'Saldo teórico', width: 80, align: 'right' },
+        { label: 'Saldo real (banco)', width: 85, align: 'right' },
+        { label: 'Diferença', width: 80, align: 'right' }
+      ],
+      rows: report.accounts.map((line) => [
+        line.conta,
+        line.movimentos,
+        line.estado,
+        line.saldo_inicial,
+        line.entradas,
+        line.saidas,
+        line.saldo_teorico,
+        line.saldo_real,
+        line.diferenca
+      ]),
+      totalsRow: [
+        'TOTAL',
+        '',
+        '',
+        report.totals.saldo_inicial,
+        report.totals.entradas,
+        report.totals.saidas,
+        report.totals.saldo_teorico,
+        report.totals.saldo_real,
+        report.totals.diferenca
+      ],
+      orientation: 'landscape',
+      filename: `reconciliacao-bancaria-${report.day}`
+    }
+
+    await downloadTablePdf(payload, `${payload.filename}.pdf`)
+    $q.notify({ type: 'positive', message: 'Relatório do dia gerado.', position: 'top' })
+  } catch (error) {
+    const { tablePdfError } = await import('@/utils/tablePdf')
+    $q.notify({ type: 'negative', message: await tablePdfError(error, 'Erro ao gerar o relatório'), position: 'top' })
+  } finally {
+    loadingReport.value = false
   }
 }
 

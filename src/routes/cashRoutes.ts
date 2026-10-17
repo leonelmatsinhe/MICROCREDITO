@@ -24,6 +24,7 @@ import {
   getCashMode,
   updateCashMode,
   getElectronicToday,
+  getElectronicReport,
   openElectronicDayHandler,
   reconcileElectronicHandler,
 } from "../controllers/CashRegisterController";
@@ -67,6 +68,9 @@ const cashRoutes = Router();
 cashRoutes.get("/api/cash-register/mode", auth, getCashMode);
 cashRoutes.put("/api/cash-register/mode", auth, isCompanyAdmin, updateCashMode);
 cashRoutes.get("/api/cash-register/electronic/today", auth, isCompanyAdmin, getElectronicToday);
+// Reconciliação bancária do dia POR CONTA (saldo inicial, movimentos, teórico,
+// real e diferença) — dados que alimentam o PDF do relatório.
+cashRoutes.get("/api/cash-register/electronic/report", auth, isCompanyAdmin, getElectronicReport);
 cashRoutes.post("/api/cash-register/electronic/open-day", auth, isCompanyAdmin, openElectronicDayHandler);
 cashRoutes.post("/api/cash-register/electronic/reconcile", auth, isCompanyAdmin, reconcileElectronicHandler);
 

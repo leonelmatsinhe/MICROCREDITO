@@ -186,6 +186,117 @@ export const buildElectronicDayView = async (params: {
 };
 
 /**
+ * RELATÓRIO DO DIA — RECONCILIAÇÃO BANCÁRIA (por conta).
+ *
+ * Uma linha por conta bancária com actividade no dia (movimentos automáticos
+ * do sistema ou dia aberto/reconciliado): saldo inicial introduzido à mão,
+ * entradas, saídas, saldo teórico, saldo real lido no banco e diferença.
+ * Contas sem movimento nem dia aberto ficam de fora (o relatório é do dia).
+ *
+ * Devolve dados puros — o PDF é gerado no backend por /api/reports/table-pdf,
+ * como todos os restantes documentos do sistema.
+ */
+export const buildElectronicReconciliationReport = async (companyId: number, day?: string) => {
+  const reportDay = dayKey(day);
+
+  const accounts: any[] = (await AccountModel.findAll({
+    where: { companyId },
+    order: [["is_active", "DESC"], ["bank_name", "ASC"], ["id", "ASC"]],
+  })) as any[];
+
+  // Um registo por conta (o mais recente do dia — o reconciliado, se existir).
+  const registers: any[] = (await CashRegisterModel.findAll({
+    where: { companyId, opening_date: reportDay, mode: "ELECTRONIC" },
+    order: [["id", "DESC"]],
+  })) as any[];
+  const registerByAccount = new Map<number, any>();
+  registers.forEach((register: any) => {
+    const accountId = Number(register.getDataValue("bank_account_id"));
+    if (accountId && !registerByAccount.has(accountId)) {
+      registerByAccount.set(accountId, registerPlain(register));
+    }
+  });
+
+  const lines: any[] = [];
+  for (const account of accounts) {
+    const accountId = Number(account.getDataValue("id"));
+    const register = registerByAccount.get(accountId) || null;
+    const flows = await getAccountDayFlows(companyId, accountId, reportDay);
+    const hasActivity = !!register || flows.movements.length > 0;
+    if (!hasActivity) continue;
+
+    const saldoInicial = register ? round2(register.manual_balance_start || 0) : 0;
+    const teorico =
+      register && register.status === "FECHADO" && register.closing_balance_calculated != null
+        ? round2(register.closing_balance_calculated)
+        : round2(saldoInicial + flows.entradas - flows.saidas);
+    const saldoReal = register && register.manual_balance_end != null ? round2(register.manual_balance_end) : null;
+    const diferenca = saldoReal != null ? round2(saldoReal - teorico) : null;
+
+    lines.push({
+      accountId,
+      conta: `${String(account.getDataValue("bank_name") || "Conta").trim()} ${String(
+        account.getDataValue("accountNumber") || ""
+      ).trim()}`.trim(),
+      bank_name: account.getDataValue("bank_name") || "",
+      accountNumber: account.getDataValue("accountNumber") || "",
+      type: account.getDataValue("type") || "",
+      is_active: Number(account.getDataValue("is_active")) ? 1 : 0,
+      estado:
+        !register
+          ? "SEM DIA ABERTO"
+          : register.status === "ABERTO"
+            ? "ABERTO"
+            : saldoReal == null
+              ? "FECHADO"
+              : Math.abs(diferenca || 0) < 0.01
+                ? "CONFORME"
+                : (diferenca || 0) > 0
+                  ? "SOBRA"
+                  : "QUEBRA",
+      saldo_inicial: saldoInicial,
+      entradas: flows.entradas,
+      saidas: flows.saidas,
+      movimentos: flows.movements.length,
+      saldo_teorico: teorico,
+      saldo_real: saldoReal,
+      diferenca,
+      registerId: register?.id ?? null,
+      observations: register?.observations ?? null,
+    });
+  }
+
+  const totals = lines.reduce(
+    (acc, line) => {
+      acc.saldo_inicial = round2(acc.saldo_inicial + line.saldo_inicial);
+      acc.entradas = round2(acc.entradas + line.entradas);
+      acc.saidas = round2(acc.saidas + line.saidas);
+      acc.saldo_teorico = round2(acc.saldo_teorico + line.saldo_teorico);
+      if (line.saldo_real != null) {
+        acc.saldo_real = round2((acc.saldo_real || 0) + line.saldo_real);
+        acc.contas_reconciliadas += 1;
+      }
+      if (line.diferenca != null) acc.diferenca = round2((acc.diferenca || 0) + line.diferenca);
+      return acc;
+    },
+    { saldo_inicial: 0, entradas: 0, saidas: 0, saldo_teorico: 0, saldo_real: 0, diferenca: 0, contas_reconciliadas: 0 }
+  );
+
+  return {
+    day: reportDay,
+    accounts: lines,
+    totals: {
+      ...totals,
+      contas: lines.length,
+      // Diferença total só faz sentido entre contas já reconciliadas: sem
+      // nenhuma reconciliada, fica sem valor (não é zero).
+      diferenca: totals.contas_reconciliadas > 0 ? totals.diferenca : null,
+      saldo_real: totals.contas_reconciliadas > 0 ? totals.saldo_real : null,
+    },
+  };
+};
+
+/**
  * POST /api/cash-register/electronic/open-day
  * Abre o dia electrónico contra uma conta bancária já existente.
  */

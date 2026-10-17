@@ -95,9 +95,11 @@ const setupDatabase = async () => {
   const [companyInsertId] = await db.query(
     `INSERT INTO companies
        (companyName, companyEmail, companyWebsite, companyManager, companyNuit, companyPhone,
-        districtId, provinceId, forfeit, companyAddress, companyStatus, createdAt, updatedAt)
+        districtId, provinceId, forfeit, companyAddress, companyStatus, cash_register_mode,
+        createdAt, updatedAt)
      VALUES (?, ?, '', 'Teste Alçadas', '000000001', '840000002',
-        155, 1, 0, 'Teste', 1, NOW(), NOW())`,
+        155, 1, 0, 'Teste', 1, 'PHYSICAL', NOW(), NOW())`,
+    // cash_register_mode: o desembolso aqui testado exige caixa aberto (PHYSICAL).
     { replacements: ["TESTE ALCADAS (apagar)", "teste.alcadas@local.invalid"] }
   );
   companyId = Number(companyInsertId);

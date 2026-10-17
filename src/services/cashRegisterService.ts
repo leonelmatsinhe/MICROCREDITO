@@ -271,6 +271,15 @@ export const openRegister = async (params: {
 }): Promise<any> => {
   const { userId, companyId } = params;
 
+  // ── MODO ELECTRÓNICO: o caixa de numerário está desactivado ──
+  // A empresa gere o dia por conta bancária; ABRIR caixa físico aqui criaria
+  // um registo paralelo que o modo electrónico não reconcilia. O operador é
+  // encaminhado para Configurações → Caixa.
+  const { isElectronicCashMode, PHYSICAL_MODE_REQUIRED_MESSAGE } = await import("./cashModeService");
+  if (await isElectronicCashMode(companyId)) {
+    throw { code: "INVALID_MODE", message: PHYSICAL_MODE_REQUIRED_MESSAGE };
+  }
+
   // Uma contagem enviada é sempre autoritária (mesmo que dê 0 unidades: o
   // operador está a dizer que não há dinheiro na gaveta).
   const hasDenominations = params.denominations !== undefined && params.denominations !== null;
@@ -392,6 +401,12 @@ export const closeRegister = async (params: {
       code: "INVALID_CLOSING_TYPE",
       message: `Tipo de fecho inválido: ${params.tipoFechamento}. Use ${CASH_CLOSING_TYPES.join(", ")}.`,
     };
+  }
+
+  // ── MODO ELECTRÓNICO: fecho de caixa de numerário está desactivado ──
+  const { isElectronicCashMode, PHYSICAL_MODE_REQUIRED_MESSAGE } = await import("./cashModeService");
+  if (await isElectronicCashMode(companyId)) {
+    throw { code: "INVALID_MODE", message: PHYSICAL_MODE_REQUIRED_MESSAGE };
   }
 
   const register: any = await CashRegisterModel.findOne({

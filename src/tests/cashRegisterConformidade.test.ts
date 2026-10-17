@@ -91,9 +91,12 @@ const setupDatabase = async () => {
   const [companyInsertId] = await db.query(
     `INSERT INTO companies
        (companyName, companyEmail, companyWebsite, companyManager, companyNuit, companyPhone,
-        districtId, provinceId, forfeit, companyAddress, companyStatus, createdAt, updatedAt)
+        districtId, provinceId, forfeit, companyAddress, companyStatus, cash_register_mode,
+        createdAt, updatedAt)
      VALUES (?, ?, '', 'Teste Conformidade', '000000000', '840000000',
-        155, 1, 0, 'Teste', 1, NOW(), NOW())`,
+        155, 1, 0, 'Teste', 1, 'PHYSICAL', NOW(), NOW())`,
+    // cash_register_mode: esta suite valida o CAIXA DE NUMERÁRIO, que só existe
+    // em modo PHYSICAL (em ELECTRONIC a abertura/fecho são recusados — ver [9]).
     { replacements: ["TESTE CAIXA BM (apagar)", "teste.caixa@local.invalid"] }
   );
   companyId = Number(companyInsertId);
@@ -629,6 +632,49 @@ const main = async () => {
       : "  · PDF com streams comprimidos: o título não é legível nos bytes (verificado no código do frontend)"
   );
 
+  // ── 9. MODO ELECTRÓNICO: caixa de numerário bloqueado ──────────────────
+  console.log("\n[9] Modo ELECTRÓNICO — abertura/fecho do caixa físico bloqueados");
+  await db.query("UPDATE companies SET cash_register_mode = 'ELECTRONIC' WHERE id = ?", {
+    replacements: [companyId],
+  });
+
+  const modoElectronico = await call("/api/cash-register/mode");
+  checkEqual(modoElectronico.body?.result?.mode, "ELECTRONIC", "modo da empresa passa a ELECTRONIC");
+
+  const aberturaBloqueada = await openRegister(adminToken, { "100": 1 });
+  checkEqual(aberturaBloqueada.status, 400, "abertura de caixa físico recusada (400)");
+  checkEqual(aberturaBloqueada.body?.error, "INVALID_MODE", "abertura falha com INVALID_MODE");
+  check(
+    String(aberturaBloqueada.body?.message || "").includes("Configurações"),
+    "mensagem da abertura explica onde voltar ao modo FÍSICO (Configurações → Caixa)"
+  );
+
+  const fechoBloqueado = await call(`/api/cash-registers/${gestorRegisterId}/close`, {
+    method: "POST",
+    body: { denominations: { "100": 1 } },
+  });
+  checkEqual(fechoBloqueado.status, 400, "fecho de caixa físico recusado (400)");
+  checkEqual(fechoBloqueado.body?.error, "INVALID_MODE", "fecho falha com INVALID_MODE");
+  check(
+    String(fechoBloqueado.body?.message || "").includes("Configurações"),
+    "mensagem do fecho explica onde voltar ao modo FÍSICO (Configurações → Caixa)"
+  );
+
+  // Relatório do dia por conta (dados do PDF) — continua disponível em ELECTRONIC
+  const hoje = new Date().toISOString().slice(0, 10);
+  const relatorio = await call(`/api/cash-register/electronic/report?date=${hoje}`);
+  checkEqual(relatorio.status, 200, "relatório de reconciliação bancária responde 200");
+  check(
+    Array.isArray(relatorio.body?.result?.accounts) && !!relatorio.body?.result?.totals,
+    "relatório devolve contas + totais do dia"
+  );
+
+  // Restaurar PHYSICAL para a empresa temporária terminar como começou.
+  await db.query("UPDATE companies SET cash_register_mode = 'PHYSICAL' WHERE id = ?", {
+    replacements: [companyId],
+  });
+  const modoFisico = await call("/api/cash-register/mode");
+  checkEqual(modoFisico.body?.result?.mode, "PHYSICAL", "modo restaurado para PHYSICAL");
 };
 
 /**

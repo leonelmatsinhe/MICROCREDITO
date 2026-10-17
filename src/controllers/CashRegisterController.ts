@@ -865,6 +865,29 @@ export const getElectronicToday = async (req: Request, res: Response) => {
 };
 
 /**
+ * GET /api/cash-register/electronic/report?date=YYYY-MM-DD
+ * Reconciliação bancária do dia POR CONTA: saldo inicial, entradas, saídas,
+ * saldo teórico, saldo real e diferença (Admin).
+ */
+export const getElectronicReport = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = await resolveIdentity(req);
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const { buildElectronicReconciliationReport } = await import("../services/electronicCashService");
+    const result = await buildElectronicReconciliationReport(Number(companyId), (req.query as any)?.date);
+    return res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    if (error?.code) {
+      return res.status(errorStatus(error)).json(errorBody(error));
+    }
+    console.error("[cash-register/electronic/report] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao gerar o relatório de reconciliação." });
+  }
+};
+
+/**
  * POST /api/cash-register/electronic/open-day
  * Body: { bank_account_id, manual_balance_start, date? }
  */

@@ -31,6 +31,15 @@ export const getCashRegisterMode = async (companyId: number): Promise<CashRegist
   );
 };
 
+/**
+ * Mensagem única do bloqueio de caixa físico em modo ELECTRÓNICO — diz sempre
+ * ao operador PORQUE está bloqueado e ONDE se volta a ligar o caixa físico.
+ */
+export const PHYSICAL_MODE_REQUIRED_MESSAGE =
+  "O caixa de numerário está desactivado: a empresa está em modo ELECTRÓNICO " +
+  "(reconciliação por conta bancária). Para abrir ou fechar o caixa físico, " +
+  "altere o modo de caixa para FÍSICO em Configurações → Caixa.";
+
 /** true quando a empresa exige caixa físico aberto. */
 export const isPhysicalCashMode = async (companyId: number): Promise<boolean> =>
   (await getCashRegisterMode(companyId)) === "PHYSICAL";
