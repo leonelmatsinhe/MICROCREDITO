@@ -649,6 +649,20 @@ export const prepareLoanDisbursement = async (params: {
       `Só um crédito aprovado pode ser preparado para desembolso (estado actual: ${approvalStateLabel(state)}).`
     );
   }
+
+  // ── GARANTIAS: a fila de desembolso só recebe créditos com garantias ──
+  // Revalidado aqui (e não só na aprovação) porque as garantias podem ser
+  // eliminadas depois de aprovadas — o desembolso não pode acontecer sem a
+  // base de análise registada.
+  const coverage = await getGuaranteeCoverage({ loan });
+  if (!coverage.covered) {
+    throw new ApprovalError(
+      400,
+      coverage.reason === "NO_GUARANTEES" ? "GARANTIAS_AUSENTES" : "GUARANTEE_COVERAGE",
+      guaranteeCoverageMessage(coverage)
+    );
+  }
+
   await recordEvent({
     loan,
     event: APPROVAL_EVENTS.PREPARACAO_DESEMBOLSO,

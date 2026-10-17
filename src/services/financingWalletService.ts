@@ -408,6 +408,82 @@ export const getWalletTotalsSummary = async (companyId: number) => {
 };
 
 /**
+ * MOVIMENTO DO PERÍODO (filtro de datas do Painel).
+ *
+ * Os KPIs das carteiras são cumulativos (capital alocado, disponível, saldo a
+ * receber) — um intervalo de datas não os pode alterar. O que o filtro PODE
+ * limitar é o movimento: desembolsos do período e recebimentos/juros/mora
+ * recebidos no período. É este bloco que dá sentido ao filtro do painel.
+ *
+ * Datas em ISO (YYYY-MM-DD). `disbursementDate`/`paymentDate` são strings ISO,
+ * pelo que a comparação lexicográfica é equivalente à comparação de datas.
+ */
+export type WalletPeriodMovement = {
+  from: string;
+  to: string;
+  desembolsado: number;
+  recebido: number;
+  juros: number;
+  mora: number;
+  num_creditos: number;
+  num_pagamentos: number;
+};
+
+export const getWalletPeriodMovement = async (
+  companyId: number,
+  from: string,
+  to: string
+): Promise<WalletPeriodMovement> => {
+  const empty: WalletPeriodMovement = {
+    from,
+    to,
+    desembolsado: 0,
+    recebido: 0,
+    juros: 0,
+    mora: 0,
+    num_creditos: 0,
+    num_pagamentos: 0,
+  };
+
+  try {
+    const [loans]: any = await db.query(
+      `SELECT COUNT(*) AS creditos, IFNULL(SUM(amount), 0) AS desembolsado
+         FROM customer_loans
+        WHERE companyId = ? AND status IN (1, 3)
+          AND disbursementDate IS NOT NULL
+          AND disbursementDate >= ? AND disbursementDate <= ?`,
+      { replacements: [companyId, from, to] }
+    );
+    const [payments]: any = await db.query(
+      `SELECT COUNT(*) AS pagamentos,
+              IFNULL(SUM(amount), 0) AS recebido,
+              IFNULL(SUM(interestRateAmount), 0) AS juros,
+              IFNULL(SUM(IFNULL(mora_amount, 0)), 0) AS mora
+         FROM tranzactions
+        WHERE companyId = ? AND paymentDate IS NOT NULL
+          AND paymentDate >= ? AND paymentDate <= ?`,
+      { replacements: [companyId, from, to] }
+    );
+
+    const loanRow: any = (loans as any[])[0] || {};
+    const payRow: any = (payments as any[])[0] || {};
+
+    return {
+      ...empty,
+      desembolsado: round2(num(loanRow.desembolsado)),
+      num_creditos: num(loanRow.creditos),
+      recebido: round2(num(payRow.recebido)),
+      juros: round2(num(payRow.juros)),
+      mora: round2(num(payRow.mora)),
+      num_pagamentos: num(payRow.pagamentos),
+    };
+  } catch (error: any) {
+    console.error("[Carteiras] Erro no movimento do período:", error?.message || error);
+    return empty;
+  }
+};
+
+/**
  * Saldo REAL disponível para desembolsos: soma das contas activas com purpose
  * DESEMBOLSO ou MISTO (é de lá que sai o dinheiro entregue ao cliente).
  */

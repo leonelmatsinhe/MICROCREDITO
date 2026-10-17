@@ -33,6 +33,23 @@ const CashRegisterController_1 = require("../controllers/CashRegisterController"
  */
 const cashRoutes = (0, express_1.Router)();
 exports.cashRoutes = cashRoutes;
+// ── MODO DE CAIXA DA EMPRESA ──
+// PHYSICAL = caixa de numerário (fluxo anterior, inalterado);
+// ELECTRONIC = reconciliação manual por conta bancária JÁ EXISTENTE (accounts),
+// sem exigir caixa aberto para desembolsar ou receber.
+//  GET /api/cash-register/mode
+//  PUT /api/cash-register/mode                 (Admin)
+//  GET /api/cash-register/electronic/today     (Admin)
+//  POST /api/cash-register/electronic/open-day (Admin)
+//  POST /api/cash-register/electronic/reconcile(Admin)
+cashRoutes.get("/api/cash-register/mode", auth_1.auth, CashRegisterController_1.getCashMode);
+cashRoutes.put("/api/cash-register/mode", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.updateCashMode);
+cashRoutes.get("/api/cash-register/electronic/today", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.getElectronicToday);
+// Reconciliação bancária do dia POR CONTA (saldo inicial, movimentos, teórico,
+// real e diferença) — dados que alimentam o PDF do relatório.
+cashRoutes.get("/api/cash-register/electronic/report", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.getElectronicReport);
+cashRoutes.post("/api/cash-register/electronic/open-day", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.openElectronicDayHandler);
+cashRoutes.post("/api/cash-register/electronic/reconcile", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.reconcileElectronicHandler);
 cashRoutes.get("/api/cash-registers/today", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.getToday);
 // RECONCILIAÇÃO DO DIA — 3 fontes: tranzactions vs caixa vs recibos. ANTES de "/:id".
 cashRoutes.get("/api/cash-registers/reconciliation", auth_1.auth, roles_1.isCompanyAdmin, CashRegisterController_1.getReconciliation);

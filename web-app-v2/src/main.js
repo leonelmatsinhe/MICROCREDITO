@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import { Quasar, Notify, Dialog, Loading } from 'quasar'
+import pt from 'quasar/lang/pt'
 import { createPinia } from 'pinia'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
 
@@ -28,6 +29,8 @@ app.use(Quasar, {
     Dialog,
     Loading
   },
+  // Datas e calendários em português (o painel usa datas em todo o lado).
+  lang: pt,
   config: {
     brand: {
       primary: '#0D7C3D',

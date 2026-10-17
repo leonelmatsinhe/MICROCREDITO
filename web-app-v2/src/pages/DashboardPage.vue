@@ -2,8 +2,50 @@
   <q-page class="dashboard-page q-pa-md">
     <!-- ═══════ FILTROS ═══════ -->
     <div class="glass-wrap q-mb-md" data-tour="dash-filters">
-      <FiltersBar @filter="onFilter" @clear="onClear" @sync="onSync" />
+      <FiltersBar
+        v-model="filter"
+        :loading="loading"
+        @apply="onApplyFilter"
+        @refresh="onSync"
+      />
     </div>
+
+    <!-- ═══════ MOVIMENTO DO PERÍODO ═══════
+         Os cartões abaixo são ACUMULADOS (capital alocado, desembolsado total,
+         saldo a receber). O filtro de datas não os pode alterar — por isso o
+         seu efeito é mostrado aqui, sobre o movimento do período escolhido. -->
+    <q-card v-if="periodMovement" flat class="period-card q-mb-md">
+      <q-card-section class="row items-center q-py-xs q-px-md q-col-gutter-sm">
+        <div class="col-auto row items-center no-wrap">
+          <q-icon name="event_available" size="18px" color="green-9" class="q-mr-xs" />
+          <span class="text-caption text-weight-bold">Movimento do período</span>
+          <q-chip dense square outline color="green-9" class="q-ml-sm period-chip">
+            {{ periodLabel }}
+          </q-chip>
+        </div>
+        <q-space />
+        <div class="col-auto period-metric">
+          <span class="period-metric-label">Desembolsado</span>
+          <span class="period-metric-value">{{ money(periodMovement.desembolsado) }}</span>
+          <span class="period-metric-sub">{{ Number(periodMovement.num_creditos) || 0 }} crédito(s)</span>
+        </div>
+        <div class="col-auto period-metric">
+          <span class="period-metric-label">Reembolsado</span>
+          <span class="period-metric-value text-positive">{{ money(periodMovement.recebido) }}</span>
+          <span class="period-metric-sub">{{ Number(periodMovement.num_pagamentos) || 0 }} pagamento(s)</span>
+        </div>
+        <div class="col-auto period-metric">
+          <span class="period-metric-label">Juros recebidos</span>
+          <span class="period-metric-value">{{ money(periodMovement.juros) }}</span>
+        </div>
+        <div class="col-auto period-metric">
+          <span class="period-metric-label">Mora recebida</span>
+          <span class="period-metric-value" :class="Number(periodMovement.mora) > 0 ? 'text-deep-orange' : ''">
+            {{ money(periodMovement.mora) }}
+          </span>
+        </div>
+      </q-card-section>
+    </q-card>
 
     <!-- ═══════ CARREGAMENTO ═══════ -->
     <div v-if="loading && !summary" class="text-center q-pa-xl">
@@ -157,11 +199,19 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useQuasar } from 'quasar'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useWalletsStore } from '@/stores/wallets'
+import {
+  describePeriod,
+  filterToQuery,
+  monthsInRange,
+  resolveFilterFromQuery,
+  sameFilter
+} from '@/utils/period'
 import FiltersBar from '@/components/ui/FiltersBar.vue'
 import WalletsCharts from '@/components/charts/WalletsCharts.vue'
 import UpcomingTable from '@/components/ui/UpcomingTable.vue'
@@ -174,9 +224,15 @@ import UpcomingTable from '@/components/ui/UpcomingTable.vue'
  * consolidado aparece apenas como resumo das carteiras.
  */
 const $q = useQuasar()
+const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
 const walletsStore = useWalletsStore()
+
+/** Filtro aplicado — vive na URL, por isso sobrevive a F5 e ao voltar/avançar. */
+const filter = ref(resolveFilterFromQuery(route.query))
+const periodLabel = computed(() => describePeriod(filter.value))
 
 const loading = computed(() => walletsStore.loading)
 const wallets = computed(() => walletsStore.wallets)
@@ -185,6 +241,8 @@ const saldoRealDisponivel = computed(() => Number(walletsStore.saldoReal?.availa
 const seriesMeses = computed(() => walletsStore.series?.meses || [])
 const seriesCarteiras = computed(() => walletsStore.series?.porCarteira || [])
 const upcomingInstallments = computed(() => dashboardStore.upcomingInstallments)
+// Movimento dentro do período (null quando o filtro é "todo o histórico").
+const periodMovement = computed(() => walletsStore.walletDashboard?.periodo || null)
 
 const money = (value) =>
   `${(Number(value) || 0).toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MZN`
@@ -238,7 +296,9 @@ const generalKpis = computed(() => {
       icon: 'account_balance',
       tone: 'blue',
       progress: Math.min(alocado / maxBase, 1),
-      trend: trend === null ? null : Number(trend.toFixed(1))
+      // O chip "vs mês anterior" só faz sentido na leitura mensal — nos outros
+      // períodos seria comparar coisas diferentes.
+      trend: filter.value.period === 'month' && trend !== null ? Number(trend.toFixed(1)) : null
     },
     {
       label: 'Desembolsado (todas as carteiras)',
@@ -247,7 +307,7 @@ const generalKpis = computed(() => {
       icon: 'arrow_upward',
       tone: 'indigo',
       progress: Math.min(desembolsado / maxBase, 1),
-      trend: trend === null ? null : Number(trend.toFixed(1))
+      trend: filter.value.period === 'month' && trend !== null ? Number(trend.toFixed(1)) : null
     },
     {
       label: 'Reembolsado (todas as carteiras)',
@@ -270,39 +330,63 @@ const generalKpis = computed(() => {
   ]
 })
 
-async function loadDashboard(filters = {}) {
+async function loadDashboard(active = filter.value) {
   const companyId = authStore.companyId
   if (!companyId) return
-  const months = monthsForFilter(filters)
-  // KPIs/charts por carteira (fonte principal do painel)
-  await walletsStore.fetchWalletDashboard(companyId, months)
-  // Prestações a vencer (agenda) — mantém-se do endpoint de dashboard
-  await dashboardStore.fetchDashboard(companyId, filters)
+  const hasPeriod = active?.period !== 'all' && !!active?.from && !!active?.to
+  // KPIs/charts por carteira (fonte principal do painel). O período limita o
+  // bloco `periodo` e a janela do gráfico; os KPIs são acumulados.
+  await walletsStore.fetchWalletDashboard(companyId, {
+    months: monthsInRange(active),
+    from: hasPeriod ? active.from : undefined,
+    to: hasPeriod ? active.to : undefined
+  })
+  // Prestações a vencer (agenda dos próximos 30 dias). NÃO recebe o período:
+  // no endpoint do dashboard `from`/`to` filtram os créditos pela data de
+  // criação, o que fazia a agenda mudar (ou esvaziar) conforme o filtro — a
+  // agenda é sempre "o que vence a seguir", independente do período em análise.
+  await dashboardStore.fetchDashboard(companyId)
 }
 
-/** Janela de meses do gráfico conforme o filtro rápido escolhido. */
-function monthsForFilter(filters) {
-  if (filters.quickFilter === 'today') return 3
-  if (filters.quickFilter === 'week') return 3
-  if (filters.quickFilter === 'year') return 12
-  return 12
+/** Aplica o filtro: guarda na URL e recarrega uma única vez. */
+async function onApplyFilter(next) {
+  if (!next) return
+  filter.value = next
+  const query = { ...route.query, ...filterToQuery(next) }
+  if (next.period !== 'custom') {
+    delete query.from
+    delete query.to
+  }
+  // `replace`: o filtro não deve encher o histórico do browser.
+  await router.replace({ query }).catch(() => {})
+  await loadDashboard(next)
 }
 
-function onFilter(filters) {
-  loadDashboard(filters)
+async function onSync() {
+  await loadDashboard()
+  $q.notify({ type: 'info', message: `Dados actualizados · ${periodLabel.value}`, position: 'top' })
 }
 
-function onClear() {
-  loadDashboard()
-}
-
-function onSync() {
-  loadDashboard()
-  $q.notify({ type: 'info', message: 'Dados sincronizados', position: 'top' })
-}
+// Voltar/avançar no browser (ou link com ?period=...) repõe o mesmo filtro.
+watch(
+  () => [route.query.period, route.query.from, route.query.to],
+  () => {
+    const next = resolveFilterFromQuery(route.query)
+    if (sameFilter(next, filter.value)) return
+    filter.value = next
+    loadDashboard(next)
+  }
+)
 
 onMounted(() => {
-  loadDashboard()
+  // Garante que a URL reflecte o filtro efectivo (ex.: /dashboard sem query).
+  const query = { ...route.query, ...filterToQuery(filter.value) }
+  if (filter.value.period !== 'custom') {
+    delete query.from
+    delete query.to
+  }
+  router.replace({ query }).catch(() => {})
+  loadDashboard(filter.value)
   if (authStore.companyId) {
     walletsStore.fetchWallets(authStore.companyId).catch(() => {})
   }
@@ -398,6 +482,43 @@ onMounted(() => {
   display: block;
 }
 
+/* ── Movimento do período ── */
+.period-card {
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.period-chip {
+  font-size: 10px;
+  height: 20px;
+}
+
+.period-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 120px;
+}
+
+.period-metric-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $grey-6;
+}
+
+.period-metric-value {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.period-metric-sub {
+  font-size: 9px;
+  color: $grey-6;
+}
+
 /* ── Secção carteiras ── */
 .section-card {
   border-radius: 18px;
@@ -434,6 +555,7 @@ onMounted(() => {
 body.body--dark {
   .dashboard-page { background: #141a24; }
   .glass-wrap :deep(.filter-card) { background: rgba(30, 41, 59, 0.7); border-color: rgba(255, 255, 255, 0.06) !important; }
+  .period-card { background: $gray-800; border-color: $gray-700; }
   .section-card { background: $gray-800; border-color: $gray-700; }
   .wallet-tile { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.06); }
 }

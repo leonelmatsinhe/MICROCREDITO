@@ -165,18 +165,26 @@ export const useWalletsStore = defineStore('wallets', {
       }
     },
 
-    /** KPIs consolidados + séries mensais por carteira (painel moderno). */
-    async fetchWalletDashboard(companyId, months = 12) {
+    /**
+     * KPIs consolidados + séries mensais por carteira (painel moderno).
+     * Aceita `12` (compatibilidade) ou `{ months, from, to }` — o período
+     * restringe o bloco `periodo` (movimento) devolvido pelo backend.
+     */
+    async fetchWalletDashboard(companyId, options = 12) {
       if (!companyId) return null
+      const params = typeof options === 'number'
+        ? { months: options }
+        : { months: options.months, from: options.from || undefined, to: options.to || undefined }
       this.loading = true
       this.error = null
       try {
-        const { data } = await api.get(`/api/wallets/${companyId}/dashboard`, { params: { months } })
+        const { data } = await api.get(`/api/wallets/${companyId}/dashboard`, { params })
         if (data.success) {
           this.walletDashboard = {
             summary: data.summary || null,
             carteiras: data.carteiras || [],
-            saldo_real: data.saldo_real || { available: 0, accounts: [] }
+            saldo_real: data.saldo_real || { available: 0, accounts: [] },
+            periodo: data.periodo || null
           }
           this.series = data.graficos || { meses: [], porCarteira: [] }
           // Mantém a listagem completa alinhada (badges/selects noutras páginas).

@@ -217,13 +217,26 @@
           </q-card-section>
         </q-card>
 
-        <!-- Garantias: cobertura mínima para APROVAR (capital + juros) -->
-        <q-banner v-if="coverage" dense rounded class="q-mb-md" :class="coverageBlocked ? 'bg-red-1 text-red-9' : 'bg-green-1 text-green-9'">
+        <!-- Garantias: cadastro OBRIGATÓRIO e cobertura mínima para APROVAR -->
+        <q-banner dense rounded class="q-mb-md" :class="coverageBlocked ? 'bg-red-1 text-red-9' : 'bg-green-1 text-green-9'">
           <template v-slot:avatar>
             <q-icon :name="coverageBlocked ? 'gavel' : 'verified_user'" :color="coverageBlocked ? 'negative' : 'positive'" />
           </template>
           <div class="text-caption">
-            <template v-if="coverageBlocked">
+            <template v-if="loadingCoverage">
+              A verificar as garantias registadas...
+            </template>
+            <template v-else-if="coverageError">
+              <strong>Aprovação bloqueada — não foi possível verificar as garantias.</strong>
+              {{ coverageError }}
+            </template>
+            <template v-else-if="!coverage || coverage.reason === 'NO_GUARANTEES'">
+              <strong>Aprovação bloqueada — nenhuma garantia registada.</strong>
+              O cadastro de garantias é a base inicial de análise: registe pelo menos uma garantia
+              com valor avaliado de <strong>{{ formatMoney(coverage?.requiredTotal) }} MZN</strong>
+              (total a pagar = capital + juros) na aba «Garantias & Recibos» do mutuário e reabra esta aprovação.
+            </template>
+            <template v-else-if="coverageBlocked">
               <strong>Aprovação bloqueada — garantias insuficientes.</strong>
               Garantias registadas: {{ formatMoney(coverage.guaranteesTotal) }} · Total a pagar (capital + juros): {{ formatMoney(coverage.requiredTotal) }} ·
               Faltam <strong>{{ formatMoney(coverage.shortfall) }} MZN</strong>.
@@ -246,6 +259,10 @@
                 </div>
                 <div v-if="!adminFeeExempt && adminFeeValue > 0" class="text-caption text-grey-6">
                   Cobrada uma única vez na data do desembolso.
+                </div>
+                <div v-if="!adminFeeExempt && loanStoredExempt && adminFeePct > 0" class="text-caption text-orange-9">
+                  Este crédito estava gravado como isento. A taxa do plano é
+                  {{ adminFeePctLabel }} — marque «Isento» se quiser manter a isenção.
                 </div>
               </div>
               <div class="col-auto">
@@ -307,6 +324,7 @@ import { useLoansStore } from '@/stores/loans'
 import { useWalletsStore } from '@/stores/wallets'
 import { api } from '@/boot/axios'
 import { formatMoney } from '@/utils/formatters'
+import { formatPercentFromFraction } from '@/utils/percent'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -328,13 +346,21 @@ const rateList = ref([])
 
 // ── GARANTIAS: cobertura mínima (capital + juros) para poder aprovar ──
 const coverage = ref(null)
+const coverageError = ref(null)
 const loadingCoverage = ref(false)
-const coverageBlocked = computed(() => !!coverage.value && !coverage.value.covered)
+// FAIL-CLOSED: sem resposta válida do servidor não há aprovação. Antes, um
+// erro de rede/401 deixava `coverage = null` e o botão ficava LIVRE — dava
+// para aprovar/desembolsar sem garantias.
+const coverageBlocked = computed(
+  () => !coverage.value || coverageError.value !== null || !coverage.value.covered
+)
 
 async function fetchCoverage() {
   const loan = props.loan
+  coverageError.value = null
   if (!loan?.id) {
     coverage.value = null
+    coverageError.value = 'Crédito inválido para verificar garantias.'
     return
   }
   loadingCoverage.value = true
@@ -348,9 +374,13 @@ async function fetchCoverage() {
       }
     })
     coverage.value = data.success ? data.result : null
+    if (!coverage.value) {
+      coverageError.value = 'Não foi possível verificar a cobertura de garantias.'
+    }
   } catch (e) {
     console.error('Erro ao verificar cobertura de garantias:', e)
     coverage.value = null
+    coverageError.value = 'Não foi possível verificar a cobertura de garantias. Volte a abrir a aprovação.'
   } finally {
     loadingCoverage.value = false
   }
@@ -404,6 +434,9 @@ function presetWalletFromRate() {
 }
 
 const adminFeeExempt = ref(false)
+// O crédito estava gravado como isento (0) — sinalizado ao Admin, mas já não
+// marcado automaticamente (ver watch(show)).
+const loanStoredExempt = ref(false)
 const observation = ref('')
 const submitting = ref(false)
 const documentsCount = ref(null)
@@ -493,10 +526,9 @@ function rateAdminFee(id) {
 }
 
 const adminFeePct = computed(() => (adminFeeExempt.value ? 0 : rateAdminFee(rateId.value)))
-const adminFeePctLabel = computed(() => {
-  const pct = adminFeePct.value * 100
-  return pct > 0 ? `${Number(pct.toFixed(3)).toLocaleString('pt-MZ', { maximumFractionDigits: 3 })}%` : '0%'
-})
+const adminFeePctLabel = computed(() =>
+  adminFeePct.value > 0 ? `${formatPercentFromFraction(adminFeePct.value)}%` : '0%'
+)
 const adminFeeValue = computed(() => Math.round((Number(props.loan?.amount) || 0) * adminFeePct.value * 100) / 100)
 
 const rateTaxDisplay = computed(() => {
@@ -568,6 +600,7 @@ watch(show, async (val) => {
   if (val) {
     rateId.value = null
     adminFeeExempt.value = false
+    loanStoredExempt.value = false
     observation.value = ''
     documentsCount.value = null
     disbursementDate.value = new Date().toISOString().split('T')[0]
@@ -588,10 +621,11 @@ watch(show, async (val) => {
     await fetchCoverage()
     // Para créditos criados pela equipa com taxa já definida, pré-seleccionar o plano correspondente
     presetRateFromLoan()
-    // Se o crédito já tiver sido marcado como isento, manter a isenção
-    if (Number(props.loan?.administrativeFee) === 0 && Number(props.loan?.interestRate) > 0) {
-      adminFeeExempt.value = true
-    }
+    // A taxa do plano é a REGRA. Um crédito gravado com 0 (criado antes de a
+    // taxa existir, ou por um cliente/bundle antigo) já não fica isento em
+    // silêncio: isso era o que fazia o 0,01% "voltar a zero" na aprovação.
+    // A isenção passa a ser sempre uma escolha explícita (checkbox).
+    loanStoredExempt.value = Number(props.loan?.administrativeFee || 0) === 0
   }
 })
 
@@ -605,9 +639,14 @@ async function confirmApproval() {
   if (!loan || !rateId.value) return
   // ── GARANTIAS: bloqueio authoritative no backend, mas aviso imediato aqui ──
   if (coverageBlocked.value) {
+    const reason = coverage.value?.reason
     $q.notify({
       type: 'negative',
-      message: `Garantias insuficientes: faltam ${formatMoney(coverage.value.shortfall)} MZN para cobrir o total a pagar. Registe garantias antes de aprovar.`,
+      message: coverageError.value
+        ? coverageError.value
+        : reason === 'NO_GUARANTEES' || !coverage.value
+          ? 'Registe pelo menos uma garantia antes de aprovar este crédito (aba Garantias & Recibos).'
+          : `Garantias insuficientes: faltam ${formatMoney(coverage.value.shortfall)} MZN para cobrir o total a pagar. Registe garantias antes de aprovar.`,
       position: 'top'
     })
     return

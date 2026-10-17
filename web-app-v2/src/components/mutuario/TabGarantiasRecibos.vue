@@ -28,7 +28,12 @@
 
             <div v-if="!selectedLoanId" class="text-center q-pa-lg text-grey-5">
               <q-icon name="lock" size="36px" />
-              <div class="text-caption q-mt-sm">Sem crédito com garantias em contexto.</div>
+              <div class="text-caption q-mt-sm">
+                {{ store.loansLoading ? 'A carregar os créditos do mutuário...' : 'Nenhum crédito deste mutuário disponível para garantias.' }}
+              </div>
+              <div v-if="!store.loansLoading" class="text-caption text-grey-6">
+                As garantias são registadas por crédito; crie/abra um crédito para começar.
+              </div>
             </div>
 
             <template v-else>
@@ -38,9 +43,17 @@
                   <q-icon :name="coverage.covered ? 'verified' : 'warning'" :color="coverage.covered ? 'positive' : 'negative'" />
                 </template>
                 <div class="text-caption">
-                  Garantias: <strong>{{ formatMoney(coverage.guaranteesTotal) }}</strong> de {{ formatMoney(coverage.requiredTotal) }} MZN (crédito + juros)
-                  <strong v-if="!coverage.covered">— faltam {{ formatMoney(coverage.shortfall) }} MZN para poder aprovar este crédito.</strong>
-                  <strong v-else>— cobertura suficiente ({{ coverage.coveragePct }}%).</strong>
+                  <template v-if="coverage.reason === 'NO_GUARANTEES'">
+                    <strong>Nenhuma garantia registada.</strong>
+                    O cadastro de garantias é obrigatório antes de aprovar: registe pelo menos uma
+                    garantia de <strong>{{ formatMoney(coverage.requiredTotal) }} MZN</strong>
+                    (total a pagar = capital + juros).
+                  </template>
+                  <template v-else>
+                    Garantias: <strong>{{ formatMoney(coverage.guaranteesTotal) }}</strong> de {{ formatMoney(coverage.requiredTotal) }} MZN (crédito + juros)
+                    <strong v-if="!coverage.covered">— faltam {{ formatMoney(coverage.shortfall) }} MZN para poder aprovar este crédito.</strong>
+                    <strong v-else>— cobertura suficiente ({{ coverage.coveragePct }}%).</strong>
+                  </template>
                 </div>
               </q-banner>
               <q-skeleton v-if="guaranteesLoading" type="rect" height="120px" />
@@ -115,7 +128,7 @@
     </div>
 
     <!-- Modal de garantias (reutiliza o modal existente do sistema) -->
-    <GuaranteesModal v-model="showGuarantees" :loan-id="selectedLoanId" />
+    <GuaranteesModal v-model="showGuarantees" :loan-id="selectedLoanId" @update:model-value="onGuaranteesModalToggle" />
   </div>
 </template>
 
@@ -146,16 +159,63 @@ const customerId = computed(() => store.customer?.id)
 
 // Garantias pertencem a UM crédito específico — selector próprio com todos os
 // créditos com histórico (activos e terminados). Recibos são do mutuário.
+// Ordem: PENDENTES primeiro (são os que precisam de garantias para poder ser
+// aprovados), depois activos e terminados, os mais recentes à frente.
+const LOAN_STATUS_PRIORITY = { 0: 0, 1: 1, 3: 2 }
+const LOAN_STATUS_LABEL = { 0: 'Pendente', 1: 'Activo', 3: 'Terminado' }
 const loanOptions = computed(() =>
   store.loans
-    // 0=Pendente: garantias podem (e DEVEM) ser registadas ANTES da aprovação —
-    // a aprovação só passa quando cobrem o total a pagar (capital + juros).
+    // 0=Pendente: garantias DEVEM ser registadas ANTES da aprovação —
+    // a aprovação só passa com garantias registadas que cubram o total a
+    // pagar (capital + juros).
     .filter(l => [0, 1, 3].includes(Number(l.status)))
+    .slice()
+    .sort((a, b) => {
+      const pa = LOAN_STATUS_PRIORITY[Number(a.status)] ?? 9
+      const pb = LOAN_STATUS_PRIORITY[Number(b.status)] ?? 9
+      if (pa !== pb) return pa - pb
+      return Number(b.id) - Number(a.id)
+    })
     .map(l => ({
-      label: `#${l.id} — ${formatMoney(l.amount)} (${({ 0: 'Pendente', 1: 'Activo', 3: 'Terminado' })[Number(l.status)] || l.status})`,
+      label: `#${l.id} — ${formatMoney(l.amount)} (${LOAN_STATUS_LABEL[Number(l.status)] || l.status})`,
       value: l.id
     }))
 )
+
+/** Crédito a mostrar por defeito: o pendente mais recente (precisa de
+ *  garantias para ser aprovado); senão o activo; senão o primeiro da lista. */
+function pickDefaultLoan() {
+  const first = loanOptions.value[0]
+  if (first) {
+    selectedLoanId.value = first.value
+    return
+  }
+  selectedLoanId.value = store.activeLoan?.id ?? null
+}
+
+/**
+ * A aba é montada antes de os créditos do mutuário chegarem (o detalhe do
+ * mutuário carrega-os em paralelo) — sem este watch o selector ficava vazio
+ * ("Sem crédito com garantias em contexto") e não havia como registar
+ * garantias no crédito pendente.
+ */
+watch(
+  () => store.loans,
+  () => {
+    const options = loanOptions.value
+    if (!options.length) return
+    const current = options.some(o => Number(o.value) === Number(selectedLoanId.value))
+    if (current) return
+    pickDefaultLoan()
+  }
+)
+
+/** Ao fechar o modal, as garantias/cobertura mudaram: recarrega o cartão. */
+function onGuaranteesModalToggle(open) {
+  if (open) return
+  fetchGuarantees()
+  fetchCoverage()
+}
 
 async function fetchGuarantees() {
   if (!selectedLoanId.value) {
@@ -244,9 +304,7 @@ watch(selectedLoanId, () => {
 })
 
 onMounted(() => {
-  // Pré-selecciona o crédito activo mais recente, se existir
-  if (store.activeLoan?.id) selectedLoanId.value = store.activeLoan.id
-  else if (loanOptions.value.length) selectedLoanId.value = loanOptions.value[0].value
+  pickDefaultLoan()
   fetchGuarantees()
   fetchCoverage()
   fetchRecibos()

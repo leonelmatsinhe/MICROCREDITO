@@ -100,6 +100,15 @@ exports.CompanyModel = db_1.db.define("companies", {
     approved_at: { type: sequelize_1.DataTypes.DATE, allowNull: true },
     approved_by: { type: sequelize_1.DataTypes.INTEGER, allowNull: true },
     rejection_reason: { type: sequelize_1.DataTypes.TEXT, allowNull: true },
+    // ── Modo de caixa da empresa ──
+    // PHYSICAL  = caixa de dinheiro físico (folha de contagem + conferência cega);
+    // ELECTRONIC = reconciliação manual por conta bancária existente (accounts).
+    cash_register_mode: {
+        type: sequelize_1.DataTypes.ENUM("PHYSICAL", "ELECTRONIC"),
+        allowNull: false,
+        defaultValue: "ELECTRONIC",
+        comment: "Modo de caixa da empresa: físico ou electrónico (reconciliação bancária manual)",
+    },
 }, {
     tableName: "companies",
     freezeTableName: true,

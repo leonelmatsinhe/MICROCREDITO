@@ -81,10 +81,12 @@
             <q-input v-model="form.name" dense outlined label="Nome / Descrição *" :rules="[val => !!val || 'Obrigatório']" input-style="font-size: 13px">
               <template v-slot:prepend><q-icon name="label" size="16px" color="grey-5" /></template>
             </q-input>
-            <q-input v-model.number="form.taxPercent" dense outlined label="Taxa de Juro (%) *" type="number" step="0.1" :rules="[val => !!val || 'Obrigatório']" input-style="font-size: 13px">
+            <q-input v-model="form.taxPercent" dense outlined label="Taxa de Juro (%) *" type="text" inputmode="decimal" :rules="[val => !!val || 'Obrigatório']" input-style="font-size: 13px">
               <template v-slot:prepend><q-icon name="percent" size="16px" color="grey-5" /></template>
             </q-input>
-            <q-input v-model.number="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="number" step="0.001" min="0" input-style="font-size: 13px">
+            <!-- type="text": o input numérico nativo rejeita a vírgula portuguesa
+                 e o campo ficava vazio — a taxa era gravada como 0. -->
+            <q-input v-model="form.adminFeePercent" dense outlined label="Taxa Administrativa (%)" type="text" inputmode="decimal" hint="0,01 = 0,01% do capital · 0 = isento" input-style="font-size: 13px">
               <template v-slot:prepend><q-icon name="receipt" size="16px" color="grey-5" /></template>
             </q-input>
             <!-- OBRIGATÓRIO: cada taxa pertence a uma carteira de financiamento -->
@@ -141,6 +143,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useWalletsStore } from '@/stores/wallets'
 import { logUpdateRates } from '@/utils/logger'
+import {
+  formatPercentFromFraction,
+  fractionToPercent,
+  parseLooseNumber,
+  percentToFraction
+} from '@/utils/percent'
 
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -151,11 +159,8 @@ const walletsStore = useWalletsStore()
 const walletOptions = computed(() => walletsStore.walletOptions)
 const carteiraDaTaxa = (rate) => walletsStore.walletById(rate.walletId)
 
-// Percentagem com até 3 decimais (0.001% entra sem ser arredondada a zero)
-const formatPct = (frac) => {
-  const pct = Number(frac || 0) * 100
-  return Number(pct.toFixed(3)).toLocaleString('pt-MZ', { maximumFractionDigits: 3 })
-}
+// Percentagem com até 4 decimais (0,01% e 0,0001% entram sem virar zero)
+const formatPct = (frac) => formatPercentFromFraction(frac)
 
 const loading = computed(() => settingsStore.loadingRates)
 const saving = computed(() => settingsStore.saving)
@@ -177,8 +182,10 @@ function openEdit(rate) {
   editingRate.value = rate
   form.value = {
     name: rate.name || '',
-    taxPercent: Number(rate.tax) * 100,
-    adminFeePercent: Number(((Number(rate.administrativeFee) || 0) * 100).toFixed(3)),
+    taxPercent: fractionToPercent(rate.tax),
+    // Sem toFixed(3): uma taxa de 0,01% (0.0001) tem de voltar ao formulário
+    // como 0,01 e não como 0,00.
+    adminFeePercent: fractionToPercent(rate.administrativeFee),
     walletId: rate.walletId || null
   }
   showForm.value = true
@@ -192,11 +199,33 @@ async function saveRate() {
     $q.notify({ type: 'warning', message: 'Seleccione a carteira de financiamento da taxa', position: 'top' })
     return
   }
+  const taxPercent = parseLooseNumber(form.value.taxPercent)
+  const adminFeePercent = parseLooseNumber(form.value.adminFeePercent ?? 0)
+  if (taxPercent === null || taxPercent < 0) {
+    $q.notify({ type: 'warning', message: 'Taxa de juro inválida', position: 'top' })
+    return
+  }
+  if (adminFeePercent === null || adminFeePercent < 0) {
+    $q.notify({ type: 'warning', message: 'Taxa administrativa inválida (use 0,01 para 0,01%)', position: 'top' })
+    return
+  }
+  const adminFeeFraction = percentToFraction(adminFeePercent)
+  if (adminFeePercent > 0 && !adminFeeFraction) {
+    $q.notify({
+      type: 'warning',
+      message: 'A taxa administrativa é demasiado pequena (mínimo 0,0001%)',
+      position: 'top'
+    })
+    return
+  }
   try {
     const payload = {
       name: form.value.name,
-      tax: form.value.taxPercent / 100,
-      administrativeFee: Number((((form.value.adminFeePercent || 0) / 100).toFixed(6))),
+      tax: taxPercent / 100,
+      // Fracção (formato histórico) + percentagem explícita: o backend usa a
+      // percentagem e valida-a; um servidor antigo continua a ler a fracção.
+      administrativeFee: adminFeeFraction,
+      administrativeFeePercent: adminFeePercent,
       companyId: authStore.companyId,
       walletId: form.value.walletId
     }

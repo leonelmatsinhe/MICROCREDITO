@@ -10,6 +10,7 @@ import {
   getWalletWithAnalytics,
   getWalletsMonthlySeries,
   getWalletsWithAnalytics,
+  getWalletPeriodMovement,
   getRealDisbursementBalance,
   WalletWithAnalytics,
 } from "../services/financingWalletService";
@@ -66,9 +67,24 @@ const findAll = async (req: Request, res: Response) => {
 const dashboard = async (req: Request, res: Response) => {
   try {
     const companyId = Number(req.params.companyId);
+
+    // FILTRO DE DATAS DO PAINEL — o período só pode limitar o MOVIMENTO
+    // (desembolsos/recebimentos); capital alocado e saldo a receber são
+    // cumulativos. `from`/`to` chegam em ISO (YYYY-MM-DD).
+    const isIso = (value: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").slice(0, 10));
+    const from = isIso(req.query.from) ? String(req.query.from).slice(0, 10) : null;
+    const to = isIso(req.query.to) ? String(req.query.to).slice(0, 10) : null;
+    if (from && to && from > to) {
+      return res.status(400).json({
+        success: false,
+        message: "Intervalo de datas inválido: a data inicial é posterior à data final.",
+      });
+    }
+
     const wallets = await getWalletsWithAnalytics(companyId, { onlyActive: true });
     const summary = await getWalletTotalsSummary(companyId);
     const real = await getRealDisbursementBalance(companyId);
+    const periodo = from && to ? await getWalletPeriodMovement(companyId, from, to) : null;
 
     // Séries mensais por carteira (gráficos do painel). Falha em silêncio: os
     // KPIs continuam a ser devolvidos mesmo que as séries não estejam disponíveis.
@@ -92,6 +108,8 @@ const dashboard = async (req: Request, res: Response) => {
       carteiras: wallets.map(serializeWallet),
       graficos,
       saldo_real: real,
+      // Movimento dentro do período escolhido (null quando não há filtro).
+      periodo,
     });
   } catch (error: any) {
     console.error("[Carteiras] Erro no dashboard:", error?.message || error);

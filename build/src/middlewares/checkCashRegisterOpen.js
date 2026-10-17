@@ -78,6 +78,20 @@ const checkCashRegisterOpen = (req, res, next) => __awaiter(void 0, void 0, void
         if (!companyId) {
             return res.status(401).json({ success: false, message: "Token invalid" });
         }
+        // MODO ELECTRÓNICO: a empresa gere o dia por conta bancária (saldo manual),
+        // por isso nenhuma operação exige caixa aberto. Em PHYSICAL mantém-se o
+        // bloqueio anterior.
+        const { isElectronicCashMode } = yield Promise.resolve().then(() => __importStar(require("../services/cashModeService")));
+        if (yield isElectronicCashMode(companyId)) {
+            // Marcador (nunca null): os controladores de desembolso/pagamento usam
+            // `req.cashRegister` apenas como sinal para registarem o movimento — no
+            // modo electrónico ele cai no Caixa do Sistema do dia (auditoria mantida).
+            req.cashRegister = { mode: "ELECTRONIC", electronicFallback: true };
+            req.userId = userId;
+            req.companyId = companyId;
+            req.cashRegisterMode = "ELECTRONIC";
+            return next();
+        }
         const openRegister = yield (0, cashRegisterService_1.getOpenRegister)(userId, companyId);
         if (!openRegister) {
             return res.status(403).json({
@@ -89,6 +103,7 @@ const checkCashRegisterOpen = (req, res, next) => __awaiter(void 0, void 0, void
         req.cashRegister = openRegister;
         req.userId = userId;
         req.companyId = companyId;
+        req.cashRegisterMode = "PHYSICAL";
         return next();
     }
     catch (error) {

@@ -154,6 +154,27 @@ exports.CashRegisterModel = db_1.db.define("cash_registers", {
         allowNull: true,
         comment: "Conta de destino por defeito dos pagamentos deste caixa (accounts.id)",
     },
+    mode: {
+        type: sequelize_1.DataTypes.ENUM("PHYSICAL", "ELECTRONIC"),
+        allowNull: false,
+        defaultValue: "PHYSICAL",
+        comment: "Modo do dia: caixa físico (contagem) ou electrónico (reconciliação bancária manual)",
+    },
+    manual_balance_start: {
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        comment: "Modo ELECTRONIC: saldo inicial introduzido à mão para a conta bancária do dia",
+    },
+    manual_balance_end: {
+        type: sequelize_1.DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        comment: "Modo ELECTRONIC: saldo final real lido no banco no momento da reconciliação",
+    },
+    observations: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+        comment: "Modo ELECTRONIC: observações da reconciliação manual",
+    },
     closed_at: {
         type: sequelize_1.DataTypes.DATE,
         allowNull: true,

@@ -39,6 +39,7 @@ import {
   guaranteeCoverageMessage,
 } from "../services/guaranteeCoverageService";
 import { simulator } from "../utils/loanAmortization";
+import { parseAdminFeePayload } from "../utils/adminFee";
 
 const toNumber = (value: any) => {
   const parsed = Number(value);
@@ -282,7 +283,6 @@ const createLoan = async (req: Request, res: Response) => {
     amount,
     numberOfInstallments,
     interestRate,
-    administrativeFee,
     creditManager,
     loanDescription,
     capacityExcessObservation,
@@ -350,6 +350,14 @@ const createLoan = async (req: Request, res: Response) => {
     }
   }
 
+  // TAXA ADMINISTRATIVA — fracção com 6 decimais (0.0001 = 0,01%). Aceita
+  // também a percentagem explícita (adminFeePercent = 0,01) e rejeita uma
+  // percentagem pequena que seria arredondada a zero.
+  const adminFee = parseAdminFeePayload(req.body);
+  if (!adminFee.ok) {
+    return res.status(400).json({ success: false, message: adminFee.message });
+  }
+
   const loan = await LoanModel.create({
     accountNumber,
     customerId: customer.getDataValue("id"),
@@ -357,7 +365,7 @@ const createLoan = async (req: Request, res: Response) => {
     amount,
     numberOfInstallments,
     interestRate,
-    administrativeFee: administrativeFee !== undefined ? Number(administrativeFee) || 0 : 0,
+    administrativeFee: adminFee.fraction,
     creditManager,
     loanDescription,
     capacityExcessObservation: capacityValidation.normalizedObservation,
@@ -559,6 +567,24 @@ const updateLoan = async (req: Request, res: Response) => {
         message: "Não foi possível verificar as garantias do crédito.",
       });
     }
+  }
+
+  // TAXA ADMINISTRATIVA — normalizada antes de gravar. `LoanModel.update`
+  // recebe o corpo inteiro, por isso um cliente antigo (ou um valor em
+  // percentagem) só pode entrar aqui já convertido para fracção; caso
+  // contrário o 0,01% voltava a zero.
+  const touchesAdminFee =
+    (req.body as any).administrativeFee !== undefined ||
+    (req.body as any).administrativeFeePercent !== undefined ||
+    (req.body as any).adminFeePercent !== undefined;
+  if (touchesAdminFee) {
+    const adminFee = parseAdminFeePayload(req.body);
+    if (!adminFee.ok) {
+      return res.status(400).json({ success: false, message: adminFee.message });
+    }
+    (req.body as any).administrativeFee = adminFee.fraction;
+    delete (req.body as any).administrativeFeePercent;
+    delete (req.body as any).adminFeePercent;
   }
 
   const loan = await LoanModel.update(req.body, {

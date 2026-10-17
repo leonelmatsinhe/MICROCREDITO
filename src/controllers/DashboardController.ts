@@ -181,7 +181,20 @@ const getDashboardOverview = async (req: Request, res: Response) => {
           companyId: companyIdNum,
           loanId: { [Op.in]: loanIds },
         },
-        attributes: ["id", "loanId", "accountNumber", "dueDate", "status", "installment"],
+        // paidAmount é OBRIGATÓRIO: a mora é calculada sobre o saldo devedor
+        // (installment − paidAmount). Sem ele, prestações parcialmente pagas
+        // eram penalizadas como se estivessem por pagar na totalidade.
+        attributes: [
+          "id",
+          "loanId",
+          "accountNumber",
+          "dueDate",
+          "status",
+          "installment",
+          "paidAmount",
+          "amortization",
+          "rateAmount",
+        ],
       });
     }
 
@@ -235,14 +248,29 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       [0, -1].includes(Number(a.status))
     );
 
+    // Exposição = SALDO DEVEDOR da prestação (installment − paidAmount).
+    // A dívida registada (DebtModel) é a fonte preferida quando existe, mas
+    // nunca se volta ao valor integral se há pagamento parcial conhecido.
     const installmentExposure = (a: any) => {
+      const remaining = Math.max(
+        0,
+        toNumber(a.installment) - toNumber(a.paidAmount)
+      );
       if (Number(a.status) === -1) {
-        return toNumber(debtMap[a.id] ?? a.installment);
+        return toNumber(debtMap[a.id] ?? remaining);
       }
-      return toNumber(a.installment);
+      return remaining;
     };
 
-    const calculatedInstallments = installmentPanification(amortizations, forfeit, undefined, { maxLateDays, capPercent });
+    // Só prestações EM ABERTO (0 = pendente, -1 = parcial) entram na carteira
+    // em aberto, na mora e nos rácios PAR. Prestações liquidadas (status 1) não
+    // têm saldo nem mora — incluí-las inflacionava carteira, atraso e PAR.
+    const calculatedInstallments = installmentPanification(
+      openInstallments,
+      forfeit,
+      undefined,
+      { maxLateDays, capPercent }
+    );
     const overdueRows = calculatedInstallments
       .map((a: any) => {
         const due = parseDateSafe(a.dueDate);

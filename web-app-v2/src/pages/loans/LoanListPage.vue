@@ -270,6 +270,20 @@
         <template v-slot:body-cell-actions="props">
           <q-td :props="props" class="text-center">
             <div class="row items-center no-wrap justify-center" style="gap: 2px">
+              <!-- GARANTIAS: cadastro antes da aprovação (base inicial de análise).
+                   Sem este atalho, o cadastro só existia no detalhe do mutuário. -->
+              <q-btn
+                flat
+                round
+                dense
+                icon="security"
+                color="orange"
+                size="xs"
+                @click.stop="openGuarantees(props.row)"
+              >
+                <q-tooltip>Garantias do crédito (obrigatórias antes de aprovar)</q-tooltip>
+              </q-btn>
+
               <!-- Linha do tempo de aprovação — quem aprovou e quando (SPRINT 5) -->
               <q-btn
                 flat
@@ -650,6 +664,13 @@
     <!-- Aprovação (reutiliza o modal de aprovação do painel do mutuário) -->
     <LoanApprovalModal v-model="showApproval" :loan="approvalLoan" @approved="onLoanApproved" />
 
+    <!-- Garantias: registadas antes da aprovação (base inicial de análise) -->
+    <GuaranteesModal
+      v-model="showGuarantees"
+      :loan-id="guaranteesLoan?.id"
+      @update:model-value="onGuaranteesToggle"
+    />
+
     <!-- Aprovação com alçadas (SPRINT 5) — decisão, não mexe no caixa -->
     <LoanDecisionModal v-model="showDecision" :loan="decisionLoan" @approved="onLoanDecided" />
 
@@ -835,6 +856,7 @@ import { formatMoney, formatDateShort, formatInterestRate, formatPeriod, getInit
 import { logReopenLoan, logApproveLoan, logRejectLoan, logSendSms, logInvalidateDisbursement } from '@/utils/logger'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
 import LoanDecisionModal from '@/components/modals/LoanDecisionModal.vue'
+import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
 import LoanApprovalTimelineModal from '@/components/modals/LoanApprovalTimelineModal.vue'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
@@ -883,6 +905,8 @@ const showReview = ref(false)
 const reviewLoan = ref(null)
 const showApproval = ref(false)
 const approvalLoan = ref(null)
+const showGuarantees = ref(false)
+const guaranteesLoan = ref(null)
 const showDocumentRequestSms = ref(false)
 const showRejectDialog = ref(false)
 const rejectOpinion = ref('')
@@ -957,6 +981,19 @@ function openTimeline(row) {
 function openApproval(row) {
   approvalLoan.value = row
   showApproval.value = true
+}
+
+/** Cadastro de garantias do crédito (obrigatório antes de aprovar). */
+function openGuarantees(row) {
+  guaranteesLoan.value = row
+  showGuarantees.value = true
+}
+
+function onGuaranteesToggle(open) {
+  if (open) return
+  // A cobertura mudou: recarrega a lista (e a próxima abertura da aprovação
+  // volta a consultar /guarantee-coverage no servidor).
+  fetchLoans()
 }
 
 // Validação da instrução (Gestor ou Admin) → submete ao Admin para aprovação

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { InterestRateModel } from "../database/models/InterestRateModel";
 import { FinancingWalletModel } from "../database/models/FinancingWalletModel";
 import { AccountModel } from "../database/models/AccountModel";
+import { parseAdminFeePayload } from "../utils/adminFee";
 
 /**
  * TAXAS DE JURO ↔ ORIGEM DO CAPITAL
@@ -150,7 +151,16 @@ const resolveVinculacao = async (
 
 const createRate = async (req: Request, res: Response) => {
   try {
-    const { name, tax, administrativeFee, companyId } = req.body;
+    const { name, tax, companyId } = req.body;
+
+    // TAXA ADMINISTRATIVA — normalize antes de gravar: a API aceita a fracção
+    // (0.0001 = 0,01%) ou a percentagem (administrativeFeePercent = 0.01).
+    // Uma percentagem positiva que arredondaria a 0 é REJEITADA (nunca é
+    // gravada uma taxa "isenta" sem o utilizador saber).
+    const adminFee = parseAdminFeePayload(req.body);
+    if (!adminFee.ok) {
+      return res.status(400).json({ success: false, message: adminFee.message });
+    }
 
     const vinculacao = await resolveVinculacao(companyId, req.body, res);
     if (!vinculacao) return;
@@ -159,7 +169,7 @@ const createRate = async (req: Request, res: Response) => {
       companyId,
       name,
       tax,
-      administrativeFee,
+      administrativeFee: adminFee.fraction,
       ...vinculacao,
     });
     return rates != null
@@ -208,12 +218,29 @@ const updateRate = async (req: Request, res: Response) => {
       delete payload.sem_vinculacao;
     }
 
+    // TAXA ADMINISTRATIVA — mesma normalização do create. Quando o campo não
+    // vem no pedido o valor actual é preservado (editar o nome ou a carteira
+    // NUNCA repõe a taxa a zero).
+    const touchesAdminFee =
+      payload.administrativeFee !== undefined ||
+      payload.administrativeFeePercent !== undefined ||
+      payload.adminFeePercent !== undefined;
+    let adminFeeFraction: number | null = null;
+    if (touchesAdminFee) {
+      const adminFee = parseAdminFeePayload(payload);
+      if (!adminFee.ok) {
+        return res.status(400).json({ success: false, message: adminFee.message });
+      }
+      adminFeeFraction = adminFee.fraction;
+    }
+
     // Só campos editáveis da taxa seguem para o UPDATE: um campo extra no corpo
     // do pedido (ex.: carteira/conta completas) nunca chega à base de dados.
     const editavel: any = {};
-    ["name", "tax", "administrativeFee", "walletId", "accountId"].forEach((campo) => {
+    ["name", "tax", "walletId", "accountId"].forEach((campo) => {
       if (payload[campo] !== undefined) editavel[campo] = payload[campo];
     });
+    if (adminFeeFraction !== null) editavel.administrativeFee = adminFeeFraction;
 
     const rate = await InterestRateModel.update(editavel, { where: { id } });
     const actualizado: any = await InterestRateModel.findByPk(id, { raw: true });

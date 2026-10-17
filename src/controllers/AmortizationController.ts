@@ -16,6 +16,10 @@ import { evaluateKyc } from "../utils/kycDocuments";
 import { getGuaranteeCoverage, guaranteeCoverageError } from "../services/guaranteeCoverageService";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { PackageAlreadyIssuedError } from "../services/concessionPackageService";
+import {
+  adminFeeAmountOnPrincipal,
+  normalizeStoredAdminFee,
+} from "../utils/adminFee";
 
 const getUpcomingAmortizations = async (req: Request, res: Response) => {
   try {
@@ -282,7 +286,23 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
     // ── TAXA ADMINISTRATIVA: entrada obrigatória numa conta ──
     // Se o crédito cobra taxa administrativa, o valor TEM de entrar numa
     // conta (banco / mobile money) — é dinheiro real da empresa.
-    const adminFeeValue = Number(bodyAny?.admin_fee_value || 0);
+    // O valor é derivado do CRÉDITO (fonte de verdade), não do cliente: o
+    // crédito guarda a fracção (0.0001 = 0,01%) e o capital; se o cliente (ou
+    // um bundle antigo em cache) enviar `admin_fee_value: 0`, a taxa continua
+    // a ser cobrada e registada na tesouraria.
+    const loanAdminFeeFraction = normalizeStoredAdminFee(loan.getDataValue("administrativeFee"));
+    const loanAdminFeeValue = adminFeeAmountOnPrincipal(loanAmount, loanAdminFeeFraction);
+    const requestedAdminFeeValue = Math.max(0, Number(bodyAny?.admin_fee_value || 0));
+    const adminFeeValue = loanAdminFeeValue > 0 ? loanAdminFeeValue : requestedAdminFeeValue;
+    if (
+      loanAdminFeeValue > 0 &&
+      requestedAdminFeeValue > 0 &&
+      Math.abs(requestedAdminFeeValue - loanAdminFeeValue) > 0.01
+    ) {
+      console.warn(
+        `[TaxaAdmin] Crédito #${loanId}: valor enviado ${requestedAdminFeeValue.toFixed(2)} difere do apurado ${loanAdminFeeValue.toFixed(2)} — prevalece o crédito.`
+      );
+    }
     const adminFeeAccountId = bodyAny?.admin_fee_account_id ? Number(bodyAny.admin_fee_account_id) : null;
     if (adminFeeValue > 0) {
       if (!adminFeeAccountId) {
@@ -626,7 +646,11 @@ const getInstallmentsControl = async (req: Request, res: Response) => {
           daysOverdue,
           daysUntilDue,
           lateFee,
-          totalToPay: Math.round(((Number(a.installment) || 0) + lateFee) * 100) / 100,
+          // Total a pagar = SALDO DEVEDOR + mora (nunca a prestação integral
+          // quando já houve pagamento parcial).
+          totalToPay: Math.round(
+            (Math.max(0, (Number(a.installment) || 0) - (Number(a.paidAmount) || 0)) + lateFee) * 100
+          ) / 100,
           amortization: Number(a.amortization) || 0,
           rateAmount: Number(a.rateAmount) || 0,
         });

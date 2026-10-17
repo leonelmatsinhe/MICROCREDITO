@@ -40,8 +40,36 @@ const outstandingBase = (installmentValue: number, paidAmount: number): number =
   round2(Math.max(0, round2(num(installmentValue)) - round2(num(paidAmount))));
 
 /** Limita os dias de atraso ao máximo configurado (0/NULL = ilimitado). */
-const cappedDays = (days: number, rule: PenaltyRule): number =>
+export const cappedDays = (days: number, rule: PenaltyRule): number =>
   rule.max_late_days > 0 ? Math.min(days, rule.max_late_days) : days;
+
+/**
+ * Mora devida hoje com base no SALDO DEVEDOR ACTUAL da prestação.
+ *
+ * É a ÚNICA fórmula usada para decidir quanto o cliente deve de mora:
+ * tanto o caminho de accruals como o caminho de fórmula passam por aqui,
+ * pelo que um pagamento parcial reduz imediatamente a base (e o total
+ * exigível) — nunca se cobra sobre o valor integral da prestação.
+ *
+ * forfeit_percent = 0 → mora inválida (0); cap_percent limita a mora ao
+ * saldo devedor, não ao valor original da prestação.
+ */
+export const lateInterestOnOutstanding = (params: {
+  installmentValue: number;
+  paidAmount: number;
+  daysLate: number;
+  rule: PenaltyRule;
+}): number => {
+  const { installmentValue, paidAmount, daysLate, rule } = params;
+  if (Number(daysLate) <= 0 || rule.forfeit_percent <= 0) return 0;
+
+  const baseAmount = outstandingBase(installmentValue, paidAmount);
+  if (baseAmount <= 0) return 0;
+
+  const raw = round2(baseAmount * (rule.forfeit_percent / 100) * Number(daysLate));
+  const cap = round2(baseAmount * (rule.cap_percent / 100));
+  return Math.min(raw, cap);
+};
 
 /** Lê a regra de mora da empresa; fallback = companies.forfeit (legado). */
 export const getPenaltyRule = async (companyId: number): Promise<PenaltyRule> => {
@@ -153,7 +181,10 @@ export const dailyAccrualAmount = (params: {
 
 /**
  * Total de mora ACCRUED (não cobrada) de uma prestação até uma data.
- * Se existirem accruals, devolve a soma; se não, calcula pela fórmula
+ *
+ * Se existirem accruals até à data de referência, devolve a soma completada
+ * com os dias em falta — mas SEMPRE limitada à fórmula sobre o saldo devedor
+ * actual (installment − paidAmount). Se não existirem, calcula pela fórmula
  * (compatibilidade com prestações antigas sem accrual diário).
  */
 export const getAccruedLateInterest = async (params: {
@@ -171,33 +202,40 @@ export const getAccruedLateInterest = async (params: {
   // 1) Tenta pela tabela de accruals (fonte oficial do V2)
   try {
     const [rows]: any = await db.query(
-      `SELECT SUM(amount) AS total, MAX(days) AS max_days, COUNT(*) AS n
-         FROM late_accruals WHERE amortization_loan_id = ? AND status = 'ACCRUED'`,
-      { replacements: [amortizationLoanId] }
+      `SELECT SUM(amount) AS total, COUNT(*) AS n
+         FROM late_accruals
+        WHERE amortization_loan_id = ? AND status = 'ACCRUED'
+          AND accrual_date <= ?`,
+      { replacements: [amortizationLoanId, ref] }
     );
     const row = (rows as any[])[0] || {};
     const nAccruals = Number(row.n) || 0;
     if (nAccruals > 0) {
       let total = num(row.total);
-      // Accruals ainda não cobrem a data de referência? completa por fórmula
-      // proporcional ao número de dias em falta (job corre 1×/dia).
-      const maxDays = Number(row.max_days) || 0;
-      const daysLate = effectiveLateDays(dueDate, ref, rule);
+      // Cada linha de late_accruals representa UM dia (coluna days = 1).
+      // O n.º de dias já cobertos é portanto COUNT(*), nunca MAX(days) — ler
+      // MAX(days) dava sempre 1 e voltava a completar todos os dias por
+      // fórmula, duplicando a mora cobrada.
+      const maxDays = nAccruals;
+      const daysLate = cappedDays(effectiveLateDays(dueDate, ref, rule), rule);
       if (daysLate > maxDays) {
-        // Dias adicionais a completar, respeitando o limite máximo de dias
-        const rawMissing = daysLate - maxDays;
-        const missingDays = cappedDays(daysLate, rule) > maxDays
-          ? Math.min(rawMissing, Math.max(0, cappedDays(daysLate, rule) - maxDays))
-          : 0;
         const baseAmount = outstandingBase(installmentValue, paidAmount);
         const daily = round2(baseAmount * (rule.forfeit_percent / 100));
-        total = round2(total + daily * Math.max(0, missingDays));
+        total = round2(total + daily * (daysLate - maxDays));
       }
-      // Aplica o cap (sobre o saldo devedor)
-      const cap = round2(outstandingBase(installmentValue, paidAmount) * (rule.cap_percent / 100));
+      // REGRA DO SALDO DEVEDOR: o acumulado histórico nunca pode exceder a
+      // mora calculada sobre o saldo devedor ACTUAL da prestação. Assim que o
+      // cliente paga parte da prestação, a base (e a mora exigível) desce —
+      // mesmo que os accruals antigos tenham sido gerados sobre um valor maior.
+      const maxAllowed = lateInterestOnOutstanding({
+        installmentValue,
+        paidAmount,
+        daysLate,
+        rule,
+      });
       return {
-        amount: Math.min(round2(total), cap),
-        daysLate: Math.max(maxDays, cappedDays(effectiveLateDays(dueDate, ref, rule), rule)),
+        amount: Math.min(round2(total), maxAllowed),
+        daysLate,
         source: "accruals",
       };
     }
@@ -208,10 +246,8 @@ export const getAccruedLateInterest = async (params: {
   const daysLate = cappedDays(rawDays, rule);
   if (daysLate <= 0) return { amount: 0, daysLate: 0, source: "formula" };
   // Base = SALDO DEVEDOR (nunca a prestação integral com pagamento parcial)
-  const baseAmount = outstandingBase(installmentValue, paidAmount);
-  const raw = round2(baseAmount * (rule.forfeit_percent / 100) * daysLate);
-  const cap = round2(baseAmount * (rule.cap_percent / 100));
-  return { amount: Math.min(raw, cap), daysLate, source: "formula" };
+  const amount = lateInterestOnOutstanding({ installmentValue, paidAmount, daysLate, rule });
+  return { amount, daysLate, source: "formula" };
 };
 
 /**

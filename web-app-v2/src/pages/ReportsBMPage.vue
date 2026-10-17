@@ -1,8 +1,8 @@
 <template>
   <div class="reports-bm-page">
-    <div class="reports-body q-pa-md">
+    <div class="reports-body q-pa-lg">
       <!-- FORMULÁRIO -->
-      <div class="form-card q-mb-md" data-tour="bm-form">
+      <div class="form-card q-mb-lg" data-tour="bm-form">
         <div class="row q-col-gutter-md items-end">
           <div class="col-12 col-sm-2">
             <q-input v-model="filters.from" dense outlined label="Data Início" type="date" input-style="font-size: 13px" />
@@ -38,7 +38,7 @@
 
       <template v-else>
         <!-- TABELA PRINCIPAL -->
-        <q-card flat bordered class="q-mb-md bm-surface-card">
+        <q-card flat bordered class="bm-surface-card">
           <q-card-section class="bm-table-header">
             <div class="row items-center">
               <div class="bm-table-title">
@@ -49,7 +49,7 @@
               <q-badge color="primary" rounded class="q-pa-sm">{{ reportData.length }} operações</q-badge>
             </div>
           </q-card-section>
-          <q-card-section>
+          <q-card-section class="bm-card-body">
             <div v-if="reportData.length === 0" class="text-center text-grey-5 q-pa-xl">
               <q-icon name="info" size="48px" color="grey-4" />
               <div class="text-caption q-mt-sm">Nenhuma operação de crédito encontrada para o período seleccionado</div>
@@ -104,55 +104,6 @@
                 </q-tr>
               </template>
             </q-table>
-          </q-card-section>
-        </q-card>
-
-        <!-- PAGAMENTOS POR CANAL (Portal vs Balcão) — do caixa do período -->
-        <q-card v-if="treasuryPayments" flat bordered class="q-mb-md bm-surface-card">
-          <q-card-section class="bm-table-header">
-            <div class="row items-center">
-              <div class="bm-table-title">
-                <q-icon name="call_split" class="q-mr-sm" />
-                3. PAGAMENTOS POR CANAL — Portal vs Balcão (Valores em Metical)
-              </div>
-              <q-space />
-              <q-badge color="purple" rounded class="q-pa-sm">Portal · {{ treasuryPayments.portal?.registerCount || 0 }} caixa(s)</q-badge>
-              <q-badge color="primary" rounded class="q-pa-sm q-ml-sm">Balcão · {{ treasuryPayments.inPerson?.registerCount || 0 }} caixa(s)</q-badge>
-            </div>
-          </q-card-section>
-          <q-card-section>
-            <q-markup-table flat dense separator="cell" class="bm-report-table" style="font-size: 11px">
-              <thead>
-                <tr class="text-weight-bold">
-                  <th style="width: 22%">Canal</th>
-                  <th style="width: 16%">Método</th>
-                  <th class="text-right">Entradas</th>
-                  <th class="text-right">Saídas</th>
-                  <th class="text-right">Líquido</th>
-                </tr>
-              </thead>
-              <tbody>
-                <template v-for="(row, idx) in paymentsRows" :key="idx">
-                  <tr>
-                    <td :class="row.channel === 'Portal (fora de expediente)' ? 'text-purple text-weight-medium' : 'text-primary text-weight-medium'" :style="row.isFirst ? '' : 'border-top: none'">{{ row.isFirst ? row.channel : '' }}</td>
-                    <td>{{ row.method }}</td>
-                    <td class="text-right text-positive text-weight-medium">{{ formatMoney(row.in) }}</td>
-                    <td class="text-right text-negative text-weight-medium">{{ formatMoney(row.out) }}</td>
-                    <td class="text-right text-weight-bold">{{ formatMoney(row.net) }}</td>
-                  </tr>
-                </template>
-                <tr class="text-weight-bold bm-total-row">
-                  <td>TOTAL</td>
-                  <td></td>
-                  <td class="text-right">{{ formatMoney(paymentsTotals.in) }}</td>
-                  <td class="text-right">{{ formatMoney(paymentsTotals.out) }}</td>
-                  <td class="text-right">{{ formatMoney(paymentsTotals.net) }}</td>
-                </tr>
-              </tbody>
-            </q-markup-table>
-            <div class="text-caption text-grey-6 q-mt-sm">
-              Portal = pagamentos recebidos automaticamente no portal do cliente fora do expediente (Caixa do Sistema). Balcão = cobranças presenciais registadas pelos operadores.
-            </div>
           </q-card-section>
         </q-card>
 
@@ -589,19 +540,25 @@ onMounted(async () => {
   background: #f8fafc;
   min-height: calc(100vh - 100px);
 }
+
+/* Respiro do reporte — mais espaço entre o formulário e a tabela, e dentro do cartão */
+.bm-card-body { padding: 20px 20px 24px; }
+.bm-report-table :deep(thead th) { padding-top: 10px; padding-bottom: 10px; }
+.bm-report-table :deep(tbody td) { padding-top: 8px; padding-bottom: 8px; }
 body.body--dark .reports-body { background: #1a1a2e; }
 
 .form-card {
   background: #f1f3f5;
-  padding: 16px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
   border-radius: 12px;
   border: 1px solid rgba(0,0,0,0.04);
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 body.body--dark .form-card { background: #252540; border-color: rgba(255,255,255,0.06); }
-.bm-surface-card { background: #f1f3f5; }
+.bm-surface-card { background: #f1f3f5; border-radius: 12px; }
 body.body--dark .bm-surface-card { background: #252540; }
-.bm-table-header { background: #e5e7eb; }
+.bm-table-header { background: #e5e7eb; padding: 14px 20px; }
 .bm-table-title { color: #374151; font-weight: 600; }
 body.body--dark .bm-table-header { background: #334155; }
 body.body--dark .bm-table-title { color: #e2e8f0; }
@@ -614,7 +571,8 @@ body.body--dark .notes-header { background: #334155; color: #e5e7eb; }
 body.body--dark .notes-title { color: #e5e7eb; }
 body.body--dark .notes-content { background: #252540; color: #cbd5e1; font-weight: 400; }
 
-.bm-report-table :deep(.q-table__middle) { overflow-x: auto; }
+/* A barra de scroll horizontal não deve encostar/sobrepor-se à linha TOTAL */
+.bm-report-table :deep(.q-table__middle) { overflow-x: auto; padding-bottom: 8px; }
 body.body--dark .bm-report-table :deep(th),
 body.body--dark .bm-report-table :deep(td) { color: #cbd5e1; font-weight: 400; }
 body.body--dark .bm-report-table :deep(.bm-total-row) { color: #cbd5e1; font-weight: 400; }

@@ -15,37 +15,84 @@ const getAllLoanGuarantees = async (req: Request, res: Response) => {
         order: [["id", "DESC"]],
     });
 
-    return guarantees.length > 0
-        ? res.status(200).send({ success: true, result: guarantees })
-        : res
-            .status(200)
-            .send({ success: false, message: "No guarantees registered so far." });
+    // Lista vazia é um estado legítimo (crédito ainda sem garantias) — não é
+    // erro. A UI usa `result: []` para mostrar o aviso de cadastro obrigatório.
+    return res.status(200).send({ success: true, result: guarantees });
 };
 
+/**
+ * CADASTRO DE GARANTIAS — BASE INICIAL DE ANÁLISE.
+ *
+ * Uma garantia sem valor avaliado não serve para a análise e fazia o crédito
+ * parecer "com garantias" continuando sem cobertura. Por isso o valor (> 0) e
+ * a descrição passam a ser OBRIGATÓRIOS, e o crédito tem de existir.
+ * A resposta devolve a cobertura já recalculada (a UI actualiza o aviso).
+ */
 const createGuarantee = async (req: Request, res: Response) => {
-    let { loanId, purchaseAmount, guaranteeDescription, guaranteeFileUrl, status } = req.body;
-
-    const newGuarantee = await GuarateeAssessmentModel.create({
-        loanId,
-        purchaseAmount,
-        guaranteeDescription,
-        guaranteeFileUrl,
-        status
-    });
-
-    newGuarantee != null
-        ? res.status(201).send(
-            JSON.stringify({
-                success: true,
-                message: "A garantia foi gravada com sucesso.",
-            })
-        )
-        : res.status(500).send(
-            JSON.stringify({
+    try {
+        const loanId = Number((req.body as any)?.loanId);
+        if (!Number.isFinite(loanId) || loanId <= 0) {
+            return res.status(400).json({
                 success: false,
-                message: "There was an error saving the guarantee.",
-            })
-        );
+                message: "Indique o crédito a que a garantia pertence.",
+            });
+        }
+
+        // Aceita "150 000,00" (formato português) e 150000.00.
+        const rawAmount = (req.body as any)?.purchaseAmount;
+        const normalizado = typeof rawAmount === "string"
+            ? rawAmount.replace(/\s/g, "").replace(",", ".")
+            : rawAmount;
+        const purchaseAmount = Number(normalizado);
+        if (!Number.isFinite(purchaseAmount) || purchaseAmount <= 0) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "O valor avaliado da garantia é obrigatório e tem de ser maior que zero " +
+                    "(é a base da análise de cobertura do crédito).",
+            });
+        }
+
+        const guaranteeDescription = String((req.body as any)?.guaranteeDescription || "").trim();
+        if (!guaranteeDescription) {
+            return res.status(400).json({
+                success: false,
+                message: "Descreva a garantia (ex.: viatura, imóvel, aval).",
+            });
+        }
+
+        const loan: any = await LoanModel.findByPk(loanId);
+        if (!loan) {
+            return res.status(404).json({
+                success: false,
+                message: "Crédito não encontrado para associar a garantia.",
+            });
+        }
+
+        const statusRaw = Number((req.body as any)?.status);
+        const newGuarantee = await GuarateeAssessmentModel.create({
+            loanId,
+            purchaseAmount: round2(purchaseAmount),
+            guaranteeDescription,
+            guaranteeFileUrl: (req.body as any)?.guaranteeFileUrl || null,
+            status: statusRaw === 1 ? 1 : 0,
+        });
+
+        const coverage = await getGuaranteeCoverage({ loan });
+
+        return res.status(201).json({
+            success: true,
+            message: "A garantia foi gravada com sucesso.",
+            result: newGuarantee,
+            coverage,
+        });
+    } catch (error: any) {
+        console.error("Erro ao gravar garantia:", error?.message || error);
+        return res.status(500).json({
+            success: false,
+            message: "Não foi possível gravar a garantia.",
+        });
+    }
 };
 
 const deleteGuarantee = async (req: Request, res: Response) => {

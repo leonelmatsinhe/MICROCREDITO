@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.hasOpenRegister = exports.getTreasuryPanelView = exports.validateComprovativoEntrega = exports.getComprovativoEntrega = exports.observeDifference = exports.justifyDifference = exports.getDifferences = exports.getReconciliation = exports.getDailySummary = exports.getSystemRegister = exports.getPortalAlert = exports.getHistory = exports.createManualMovement = exports.getMovements = exports.findOne = exports.close = exports.openToday = exports.getOpeningBalanceSuggestion = exports.getToday = void 0;
+exports.hasOpenRegister = exports.reconcileElectronicHandler = exports.openElectronicDayHandler = exports.getElectronicReport = exports.getElectronicToday = exports.updateCashMode = exports.getCashMode = exports.getTreasuryPanelView = exports.validateComprovativoEntrega = exports.getComprovativoEntrega = exports.observeDifference = exports.justifyDifference = exports.getDifferences = exports.getReconciliation = exports.getDailySummary = exports.getSystemRegister = exports.getPortalAlert = exports.getHistory = exports.createManualMovement = exports.getMovements = exports.findOne = exports.close = exports.openToday = exports.getOpeningBalanceSuggestion = exports.getToday = void 0;
 const jwt = __importStar(require("jsonwebtoken"));
 const cashRegisterService_1 = require("../services/cashRegisterService");
 const CashRegisterModel_1 = require("../database/models/CashRegisterModel");
@@ -86,6 +86,8 @@ const errorStatus = (error) => {
         case "INVALID_JUSTIFICATION_ACCOUNT":
         case "AUTOMATIC_ONLY":
         case "BANK_ACCOUNT_REQUIRED":
+        case "INVALID_MODE":
+        case "INVALID_ACCOUNT":
         case "ACCOUNT_INACTIVE":
         case "REGISTER_NOT_TODAY":
         case "INVALID_TRANSFER": return 400;
@@ -763,6 +765,176 @@ const getTreasuryPanelView = (req, res) => __awaiter(void 0, void 0, void 0, fun
     }
 });
 exports.getTreasuryPanelView = getTreasuryPanelView;
+/**
+ * GET /api/cash-register/mode
+ * Modo de caixa da empresa: PHYSICAL (contagem de numerário) ou ELECTRONIC
+ * (reconciliação manual por conta bancária já existente).
+ */
+const getCashMode = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { companyId } = yield resolveIdentity(req);
+        if (!companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const { getCashRegisterMode } = yield Promise.resolve().then(() => __importStar(require("../services/cashModeService")));
+        const mode = yield getCashRegisterMode(Number(companyId));
+        return res.status(200).json({ success: true, result: { mode } });
+    }
+    catch (error) {
+        console.error("[cash-register/mode] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao obter o modo de caixa." });
+    }
+});
+exports.getCashMode = getCashMode;
+/**
+ * PUT /api/cash-register/mode  Body: { mode: "PHYSICAL" | "ELECTRONIC" }
+ * Exclusivo do Admin da empresa (validado na rota).
+ */
+const updateCashMode = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _v;
+    try {
+        const { companyId } = yield resolveIdentity(req);
+        if (!companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const mode = (_v = req.body) === null || _v === void 0 ? void 0 : _v.mode;
+        const { setCashRegisterMode } = yield Promise.resolve().then(() => __importStar(require("../services/cashModeService")));
+        const updated = yield setCashRegisterMode(Number(companyId), String(mode || ""));
+        return res.status(200).json({ success: true, result: { mode: updated } });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-register/mode] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao alterar o modo de caixa." });
+    }
+});
+exports.updateCashMode = updateCashMode;
+/**
+ * GET /api/cash-register/electronic/today?date=YYYY-MM-DD
+ * Estado do dia electrónico: conta escolhida, movimentos automáticos do sistema
+ * (bank_transactions da conta) e saldo teórico.
+ */
+const getElectronicToday = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _w, _x, _y;
+    try {
+        const { userId, companyId } = yield resolveIdentity(req);
+        if (!userId || !companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const { buildElectronicDayView } = yield Promise.resolve().then(() => __importStar(require("../services/electronicCashService")));
+        const { getCashRegisterMode } = yield Promise.resolve().then(() => __importStar(require("../services/cashModeService")));
+        const result = yield buildElectronicDayView({
+            companyId: Number(companyId),
+            userId: Number(userId),
+            day: (_w = req.query) === null || _w === void 0 ? void 0 : _w.date,
+            bankAccountId: (_y = (_x = req.query) === null || _x === void 0 ? void 0 : _x.account_id) !== null && _y !== void 0 ? _y : null,
+        });
+        return res.status(200).json({
+            success: true,
+            result: Object.assign(Object.assign({}, result), { mode: yield getCashRegisterMode(Number(companyId)) }),
+        });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-register/electronic/today] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao obter o dia electrónico." });
+    }
+});
+exports.getElectronicToday = getElectronicToday;
+/**
+ * GET /api/cash-register/electronic/report?date=YYYY-MM-DD
+ * Reconciliação bancária do dia POR CONTA: saldo inicial, entradas, saídas,
+ * saldo teórico, saldo real e diferença (Admin).
+ */
+const getElectronicReport = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _z;
+    try {
+        const { companyId } = yield resolveIdentity(req);
+        if (!companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const { buildElectronicReconciliationReport } = yield Promise.resolve().then(() => __importStar(require("../services/electronicCashService")));
+        const result = yield buildElectronicReconciliationReport(Number(companyId), (_z = req.query) === null || _z === void 0 ? void 0 : _z.date);
+        return res.status(200).json({ success: true, result });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-register/electronic/report] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao gerar o relatório de reconciliação." });
+    }
+});
+exports.getElectronicReport = getElectronicReport;
+/**
+ * POST /api/cash-register/electronic/open-day
+ * Body: { bank_account_id, manual_balance_start, date? }
+ */
+const openElectronicDayHandler = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _0, _1;
+    try {
+        const { userId, companyId } = yield resolveIdentity(req);
+        if (!userId || !companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const body = req.body || {};
+        const { openElectronicDay } = yield Promise.resolve().then(() => __importStar(require("../services/electronicCashService")));
+        const result = yield openElectronicDay({
+            companyId: Number(companyId),
+            userId: Number(userId),
+            bankAccountId: (_0 = body.bank_account_id) !== null && _0 !== void 0 ? _0 : body.bankAccountId,
+            manualBalanceStart: (_1 = body.manual_balance_start) !== null && _1 !== void 0 ? _1 : body.manualBalanceStart,
+            day: body.date,
+        });
+        return res.status(201).json({ success: true, result });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-register/electronic/open-day] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao abrir o dia electrónico." });
+    }
+});
+exports.openElectronicDayHandler = openElectronicDayHandler;
+/**
+ * POST /api/cash-register/electronic/reconcile
+ * Body: { bank_account_id, manual_balance_end, observations?, date? }
+ * Calcula o teórico (inicial + entradas − saídas da conta no dia) e a
+ * diferença contra o saldo real lido no banco.
+ */
+const reconcileElectronicHandler = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _2, _3, _4, _5;
+    try {
+        const { userId, companyId } = yield resolveIdentity(req);
+        if (!userId || !companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const body = req.body || {};
+        const { reconcileElectronic } = yield Promise.resolve().then(() => __importStar(require("../services/electronicCashService")));
+        const result = yield reconcileElectronic({
+            companyId: Number(companyId),
+            userId: Number(userId),
+            bankAccountId: (_3 = (_2 = body.bank_account_id) !== null && _2 !== void 0 ? _2 : body.bankAccountId) !== null && _3 !== void 0 ? _3 : null,
+            manualBalanceEnd: (_4 = body.manual_balance_end) !== null && _4 !== void 0 ? _4 : body.manualBalanceEnd,
+            observations: (_5 = body.observations) !== null && _5 !== void 0 ? _5 : null,
+            day: body.date,
+        });
+        return res.status(200).json({ success: true, result });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-register/electronic/reconcile] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao reconciliar o dia electrónico." });
+    }
+});
+exports.reconcileElectronicHandler = reconcileElectronicHandler;
 const hasOpenRegister = (userId, companyId) => __awaiter(void 0, void 0, void 0, function* () {
     return !!(yield (0, cashRegisterService_1.getOpenRegister)(userId, companyId));
 });

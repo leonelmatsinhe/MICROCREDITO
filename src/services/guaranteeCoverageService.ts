@@ -5,9 +5,11 @@ import { simulator } from "../utils/loanAmortization";
 /**
  * COBERTURA DE GARANTIAS — valor do crédito + juros.
  *
- * Regra de negócio: um crédito NÃO pode ser aprovado/desembolsado enquanto o
- * valor total das garantias registadas (loan_guarantees.purchaseAmount) não
- * cobrir o TOTAL A PAGAR do crédito (capital + juros do plano de amortização).
+ * Regra de negócio: o cadastro de garantias é a BASE INICIAL DE ANÁLISE. Um
+ * crédito NÃO pode ser aprovado/desembolsado sem pelo menos UMA garantia
+ * registada (loan_guarantees) e enquanto o valor dessas garantias
+ * (purchaseAmount) não cobrir o TOTAL A PAGAR do crédito (capital + juros do
+ * plano de amortização). Sem plano nem valores, falha fechado.
  *
  * O total exigido é sempre o mais fiável disponível:
  *   1. se já existe plano de amortização gravado → Σ das prestações (a dívida
@@ -19,6 +21,8 @@ import { simulator } from "../utils/loanAmortization";
  * Ponto de aplicação (autoridade = backend):
  *   - POST /api/createInstallmentsLoan/  → createAmortizationLoan (aprova+desembolsa);
  *   - PUT  /api/loan/:id                 → updateLoan quando status → 1;
+ *   - POST /api/loan/:id/approve         → approveLoan (alçadas);
+ *   - POST /api/loan/:id/prepare-disbursement → prepareLoanDisbursement;
  *   - DELETE /api/deleteGuarantee/:id    → impede baixar a cobertura abaixo do
  *                                           total a pagar de um crédito activo;
  *   - GET  /api/loan/:id/guarantee-coverage → UI (aviso/bloqueio antes de aprovar).
@@ -42,6 +46,15 @@ const fmtMoney = (value: number): string =>
 
 export type CoverageSource = "plan" | "simulated" | "amount";
 
+/**
+ * Porque é que a cobertura NÃO permite aprovar:
+ *  · NO_GUARANTEES     — nenhuma garantia registada (cadastro obrigatório);
+ *  · INSUFFICIENT       — garantias registadas, mas abaixo do total a pagar;
+ *  · INVALID_REQUIRED   — não foi possível apurar o total a pagar (nunca aprova);
+ *  · null               — coberto.
+ */
+export type CoverageReason = "NO_GUARANTEES" | "INSUFFICIENT" | "INVALID_REQUIRED" | null;
+
 export interface GuaranteeCoverage {
     loanId: number;
     /** Nº de garantias registadas para o crédito. */
@@ -52,13 +65,65 @@ export interface GuaranteeCoverage {
     requiredTotal: number;
     /** Quanto falta para cobrir o total (0 quando coberto). */
     shortfall: number;
-    /** true quando garantiasTotal >= requiredTotal. */
+    /** true só quando HÁ garantias registadas e cobrem o total a pagar. */
     covered: boolean;
-    /** Garantias / total exigido × 100 (ilimitado quando não há dívida). */
+    /** true quando existe pelo menos uma garantia registada. */
+    registered: boolean;
+    /** Garantias / total exigido × 100 (0 quando não há dívida). */
     coveragePct: number;
     /** De onde veio o total exigido: plano gravado, simulação Price ou capital. */
     source: CoverageSource;
+    /** Motivo do bloqueio (null quando coberto). */
+    reason: CoverageReason;
 }
+
+/**
+ * DECISÃO DE COBERTURA (função pura — sem base de dados).
+ *
+ * Regra de negócio: o cadastro de garantias é a BASE INICIAL DE ANÁLISE — um
+ * crédito não pode ser aprovado/desembolsado sem, no mínimo, UMA garantia
+ * registada, e o valor dessas garantias tem de cobrir o total a pagar
+ * (capital + juros).
+ *
+ * Fail-closed: se o total a pagar for desconhecido (≤ 0), NÃO aprova.
+ */
+export const evaluateGuaranteeCoverage = (params: {
+    guaranteeCount: any;
+    guaranteesTotal: any;
+    requiredTotal: any;
+}): Pick<GuaranteeCoverage, "guaranteeCount" | "guaranteesTotal" | "requiredTotal" | "shortfall" | "covered" | "registered" | "coveragePct" | "reason"> => {
+    const guaranteeCount = Math.max(0, Math.trunc(toNumber(params.guaranteeCount)));
+    const guaranteesTotal = round2(Math.max(0, toNumber(params.guaranteesTotal)));
+    const requiredTotal = round2(toNumber(params.requiredTotal));
+
+    const shortfall = round2(Math.max(0, requiredTotal - guaranteesTotal));
+    const registered = guaranteeCount > 0;
+
+    let reason: CoverageReason = null;
+    if (requiredTotal <= 0) {
+        reason = "INVALID_REQUIRED";
+    } else if (!registered) {
+        reason = "NO_GUARANTEES";
+    } else if (guaranteesTotal + 0.005 < requiredTotal) {
+        reason = "INSUFFICIENT";
+    }
+
+    const coveragePct =
+        requiredTotal > 0
+            ? Math.round((guaranteesTotal / requiredTotal) * 1000) / 10
+            : 0;
+
+    return {
+        guaranteeCount,
+        guaranteesTotal,
+        requiredTotal,
+        shortfall,
+        covered: reason === null,
+        registered,
+        coveragePct,
+        reason,
+    };
+};
 
 export interface CoverageInput {
     /** Registo do crédito ( LoanModel instance ou POJO com id/amount/... ). */
@@ -175,27 +240,29 @@ export const getGuaranteeCoverage = async (
         }
     }
 
-    const shortfall = round2(Math.max(0, requiredTotal - guaranteesTotal));
-    const covered = guaranteesTotal + 0.005 >= requiredTotal;
-    const coveragePct =
-        requiredTotal > 0
-            ? Math.round((guaranteesTotal / requiredTotal) * 1000) / 10
-            : 100;
-
     return {
         loanId,
-        guaranteeCount,
-        guaranteesTotal,
-        requiredTotal,
-        shortfall,
-        covered,
-        coveragePct,
+        ...evaluateGuaranteeCoverage({ guaranteeCount, guaranteesTotal, requiredTotal }),
         source,
     };
 };
 
 /** Mensagem de bloqueio (PT) usada nos erros 400/409 da API. */
 export const guaranteeCoverageMessage = (coverage: GuaranteeCoverage): string => {
+    if (coverage.reason === "NO_GUARANTEES") {
+        return (
+            `Nenhuma garantia registada neste crédito. O cadastro de garantias é obrigatório ` +
+            `antes da aprovação (é a base inicial de análise): registe pelo menos uma garantia ` +
+            `com valor avaliado de ${fmtMoney(coverage.requiredTotal)} MZN — total a pagar ` +
+            `(capital + juros) — no detalhe do mutuário, aba «Garantias & Recibos».`
+        );
+    }
+    if (coverage.reason === "INVALID_REQUIRED") {
+        return (
+            `Não foi possível apurar o total a pagar deste crédito (capital + juros): ` +
+            `verifique o montante, a taxa de juro e o número de prestações antes de aprovar.`
+        );
+    }
     const guaranteeLabel =
         coverage.guaranteeCount === 1 ? "1 garantia" : `${coverage.guaranteeCount} garantias`;
     return (
@@ -211,7 +278,8 @@ export const guaranteeCoverageMessage = (coverage: GuaranteeCoverage): string =>
 /** Resposta 400/409 padrão para os controllers. */
 export const guaranteeCoverageError = (coverage: GuaranteeCoverage) => ({
     success: false,
-    error: "GARANTIAS_INSUFICIENTES",
+    error: coverage.reason === "NO_GUARANTEES" ? "GARANTIAS_AUSENTES" : "GARANTIAS_INSUFICIENTES",
+    reason: coverage.reason,
     message: guaranteeCoverageMessage(coverage),
     details: coverage,
 });

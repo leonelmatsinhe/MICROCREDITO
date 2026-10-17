@@ -224,6 +224,14 @@ exports.getOpenRegister = getOpenRegister;
  */
 const openRegister = (params) => __awaiter(void 0, void 0, void 0, function* () {
     const { userId, companyId } = params;
+    // ── MODO ELECTRÓNICO: o caixa de numerário está desactivado ──
+    // A empresa gere o dia por conta bancária; ABRIR caixa físico aqui criaria
+    // um registo paralelo que o modo electrónico não reconcilia. O operador é
+    // encaminhado para Configurações → Caixa.
+    const { isElectronicCashMode, PHYSICAL_MODE_REQUIRED_MESSAGE } = yield Promise.resolve().then(() => __importStar(require("./cashModeService")));
+    if (yield isElectronicCashMode(companyId)) {
+        throw { code: "INVALID_MODE", message: PHYSICAL_MODE_REQUIRED_MESSAGE };
+    }
     // Uma contagem enviada é sempre autoritária (mesmo que dê 0 unidades: o
     // operador está a dizer que não há dinheiro na gaveta).
     const hasDenominations = params.denominations !== undefined && params.denominations !== null;
@@ -322,6 +330,11 @@ const closeRegister = (params) => __awaiter(void 0, void 0, void 0, function* ()
             code: "INVALID_CLOSING_TYPE",
             message: `Tipo de fecho inválido: ${params.tipoFechamento}. Use ${CashRegisterModel_1.CASH_CLOSING_TYPES.join(", ")}.`,
         };
+    }
+    // ── MODO ELECTRÓNICO: fecho de caixa de numerário está desactivado ──
+    const { isElectronicCashMode, PHYSICAL_MODE_REQUIRED_MESSAGE } = yield Promise.resolve().then(() => __importStar(require("./cashModeService")));
+    if (yield isElectronicCashMode(companyId)) {
+        throw { code: "INVALID_MODE", message: PHYSICAL_MODE_REQUIRED_MESSAGE };
     }
     const register = yield CashRegisterModel_1.CashRegisterModel.findOne({
         where: { id: registerId, companyId },
@@ -522,10 +535,15 @@ const recordDisbursement = (params) => __awaiter(void 0, void 0, void 0, functio
     const { registerMovement, isElectronic } = yield Promise.resolve().then(() => __importStar(require("./treasuryService")));
     const method = (params.paymentMethod || "CASH").toUpperCase();
     const electronic = isElectronic(method);
-    // O caixa ABERTO do utilizador — sem ele, nenhum movimento é aceite.
+    // O caixa ABERTO do utilizador — obrigatório apenas em modo FÍSICO. No modo
+    // ELECTRÓNICO o desembolso segue sem caixa (o dia é reconciliado por conta
+    // bancária; o movimento fica auditado no Caixa do Sistema).
     const open = yield (0, exports.getOpenRegister)((_j = params.userId) !== null && _j !== void 0 ? _j : 0, params.companyId);
     if (!open) {
-        throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+        const { isPhysicalCashMode } = yield Promise.resolve().then(() => __importStar(require("./cashModeService")));
+        if (yield isPhysicalCashMode(params.companyId)) {
+            throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+        }
     }
     yield registerMovement({
         companyId: params.companyId,
@@ -557,7 +575,10 @@ const recordPayment = (params) => __awaiter(void 0, void 0, void 0, function* ()
     const electronic = isElectronic(method);
     const open = yield (0, exports.getOpenRegister)((_o = params.userId) !== null && _o !== void 0 ? _o : 0, params.companyId);
     if (!open) {
-        throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+        const { isPhysicalCashMode } = yield Promise.resolve().then(() => __importStar(require("./cashModeService")));
+        if (yield isPhysicalCashMode(params.companyId)) {
+            throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+        }
     }
     const base = {
         companyId: params.companyId,

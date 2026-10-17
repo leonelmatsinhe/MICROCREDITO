@@ -31,12 +31,18 @@
               </q-input>
 
               <!-- Valor estimado -->
+              <!-- type=text + inputmode decimal: o input numérico nativo
+                   descarta a vírgula portuguesa ("150 000,00") e o valor
+                   ficava vazio — sem valor avaliado a garantia não serve de
+                   base à análise. -->
               <q-input
-                v-model.number="form.purchaseAmount"
+                v-model="form.purchaseAmount"
                 dense
                 outlined
                 label="Valor estimado (MZN) *"
-                type="number"
+                type="text"
+                inputmode="decimal"
+                hint="Aceita vírgula (ex.: 150000,00)"
                 input-style="font-size: 13px"
               >
                 <template v-slot:prepend><q-icon name="attach_money" size="16px" color="grey-5" /></template>
@@ -120,7 +126,7 @@
                   size="sm"
                   no-caps
                   :loading="saving"
-                  :disable="!form.guaranteeDescription || !form.purchaseAmount"
+                  :disable="!form.guaranteeDescription || !(parseLooseNumber(form.purchaseAmount) > 0)"
                   @click="addGuarantee"
                 />
               </div>
@@ -220,6 +226,7 @@ import { useQuasar } from 'quasar'
 import { useGuaranteesStore } from '@/stores/guarantees'
 import { formatMoney } from '@/utils/formatters'
 import { logCreateGuarantee, logDeleteGuarantee } from '@/utils/logger'
+import { parseLooseNumber } from '@/utils/percent'
 
 const $q = useQuasar()
 const guaranteesStore = useGuaranteesStore()
@@ -243,7 +250,7 @@ const totalValue = computed(() => guaranteesStore.totalGuaranteeValue)
 
 const form = ref({
   guaranteeDescription: '',
-  purchaseAmount: 0,
+  purchaseAmount: '',
   status: 0,
   guaranteeFileUrl: ''
 })
@@ -316,7 +323,18 @@ async function uploadFile() {
 }
 
 async function addGuarantee() {
-  if (!form.value.guaranteeDescription || !form.value.purchaseAmount) return
+  const description = String(form.value.guaranteeDescription || '').trim()
+  const amount = parseLooseNumber(form.value.purchaseAmount)
+
+  if (!description) {
+    $q.notify({ type: 'warning', message: 'Descreva a garantia (ex.: viatura, imóvel, aval).', position: 'top' })
+    return
+  }
+  // Sem valor avaliado a garantia não é base de análise — não é gravada.
+  if (amount === null || amount <= 0) {
+    $q.notify({ type: 'warning', message: 'Indique o valor avaliado da garantia (maior que zero).', position: 'top' })
+    return
+  }
 
   try {
     // Upload file first if selected
@@ -327,17 +345,17 @@ async function addGuarantee() {
 
     await guaranteesStore.createGuarantee({
       loanId: props.loanId,
-      guaranteeDescription: form.value.guaranteeDescription,
-      purchaseAmount: form.value.purchaseAmount,
+      guaranteeDescription: description,
+      purchaseAmount: amount,
       status: form.value.status,
       guaranteeFileUrl: fileUrl || ''
     })
 
-    logCreateGuarantee(form.value.guaranteeDescription, 'Garantia')
+    logCreateGuarantee(description, 'Garantia')
     $q.notify({ type: 'positive', message: 'Garantia adicionada com sucesso', position: 'top' })
 
     // Reset form
-    form.value = { guaranteeDescription: '', purchaseAmount: 0, status: 0, guaranteeFileUrl: '' }
+    form.value = { guaranteeDescription: '', purchaseAmount: '', status: 0, guaranteeFileUrl: '' }
     selectedFile.value = null
     if (fileInput.value) {
       fileInput.value.value = ''
