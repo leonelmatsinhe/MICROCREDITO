@@ -635,10 +635,15 @@ export const recordDisbursement = async (params: {
   const method = (params.paymentMethod || "CASH").toUpperCase();
   const electronic = isElectronic(method);
 
-  // O caixa ABERTO do utilizador — sem ele, nenhum movimento é aceite.
+  // O caixa ABERTO do utilizador — obrigatório apenas em modo FÍSICO. No modo
+  // ELECTRÓNICO o desembolso segue sem caixa (o dia é reconciliado por conta
+  // bancária; o movimento fica auditado no Caixa do Sistema).
   const open = await getOpenRegister(params.userId ?? 0, params.companyId);
   if (!open) {
-    throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+    const { isPhysicalCashMode } = await import("./cashModeService");
+    if (await isPhysicalCashMode(params.companyId)) {
+      throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+    }
   }
 
   await registerMovement({
@@ -686,7 +691,10 @@ export const recordPayment = async (params: {
 
   const open = await getOpenRegister(params.userId ?? 0, params.companyId);
   if (!open) {
-    throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+    const { isPhysicalCashMode } = await import("./cashModeService");
+    if (await isPhysicalCashMode(params.companyId)) {
+      throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+    }
   }
 
   const base = {

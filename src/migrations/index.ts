@@ -1735,4 +1735,42 @@ const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
   } catch (error: any) {
     results.errors.push(`ALCADAS admin único: ${error?.message || error}`);
   }
+
+  // ── 17. MODO DE CAIXA — FÍSICO vs ELECTRÓNICO MANUAL ──
+  // A empresa escolhe o modo em Configurações. Em ELECTRONIC não há exigência
+  // de caixa aberto: o dia é gerido contra uma CONTA BANCÁRIA JÁ EXISTENTE
+  // (tabela `accounts`, reutilizada — não se cria tabela nova) e o fecho é uma
+  // reconciliação manual: saldo inicial + movimentos do dia vs saldo real lido
+  // no banco. Em PHYSICAL tudo volta a exigir caixa aberto.
+  await addColumnIfMissing(
+    "companies",
+    "cash_register_mode",
+    "ENUM('PHYSICAL','ELECTRONIC') NOT NULL DEFAULT 'ELECTRONIC' COMMENT 'Modo de caixa: físico ou electrónico (reconciliação bancária manual)'",
+    results
+  );
+  // Registos anteriores a esta coluna são caixas FÍSICOS.
+  await addColumnIfMissing(
+    "cash_registers",
+    "mode",
+    "ENUM('PHYSICAL','ELECTRONIC') NOT NULL DEFAULT 'PHYSICAL' AFTER status",
+    results
+  );
+  await addColumnIfMissing("cash_registers", "manual_balance_start", "DECIMAL(15,2) NULL AFTER bank_account_id", results);
+  await addColumnIfMissing("cash_registers", "manual_balance_end", "DECIMAL(15,2) NULL AFTER manual_balance_start", results);
+  await addColumnIfMissing("cash_registers", "observations", "TEXT NULL AFTER notes", results);
+  // Idempotente: a coluna do fecho electrónico (diferença) e a FK lógica para
+  // `accounts` podem já existir de migrações anteriores.
+  await addColumnIfMissing("cash_registers", "difference", "DECIMAL(15,2) NULL", results);
+  await addColumnIfMissing("cash_registers", "bank_account_id", "INT NULL", results);
+  await addIndexIfMissing("cash_registers", "idx_cash_registers_mode_day", ["companyId", "mode", "opening_date"], results);
+  // FK real para a tabela de contas JÁ existente (`accounts`).
+  await addForeignKeyIfMissing(
+    "cash_registers",
+    "fk_cash_registers_bank_account",
+    "bank_account_id",
+    "accounts",
+    "id",
+    "SET NULL",
+    results
+  );
 };

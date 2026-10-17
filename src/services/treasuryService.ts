@@ -255,6 +255,17 @@ export const registerMovement = async (input: MovementInput): Promise<any> => {
       usedSystemRegister = true;
     }
 
+    // ── MODO ELECTRÓNICO: não exige caixa aberto ──
+    // A empresa opera por conta bancária (saldo manual). O movimento continua
+    // registado e auditável no Caixa do Sistema do dia.
+    if (!register) {
+      const { isElectronicCashMode } = await import("./cashModeService");
+      if (await isElectronicCashMode(companyId)) {
+        register = await getOrCreateSystemRegister(companyId, transaction);
+        usedSystemRegister = true;
+      }
+    }
+
     if (!register) {
       throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
     }

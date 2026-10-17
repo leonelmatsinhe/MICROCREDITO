@@ -58,6 +58,7 @@
         <transition name="fade" mode="out-in">
           <CompanySection v-if="activeSection === 'company'" key="company" />
           <AccountsSection v-else-if="activeSection === 'accounts'" key="accounts" />
+          <CashModeSection v-else-if="activeSection === 'cash'" key="cash" />
           <RolesSection v-else-if="activeSection === 'roles'" key="roles" />
           <AppearanceSection v-else-if="activeSection === 'appearance'" key="appearance" />
         </transition>
@@ -70,6 +71,7 @@
 import { ref } from 'vue'
 import CompanySection from '@/components/settings/CompanySection.vue'
 import AccountsSection from '@/components/settings/AccountsSection.vue'
+import CashModeSection from '@/components/settings/CashModeSection.vue'
 import RolesSection from '@/components/settings/RolesSection.vue'
 import AppearanceSection from '@/components/settings/AppearanceSection.vue'
 
@@ -84,6 +86,7 @@ const activeSection = ref('company')
 const sections = [
   { id: 'company', icon: 'business', label: 'Empresa', description: 'Dados gerais' },
   { id: 'accounts', icon: 'account_balance', label: 'Contas Bancárias', description: 'Dados bancários' },
+  { id: 'cash', icon: 'point_of_sale', label: 'Caixa', description: 'Físico ou electrónico' },
   { id: 'roles', icon: 'admin_panel_settings', label: 'Permissões', description: 'Roles e acessos' },
   { id: 'appearance', icon: 'palette', label: 'Aparência', description: 'Tema e cores' }
 ]

@@ -21,6 +21,11 @@ import {
   getComprovativoEntrega,
   validateComprovativoEntrega,
   getTreasuryPanelView,
+  getCashMode,
+  updateCashMode,
+  getElectronicToday,
+  openElectronicDayHandler,
+  reconcileElectronicHandler,
 } from "../controllers/CashRegisterController";
 
 /**
@@ -49,6 +54,21 @@ import {
  *    ENTREGA_COFRE ou DEPOSITO_BANCARIO antes de o operador continuar a operar.
  */
 const cashRoutes = Router();
+
+// ── MODO DE CAIXA DA EMPRESA ──
+// PHYSICAL = caixa de numerário (fluxo anterior, inalterado);
+// ELECTRONIC = reconciliação manual por conta bancária JÁ EXISTENTE (accounts),
+// sem exigir caixa aberto para desembolsar ou receber.
+//  GET /api/cash-register/mode
+//  PUT /api/cash-register/mode                 (Admin)
+//  GET /api/cash-register/electronic/today     (Admin)
+//  POST /api/cash-register/electronic/open-day (Admin)
+//  POST /api/cash-register/electronic/reconcile(Admin)
+cashRoutes.get("/api/cash-register/mode", auth, getCashMode);
+cashRoutes.put("/api/cash-register/mode", auth, isCompanyAdmin, updateCashMode);
+cashRoutes.get("/api/cash-register/electronic/today", auth, isCompanyAdmin, getElectronicToday);
+cashRoutes.post("/api/cash-register/electronic/open-day", auth, isCompanyAdmin, openElectronicDayHandler);
+cashRoutes.post("/api/cash-register/electronic/reconcile", auth, isCompanyAdmin, reconcileElectronicHandler);
 
 cashRoutes.get("/api/cash-registers/today", auth, isCompanyAdmin, getToday);
 // RECONCILIAÇÃO DO DIA — 3 fontes: tranzactions vs caixa vs recibos. ANTES de "/:id".

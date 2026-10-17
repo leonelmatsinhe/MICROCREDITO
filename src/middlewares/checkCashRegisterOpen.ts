@@ -60,6 +60,21 @@ export const checkCashRegisterOpen = async (
       return res.status(401).json({ success: false, message: "Token invalid" });
     }
 
+    // MODO ELECTRÓNICO: a empresa gere o dia por conta bancária (saldo manual),
+    // por isso nenhuma operação exige caixa aberto. Em PHYSICAL mantém-se o
+    // bloqueio anterior.
+    const { isElectronicCashMode } = await import("../services/cashModeService");
+    if (await isElectronicCashMode(companyId)) {
+      // Marcador (nunca null): os controladores de desembolso/pagamento usam
+      // `req.cashRegister` apenas como sinal para registarem o movimento — no
+      // modo electrónico ele cai no Caixa do Sistema do dia (auditoria mantida).
+      (req as any).cashRegister = { mode: "ELECTRONIC", electronicFallback: true };
+      (req as any).userId = userId;
+      (req as any).companyId = companyId;
+      (req as any).cashRegisterMode = "ELECTRONIC";
+      return next();
+    }
+
     const openRegister = await getOpenRegister(userId, companyId);
     if (!openRegister) {
       return res.status(403).json({
@@ -72,6 +87,7 @@ export const checkCashRegisterOpen = async (
     (req as any).cashRegister = openRegister;
     (req as any).userId = userId;
     (req as any).companyId = companyId;
+    (req as any).cashRegisterMode = "PHYSICAL";
 
     return next();
   } catch (error: any) {

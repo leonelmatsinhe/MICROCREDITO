@@ -86,6 +86,8 @@ const errorStatus = (error: any): number => {
     case "INVALID_JUSTIFICATION_ACCOUNT":
     case "AUTOMATIC_ONLY":
     case "BANK_ACCOUNT_REQUIRED":
+    case "INVALID_MODE":
+    case "INVALID_ACCOUNT":
     case "ACCOUNT_INACTIVE":
     case "REGISTER_NOT_TODAY":
     case "INVALID_TRANSFER": return 400;
@@ -784,6 +786,142 @@ export const getTreasuryPanelView = async (req: Request, res: Response) => {
     }
     console.error("[cash-registers/treasury-panel] Erro:", error?.message || error);
     return res.status(500).json({ success: false, message: "Erro ao carregar o painel de tesouraria." });
+  }
+};
+
+/**
+ * GET /api/cash-register/mode
+ * Modo de caixa da empresa: PHYSICAL (contagem de numerário) ou ELECTRONIC
+ * (reconciliação manual por conta bancária já existente).
+ */
+export const getCashMode = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = await resolveIdentity(req);
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const { getCashRegisterMode } = await import("../services/cashModeService");
+    const mode = await getCashRegisterMode(Number(companyId));
+    return res.status(200).json({ success: true, result: { mode } });
+  } catch (error: any) {
+    console.error("[cash-register/mode] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao obter o modo de caixa." });
+  }
+};
+
+/**
+ * PUT /api/cash-register/mode  Body: { mode: "PHYSICAL" | "ELECTRONIC" }
+ * Exclusivo do Admin da empresa (validado na rota).
+ */
+export const updateCashMode = async (req: Request, res: Response) => {
+  try {
+    const { companyId } = await resolveIdentity(req);
+    if (!companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const mode = (req.body as any)?.mode;
+    const { setCashRegisterMode } = await import("../services/cashModeService");
+    const updated = await setCashRegisterMode(Number(companyId), String(mode || ""));
+    return res.status(200).json({ success: true, result: { mode: updated } });
+  } catch (error: any) {
+    if (error?.code) {
+      return res.status(errorStatus(error)).json(errorBody(error));
+    }
+    console.error("[cash-register/mode] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao alterar o modo de caixa." });
+  }
+};
+
+/**
+ * GET /api/cash-register/electronic/today?date=YYYY-MM-DD
+ * Estado do dia electrónico: conta escolhida, movimentos automáticos do sistema
+ * (bank_transactions da conta) e saldo teórico.
+ */
+export const getElectronicToday = async (req: Request, res: Response) => {
+  try {
+    const { userId, companyId } = await resolveIdentity(req);
+    if (!userId || !companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const { buildElectronicDayView } = await import("../services/electronicCashService");
+    const { getCashRegisterMode } = await import("../services/cashModeService");
+    const result = await buildElectronicDayView({
+      companyId: Number(companyId),
+      userId: Number(userId),
+      day: (req.query as any)?.date,
+      bankAccountId: (req.query as any)?.account_id ?? null,
+    });
+    return res.status(200).json({
+      success: true,
+      result: { ...result, mode: await getCashRegisterMode(Number(companyId)) },
+    });
+  } catch (error: any) {
+    if (error?.code) {
+      return res.status(errorStatus(error)).json(errorBody(error));
+    }
+    console.error("[cash-register/electronic/today] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao obter o dia electrónico." });
+  }
+};
+
+/**
+ * POST /api/cash-register/electronic/open-day
+ * Body: { bank_account_id, manual_balance_start, date? }
+ */
+export const openElectronicDayHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId, companyId } = await resolveIdentity(req);
+    if (!userId || !companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const body: any = req.body || {};
+    const { openElectronicDay } = await import("../services/electronicCashService");
+    const result = await openElectronicDay({
+      companyId: Number(companyId),
+      userId: Number(userId),
+      bankAccountId: body.bank_account_id ?? body.bankAccountId,
+      manualBalanceStart: body.manual_balance_start ?? body.manualBalanceStart,
+      day: body.date,
+    });
+    return res.status(201).json({ success: true, result });
+  } catch (error: any) {
+    if (error?.code) {
+      return res.status(errorStatus(error)).json(errorBody(error));
+    }
+    console.error("[cash-register/electronic/open-day] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao abrir o dia electrónico." });
+  }
+};
+
+/**
+ * POST /api/cash-register/electronic/reconcile
+ * Body: { bank_account_id, manual_balance_end, observations?, date? }
+ * Calcula o teórico (inicial + entradas − saídas da conta no dia) e a
+ * diferença contra o saldo real lido no banco.
+ */
+export const reconcileElectronicHandler = async (req: Request, res: Response) => {
+  try {
+    const { userId, companyId } = await resolveIdentity(req);
+    if (!userId || !companyId) {
+      return res.status(401).json({ success: false, message: "Token invalid" });
+    }
+    const body: any = req.body || {};
+    const { reconcileElectronic } = await import("../services/electronicCashService");
+    const result = await reconcileElectronic({
+      companyId: Number(companyId),
+      userId: Number(userId),
+      bankAccountId: body.bank_account_id ?? body.bankAccountId ?? null,
+      manualBalanceEnd: body.manual_balance_end ?? body.manualBalanceEnd,
+      observations: body.observations ?? null,
+      day: body.date,
+    });
+    return res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    if (error?.code) {
+      return res.status(errorStatus(error)).json(errorBody(error));
+    }
+    console.error("[cash-register/electronic/reconcile] Erro:", error?.message || error);
+    return res.status(500).json({ success: false, message: "Erro ao reconciliar o dia electrónico." });
   }
 };
 

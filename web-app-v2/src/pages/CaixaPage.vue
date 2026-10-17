@@ -1,10 +1,15 @@
 <template>
   <div class="q-pa-md caixa-page" data-tour="caixa-body">
     <!-- ═══════════ CARREGAMENTO ═══════════ -->
-    <div v-if="loading" class="text-center q-pa-xl">
+    <div v-if="loading || !cashMode" class="text-center q-pa-xl">
       <q-spinner-dots size="40px" color="primary" />
       <div class="text-caption text-grey-5 q-mt-sm">A carregar caixa do dia...</div>
     </div>
+
+    <!-- ═══════════ MODO ELECTRÓNICO MANUAL ═══════════ -->
+    <!-- Reconciliação por conta bancária já existente: sem folha de contagem
+         nem conferência cega de numerário. -->
+    <ElectronicCashPanel v-else-if="cashMode === 'ELECTRONIC'" />
 
     <template v-else>
       <!-- ═══════════ SEM CAIXA HOJE: BANNER + BOTÃO ABRIR ═══════════ -->
@@ -617,6 +622,9 @@ import { format, parseISO } from 'date-fns'
 // Folha de Contagem de Caixa (MT) — componente oficial de contagem por
 // denominação (Denominação | Quantidade | Subtotal), partilhado com o Caixa Central.
 import FolhaContagem from '@/components/caixa/FolhaContagem.vue'
+// Modo ELECTRONIC: abertura/reconciliação manual contra uma conta bancária
+// já cadastrada (a página só o mostra quando a empresa escolhe este modo).
+import ElectronicCashPanel from '@/components/caixa/ElectronicCashPanel.vue'
 // Contagem de numerário por denominação (valores faciais do metical) — helper
 // partilhado com o backend (web-app-v2/src/utils/mznDenominations.js).
 import {
@@ -646,6 +654,9 @@ const saving = ref(false)
 const loadingMovements = ref(false)
 const register = ref(null)      // caixa de hoje (aberto ou fechado)
 const movements = ref([])
+// Modo de caixa da empresa: PHYSICAL (contagem) ou ELECTRONIC (reconciliação
+// bancária manual). Fica null até ser carregado para não mostrar o ecrã errado.
+const cashMode = ref(null)
 
 const isOpen = computed(() => !!register.value && register.value.status === 'ABERTO')
 
@@ -807,6 +818,17 @@ const columns = [
 ]
 
 // ─── API ───
+async function loadCashMode() {
+  try {
+    const { data } = await api.get('/api/cash-register/mode')
+    if (data.success) cashMode.value = data.result.mode
+  } catch (error) {
+    // Sem resposta: assume o modo físico (fluxo anterior) para não bloquear a página.
+    console.error('Erro ao carregar o modo de caixa:', error)
+    cashMode.value = 'PHYSICAL'
+  }
+}
+
 async function fetchToday() {
   loading.value = true
   try {
@@ -1203,7 +1225,13 @@ async function exportPDF() {
 }
 
 // ─── Mount ───
-onMounted(() => {
+onMounted(async () => {
+  await loadCashMode()
+  if (cashMode.value === 'ELECTRONIC') {
+    // O painel electrónico carrega o seu próprio estado (conta + reconciliação).
+    loading.value = false
+    return
+  }
   fetchToday()
 })
 </script>
