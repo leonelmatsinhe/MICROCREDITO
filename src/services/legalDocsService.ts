@@ -8,6 +8,7 @@ import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { GuarateeAssessmentModel } from "../database/models/GuarateeAssessmentModel";
 import { AccountModel } from "../database/models/AccountModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 
 /**
  * Documentos legais do crédito em PDF (pdfkit no backend).
@@ -383,8 +384,9 @@ export const loadLegalDocsData = async (loanId: number): Promise<LegalDocsData |
     where: { loanId },
     order: [["dueDate", "ASC"], ["id", "ASC"]],
   });
-  const forfeit = Number(company?.getDataValue("forfeit")) || 0;
-  const amortizations = installmentPanification(amorts, forfeit);
+  // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+  const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyId);
+  const amortizations = installmentPanification(amorts, forfeit, undefined, { maxLateDays, capPercent });
   const guarantees: any[] = await GuarateeAssessmentModel.findAll({
     where: { loanId },
     order: [["id", "DESC"]],

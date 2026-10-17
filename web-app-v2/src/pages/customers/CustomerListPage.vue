@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md">
     <!-- KPIs -->
-    <div class="row q-col-gutter-md q-mb-md">
+    <div class="row q-col-gutter-md q-mb-md" data-tour="customers-kpis">
       <div class="col-12 col-sm-6 col-md-3">
         <q-card flat bordered class="kpi-card">
           <q-card-section class="row items-center">
@@ -57,7 +57,7 @@
     </div>
 
     <!-- Search and Filters -->
-    <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
+    <q-card flat bordered class="q-mb-md" style="border-radius: 12px" data-tour="customers-filters">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
           <div class="col-12 col-md-7">

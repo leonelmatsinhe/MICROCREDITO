@@ -41,11 +41,11 @@ const db_1 = require("../database/db");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
-const CompanyModel_1 = require("../database/models/CompanyModel");
 const sequelize_1 = require("sequelize");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const paymentMethodMap_1 = require("../utils/paymentMethodMap");
 const money_1 = require("../utils/money");
+const lateInterestService_1 = require("../services/lateInterestService");
 /**
  * POST /api/tranzaction/bulk — Liquidação Total ATÓMICA.
  *
@@ -121,14 +121,15 @@ const addTranzactionBulk = (req, res) => __awaiter(void 0, void 0, void 0, funct
         if (installments.length === 0) {
             return res.status(409).send({ success: false, message: "Este crédito já está totalmente liquidado." });
         }
-        const company = yield CompanyModel_1.CompanyModel.findByPk(loan.getDataValue("companyId"), { attributes: ["forfeit"] });
-        const forfeit = Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0);
+        // Motor V2 (company_penalty_rules) com fallback companies.forfeit:
+        // propaga invalidação/limitação da mora (dias máximos + cap).
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(Number(loan.getDataValue("companyId")));
         // Planeamento idêntico ao addTranzaction individual: mora do dia menos a
         // mora já cobrada em transacções anteriores da mesma prestação.
         const planned = [];
         for (const installment of installments) {
             const amortizationLoanId = Number(installment.getDataValue("id"));
-            const calculatedInstallment = (0, calculateLateAmount_1.installmentPanification)([installment], forfeit, payDate)[0];
+            const calculatedInstallment = (0, calculateLateAmount_1.installmentPanification)([installment], forfeit, payDate, { maxLateDays, capPercent })[0];
             const previousLateInterest = yield TranzactionModel_1.TranzactionModel.findAll({
                 where: { amortizationLoanId },
                 attributes: ["latePaymentInterest"],

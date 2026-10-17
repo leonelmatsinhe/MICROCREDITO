@@ -32,12 +32,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.hasOpenRegister = exports.getReconciliation = exports.getDailySummary = exports.getSystemRegister = exports.getPortalAlert = exports.getHistory = exports.createManualMovement = exports.getMovements = exports.findOne = exports.close = exports.openToday = exports.getOpeningBalanceSuggestion = exports.getToday = void 0;
+exports.hasOpenRegister = exports.getTreasuryPanelView = exports.validateComprovativoEntrega = exports.getComprovativoEntrega = exports.observeDifference = exports.justifyDifference = exports.getDifferences = exports.getReconciliation = exports.getDailySummary = exports.getSystemRegister = exports.getPortalAlert = exports.getHistory = exports.createManualMovement = exports.getMovements = exports.findOne = exports.close = exports.openToday = exports.getOpeningBalanceSuggestion = exports.getToday = void 0;
 const jwt = __importStar(require("jsonwebtoken"));
 const cashRegisterService_1 = require("../services/cashRegisterService");
 const CashRegisterModel_1 = require("../database/models/CashRegisterModel");
-const sequelize_1 = require("sequelize");
 const CashMovementModel_1 = require("../database/models/CashMovementModel");
+const mznDenominations_1 = require("../utils/mznDenominations");
+const cashLimit_1 = require("../utils/cashLimit");
+const sequelize_1 = require("sequelize");
 const UserModel_1 = require("../database/models/UserModel");
 /**
  * Resolve userId + companyId do pedido. Prioridade:
@@ -74,11 +76,39 @@ const errorStatus = (error) => {
         case "INVALID_AMOUNT":
         case "INVALID_TYPE":
         case "INVALID_CATEGORY":
-        case "INVALID_DESCRIPTION": return 400;
+        case "INVALID_DESCRIPTION":
+        case "INVALID_JUSTIFICATION":
+        case "INVALID_OBSERVATION":
+        case "INVALID_HASH":
+        case "INVALID_DENOMINATIONS":
+        case "INVALID_STATUS":
+        case "INVALID_CLOSING_TYPE":
+        case "INVALID_JUSTIFICATION_ACCOUNT":
+        case "AUTOMATIC_ONLY":
+        case "BANK_ACCOUNT_REQUIRED":
+        case "ACCOUNT_INACTIVE":
+        case "REGISTER_NOT_TODAY":
+        case "INVALID_TRANSFER": return 400;
+        case "ACCOUNT_NOT_FOUND": return 404;
+        // Circular do BM: precisa de ENTREGA_COFRE ou DEPOSITO_BANCARIO primeiro.
+        case "CASH_LIMIT_EXCEEDED": return 409;
+        case "DELIVERY_REQUIRED": return 409;
+        case "ALREADY_JUSTIFIED": return 409;
+        case "REGISTER_CLOSED":
+        case "CAIXA_FECHADO":
+        case "INSUFFICIENT_FUNDS": return 409;
         case "FORBIDDEN": return 403;
         default: return 500;
     }
 };
+/** Erros com código de negócio recebem o código no corpo (o frontend reage). */
+const errorBody = (error) => (Object.assign({ success: false, error: error === null || error === void 0 ? void 0 : error.code, message: error === null || error === void 0 ? void 0 : error.message }, ((error === null || error === void 0 ? void 0 : error.limite) !== undefined
+    ? {
+        limite: error.limite,
+        dinheiro_em_caixa: error.dinheiro_em_caixa,
+        excedente: error.excedente,
+    }
+    : {})));
 /**
  * GET /api/cash-registers/today
  * Estado do caixa de hoje do utilizador: { register, isOpen, categories }.
@@ -98,6 +128,19 @@ const getToday = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 isOpen: !!register && register.status === "ABERTO",
                 today: (0, cashRegisterService_1.todayKey)(),
                 categories: CashMovementModel_1.CASH_CATEGORIES,
+                // Etiquetas PT-MZ das categorias (o frontend não as duplica)
+                categoryLabels: CashMovementModel_1.CASH_CATEGORY_LABELS,
+                // Tipos OFICIAIS de tesouraria (entrega ao cofre, reforço, depósito,
+                // diferença de caixa) — sem "sangria"/"suprimento".
+                treasuryCategories: CashMovementModel_1.CASH_TREASURY_CATEGORIES,
+                // Denominações do metical para a contagem de numerário (notas + moedas)
+                denominations: mznDenominations_1.MZN_DENOMINATIONS,
+                // Tipos de fecho e a conta usada no Livro Caixa
+                closingTypes: CashRegisterModel_1.CASH_CLOSING_TYPES,
+                closingTypeLabels: CashRegisterModel_1.CASH_CLOSING_TYPE_LABELS,
+                cashDifferenceAccount: "58 — Quebras de Caixa",
+                // LIMITE DE NUMERÁRIO EM CAIXA (circular do BM)
+                cashLimit: Object.assign(Object.assign({}, (0, cashRegisterService_1.buildLimitInfo)(register || {})), { limite_configurado: (0, cashLimit_1.getCashLimitMzn)() }),
             },
         });
     }
@@ -139,21 +182,28 @@ const openToday = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         if (!userId || !companyId) {
             return res.status(401).json({ success: false, message: "Token invalid" });
         }
-        // Aceita opening_balance (camelCase) ou opening_balance (snake_case).
-        const rawBalance = (_f = (_e = req.body) === null || _e === void 0 ? void 0 : _e.opening_balance) !== null && _f !== void 0 ? _f : (_g = req.body) === null || _g === void 0 ? void 0 : _g.openingBalance;
-        const openingBalance = Number(rawBalance);
-        if (rawBalance === undefined || rawBalance === null || rawBalance === "") {
+        const body = req.body || {};
+        // Contagem por denominação do fundo de troco (preferida) OU valor informado.
+        const denominations = (_f = (_e = body.denominations) !== null && _e !== void 0 ? _e : body.denominacoes) !== null && _f !== void 0 ? _f : body.contagem_denominacoes;
+        const rawBalance = (_g = body.opening_balance) !== null && _g !== void 0 ? _g : body.openingBalance;
+        const hasDenominations = denominations && typeof denominations === "object" && Object.keys(denominations).length > 0;
+        if (!hasDenominations && (rawBalance === undefined || rawBalance === null || rawBalance === "")) {
             return res.status(400).json({
                 success: false,
-                message: "O saldo inicial (opening_balance) é obrigatório para abrir o caixa.",
+                message: "Informe a contagem do fundo de troco por denominação (notas e moedas) ou o saldo inicial (opening_balance).",
             });
         }
-        const register = yield (0, cashRegisterService_1.openRegister)({ userId, companyId, openingBalance });
+        const register = yield (0, cashRegisterService_1.openRegister)({
+            userId,
+            companyId,
+            openingBalance: Number(rawBalance),
+            denominations: hasDenominations ? denominations : undefined,
+        });
         return res.status(201).json({ success: true, result: register });
     }
     catch (error) {
         if (error === null || error === void 0 ? void 0 : error.code) {
-            return res.status(errorStatus(error)).json({ success: false, message: error.message });
+            return res.status(errorStatus(error)).json(errorBody(error));
         }
         console.error("[cash-registers/open] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
         return res.status(500).json({ success: false, message: "Erro ao abrir o caixa." });
@@ -165,18 +215,23 @@ exports.openToday = openToday;
  * Body: { closing_balance_informed }. Calcula saldo final e divergência no backend.
  */
 const close = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _h;
+    var _h, _j, _k, _l, _m;
     try {
         const { userId, companyId } = yield resolveIdentity(req);
         if (!userId || !companyId) {
             return res.status(401).json({ success: false, message: "Token invalid" });
         }
         const body = req.body || {};
-        const raw = (_h = body.closing_balance_informed) !== null && _h !== void 0 ? _h : body.closingBalanceInformed;
-        if (raw === undefined || raw === null || raw === "") {
+        // CONTAGEM CEGA: o operador envia a contagem por denominação; o total é
+        // calculado no backend. `closing_balance_informed` continua aceite apenas
+        // para clientes antigos (sem contagem).
+        const denominations = (_j = (_h = body.denominations) !== null && _h !== void 0 ? _h : body.denominacoes) !== null && _j !== void 0 ? _j : body.contagem_denominacoes;
+        const raw = (_k = body.closing_balance_informed) !== null && _k !== void 0 ? _k : body.closingBalanceInformed;
+        const hasDenominations = denominations && typeof denominations === "object" && Object.keys(denominations).length > 0;
+        if (!hasDenominations && (raw === undefined || raw === null || raw === "")) {
             return res.status(400).json({
                 success: false,
-                message: "O valor contado em caixa (closing_balance_informed) é obrigatório.",
+                message: "Informe a contagem do numerário por denominação (notas e moedas) para fechar o caixa.",
             });
         }
         const registerId = parseInt(String(req.params.id), 10);
@@ -187,13 +242,16 @@ const close = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             registerId,
             userId,
             companyId,
-            closingBalanceInformed: Number(raw),
+            denominations: hasDenominations ? denominations : undefined,
+            closingBalanceInformed: raw === undefined || raw === null || raw === "" ? null : Number(raw),
+            tipoFechamento: (_m = (_l = body.tipo_fechamento) !== null && _l !== void 0 ? _l : body.tipoFechamento) !== null && _m !== void 0 ? _m : null,
+            notes: body.notes,
         });
         return res.status(200).json({ success: true, result: register });
     }
     catch (error) {
         if (error === null || error === void 0 ? void 0 : error.code) {
-            return res.status(errorStatus(error)).json({ success: false, message: error.message });
+            return res.status(errorStatus(error)).json(errorBody(error));
         }
         console.error("[cash-registers/close] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
         return res.status(500).json({ success: false, message: "Erro ao fechar o caixa." });
@@ -271,6 +329,16 @@ const createManualMovement = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 message: `A categoria ${category} é criada automaticamente pelo sistema (desembolsos/pagamentos).`,
             });
         }
+        // DIFERENCA_CAIXA é um AUTO DE OCORRÊNCIA: nasce no fecho do caixa (contagem
+        // por denominação) e é justificada pelo Admin — nunca lançada à mão, senão
+        // deixaria de ser um controlo.
+        if (String(category) === "DIFERENCA_CAIXA") {
+            return res.status(400).json({
+                success: false,
+                error: "AUTOMATIC_ONLY",
+                message: "A diferença de caixa é apurada automaticamente no fecho (auto de ocorrência) e justificada pelo Admin na conta 58x — não pode ser lançada manualmente.",
+            });
+        }
         const method = String(payment_method || "CASH").toUpperCase();
         const { registerMovement, isElectronic } = yield Promise.resolve().then(() => __importStar(require("../services/treasuryService")));
         if (!isElectronic(method) && method !== "CASH") {
@@ -294,7 +362,9 @@ const createManualMovement = (req, res) => __awaiter(void 0, void 0, void 0, fun
     }
     catch (error) {
         if (error === null || error === void 0 ? void 0 : error.code) {
-            return res.status(errorStatus(error)).json({ success: false, error: error.code, message: error.message });
+            // errorBody inclui limite/dinheiro_em_caixa/excedente quando aplicável
+            // (ex.: CASH_LIMIT_EXCEEDED — circular do BM).
+            return res.status(errorStatus(error)).json(errorBody(error));
         }
         console.error("[cash-registers/movements/create] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
         return res.status(500).json({ success: false, message: "Erro ao registar o movimento." });
@@ -477,6 +547,222 @@ const getReconciliation = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.getReconciliation = getReconciliation;
+// ─────────────────────────────────────────────────────────────────────────────
+// DIFERENÇAS DE CAIXA (QUEBRAS / SOBRAS) — ADMIN
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * GET /api/cash-registers/differences?status=PENDENTE
+ * Diferenças de caixa apuradas nos fechos, para o Admin justificar e lançar no
+ * Livro Caixa (conta 58x — Quebras de Caixa). Sem `status` devolve todas.
+ */
+const getDifferences = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { companyId } = yield resolveIdentity(req);
+        if (!companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const { status, limit } = req.query;
+        let limitNum = 100;
+        if (limit !== undefined) {
+            const parsed = parseInt(String(limit), 10);
+            if (Number.isNaN(parsed) || parsed <= 0 || parsed > 500) {
+                return res.status(400).json({ success: false, message: "limit inválido (1-500)." });
+            }
+            limitNum = parsed;
+        }
+        const differences = yield (0, cashRegisterService_1.listCashDifferences)(Number(companyId), status ? String(status) : undefined, limitNum);
+        const pendentes = differences.filter((d) => d.status === "PENDENTE");
+        return res.status(200).json({
+            success: true,
+            result: differences,
+            summary: {
+                total: differences.length,
+                pendentes: pendentes.length,
+                valor_pendente: Math.round(pendentes.reduce((sum, d) => sum + (Number(d.valor) || 0), 0) * 100) / 100,
+                conta_contabilistica: "58 — Quebras de Caixa",
+            },
+        });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-registers/differences] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao listar as diferenças de caixa." });
+    }
+});
+exports.getDifferences = getDifferences;
+/**
+ * POST /api/cash-registers/differences/:id/justify
+ * Body: { justificacao, conta_contabilistica? }
+ * Só o Admin: regista o auto de ocorrência e o lançamento no Livro Caixa
+ * (conta 58x — Quebras de Caixa), passando a pendência a JUSTIFICADA.
+ */
+const justifyDifference = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _o, _p, _q;
+    try {
+        const { userId, companyId } = yield resolveIdentity(req);
+        if (!userId || !companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const id = parseInt(String(req.params.id), 10);
+        if (Number.isNaN(id)) {
+            return res.status(400).json({ success: false, message: "id inválido." });
+        }
+        const body = req.body || {};
+        const justificacao = (_o = body.justificacao) !== null && _o !== void 0 ? _o : body.justification;
+        const diferenca = yield (0, cashRegisterService_1.justifyCashDifference)({
+            id,
+            companyId,
+            userId,
+            justificacao: String(justificacao !== null && justificacao !== void 0 ? justificacao : ""),
+            contaContabilistica: (_q = (_p = body.conta_contabilistica) !== null && _p !== void 0 ? _p : body.contaContabilistica) !== null && _q !== void 0 ? _q : null,
+        });
+        return res.status(200).json({
+            success: true,
+            message: "Diferença justificada e lançada na conta 58 — Quebras de Caixa.",
+            result: diferenca,
+        });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-registers/differences/justify] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao justificar a diferença de caixa." });
+    }
+});
+exports.justifyDifference = justifyDifference;
+/**
+ * POST /api/cash-registers/differences/:id/observacao
+ * Body: { observacao }
+ * OBSERVAÇÃO / JUSTIFICAÇÃO DO OPERADOR no auto de ocorrência — preenchida no
+ * modal "Auto de Ocorrência - Diferença de Caixa" logo após o fecho cego.
+ * Não exige Admin: o próprio operador do caixa documenta a quebra/sobra;
+ * o Admin continua a justificar e lançar via /justify.
+ */
+const observeDifference = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _r, _s, _t, _u;
+    try {
+        const { userId, companyId } = yield resolveIdentity(req);
+        if (!userId || !companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const id = parseInt(String(req.params.id), 10);
+        if (Number.isNaN(id)) {
+            return res.status(400).json({ success: false, message: "id inválido." });
+        }
+        const body = req.body || {};
+        const observacao = (_s = (_r = body.observacao) !== null && _r !== void 0 ? _r : body.justificacao) !== null && _s !== void 0 ? _s : body.observacao_operador;
+        // Admin (userRole 0/1) pode documentar qualquer auto da empresa.
+        const user = yield UserModel_1.UserModel.findByPk(userId, { attributes: ["userRole"] });
+        const role = Number((_u = (_t = user === null || user === void 0 ? void 0 : user.getDataValue) === null || _t === void 0 ? void 0 : _t.call(user, "userRole")) !== null && _u !== void 0 ? _u : user === null || user === void 0 ? void 0 : user.userRole);
+        const diferenca = yield (0, cashRegisterService_1.annotateCashDifference)({
+            id,
+            companyId,
+            userId,
+            observacao: String(observacao !== null && observacao !== void 0 ? observacao : ""),
+            isAdmin: [0, 1].includes(role),
+        });
+        return res.status(200).json({
+            success: true,
+            message: "Observação do operador registada no auto de ocorrência.",
+            result: diferenca,
+        });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-registers/differences/observacao] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao registar a observação da diferença." });
+    }
+});
+exports.observeDifference = observeDifference;
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPROVATIVO DE ENTREGA DE VALORES AO COFRE CENTRAL (PDF + QR DE VALIDAÇÃO)
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * GET /api/cash-movements/:movementId/comprovativo
+ * PDF próprio (A4) do movimento ENTREGA_COFRE — selo electrónico (hash
+ * SHA-256) + QR de validação + assinaturas do Operador e do Tesoureiro.
+ */
+const getComprovativoEntrega = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { companyId } = yield resolveIdentity(req);
+        if (!companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const movementId = parseInt(String(req.params.movementId), 10);
+        if (Number.isNaN(movementId)) {
+            return res.status(400).json({ success: false, message: "movementId inválido." });
+        }
+        const { generateComprovativoPdf } = yield Promise.resolve().then(() => __importStar(require("../services/cashDeliveryService")));
+        const { buffer, numero, hash } = yield generateComprovativoPdf(movementId, Number(companyId));
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="comprovativo-entrega-cofre-${numero}.pdf"`);
+        res.setHeader("X-Comprovativo-Numero", numero);
+        res.setHeader("X-Comprovativo-Hash", hash);
+        return res.status(200).send(buffer);
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-movements/comprovativo] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao gerar o comprovativo de entrega." });
+    }
+});
+exports.getComprovativoEntrega = getComprovativoEntrega;
+/**
+ * GET /api/cash-deliveries/validate?numero=CE-<ano>-<id>&hash=<sha256>
+ * Validação PÚBLICA do QR Code (sem autenticação) — recompõe o hash a partir
+ * do movimento gravado e confirma a autenticidade do comprovativo.
+ */
+const validateComprovativoEntrega = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { numero, hash, id } = req.query;
+        const { validateComprovativo } = yield Promise.resolve().then(() => __importStar(require("../services/cashDeliveryService")));
+        const result = yield validateComprovativo({
+            numero: numero ? String(numero) : undefined,
+            hash: hash ? String(hash) : undefined,
+            movementId: id ? Number(id) : undefined,
+        });
+        return res.status(200).json({ success: true, result });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-deliveries/validate] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao validar o comprovativo." });
+    }
+});
+exports.validateComprovativoEntrega = validateComprovativoEntrega;
+/**
+ * GET /api/cash-registers/treasury-panel
+ * PAINEL DE TESOURARIA (Admin): excedentes do limite de numerário em caixa e
+ * diferenças de caixa pendentes, ambos agrupados POR OPERADOR.
+ */
+const getTreasuryPanelView = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { companyId } = yield resolveIdentity(req);
+        if (!companyId) {
+            return res.status(401).json({ success: false, message: "Token invalid" });
+        }
+        const { getTreasuryPanel } = yield Promise.resolve().then(() => __importStar(require("../services/cashRegisterService")));
+        const result = yield getTreasuryPanel(Number(companyId));
+        return res.status(200).json({ success: true, result });
+    }
+    catch (error) {
+        if (error === null || error === void 0 ? void 0 : error.code) {
+            return res.status(errorStatus(error)).json(errorBody(error));
+        }
+        console.error("[cash-registers/treasury-panel] Erro:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({ success: false, message: "Erro ao carregar o painel de tesouraria." });
+    }
+});
+exports.getTreasuryPanelView = getTreasuryPanelView;
 const hasOpenRegister = (userId, companyId) => __awaiter(void 0, void 0, void 0, function* () {
     return !!(yield (0, cashRegisterService_1.getOpenRegister)(userId, companyId));
 });

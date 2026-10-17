@@ -1,5 +1,5 @@
 <template>
-  <div class="q-pa-md partner-page">
+  <div class="q-pa-md partner-page" data-tour="partner-content">
     <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
       <q-card-section class="row items-center q-py-sm">
         <div class="col">

@@ -9,6 +9,7 @@ import { UserModel } from "../database/models/UserModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { CompanyModel } from "../database/models/CompanyModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 
 const parseDateSafe = (value: any) => {
   if (!value) return null;
@@ -137,8 +138,8 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       ],
       order: [["id", "DESC"]],
     });
-    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
-    const forfeit = toNumber(company?.getDataValue("forfeit"));
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyIdNum);
     const fromMoment = from ? moment(String(from)).startOf("day") : null;
     const toMoment = to ? moment(String(to)).endOf("day") : null;
 
@@ -241,7 +242,7 @@ const getDashboardOverview = async (req: Request, res: Response) => {
       return toNumber(a.installment);
     };
 
-    const calculatedInstallments = installmentPanification(amortizations, forfeit);
+    const calculatedInstallments = installmentPanification(amortizations, forfeit, undefined, { maxLateDays, capPercent });
     const overdueRows = calculatedInstallments
       .map((a: any) => {
         const due = parseDateSafe(a.dueDate);

@@ -504,6 +504,7 @@ const runMigrations = () => __awaiter(void 0, void 0, void 0, function* () {
     yield addColumnIfMissing("cash_registers", "total_bank_in", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
     yield addColumnIfMissing("cash_registers", "total_bank_out", "DECIMAL(15,2) NOT NULL DEFAULT 0", results);
     yield addColumnIfMissing("cash_registers", "notes", "TEXT NULL", results);
+    yield addColumnIfMissing("cash_registers", "counted_open", "DECIMAL(15,2) NULL", results);
     // --- cash_movements: método de pagamento + conta bancária + referência ---
     yield addColumnIfMissing("cash_movements", "bankAccountId", "INTEGER NULL", results);
     yield addColumnIfMissing("cash_movements", "paymentMethod", "ENUM('CASH','BANK','MPESA','EMOLA') NOT NULL DEFAULT 'CASH'", results);
@@ -512,6 +513,44 @@ const runMigrations = () => __awaiter(void 0, void 0, void 0, function* () {
     // O ENUM de categorias passa a incluir movimentos bancários (superset —
     // mantém todos os valores antigos para não quebrar dados existentes).
     yield modifyColumnType("cash_movements", "category", "ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL", results);
+    // ==================== CAIXA — CONFORMIDADE CONTABILIDADE MOÇAMBICANA ====================
+    // 1. Contagem de numerário por denominação na abertura e no fecho;
+    // 2. tipo_fechamento (fecho normal / com entrega ao cofre / com depósito / com divergência);
+    // 3. Tipos oficiais de tesouraria em cash_movements (ENTREGA_COFRE, REFORCO_CAIXA,
+    //    DEPOSITO_BANCARIO, DIFERENCA_CAIXA) — em vez de "sangria"/"suprimento";
+    // 4. Tabela cash_differences (auto de ocorrência de quebra/sobra a justificar
+    //    pelo Admin e a lançar na conta 58x — Quebras de Caixa).
+    yield addColumnIfMissing("cash_registers", "denominations_open", "JSON NULL COMMENT 'Contagem por denominação na abertura { \"1000\": 3, ... }'", results);
+    yield addColumnIfMissing("cash_registers", "denominations_close", "JSON NULL COMMENT 'Contagem por denominação no fecho (contagem cega do operador)'", results);
+    yield addColumnIfMissing("cash_registers", "tipo_fechamento", "ENUM('NORMAL','ENTREGA_COFRE','DEPOSITO_BANCARIO','DIVERGENCIA') NULL", results);
+    // Tipos OFICIAIS de tesouraria no ENUM de categorias do caixa (superset:
+    // mantém todas as categorias anteriores para não quebrar histórico).
+    yield modifyColumnType("cash_movements", "category", "ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','ENTREGA_COFRE','REFORCO_CAIXA','DEPOSITO_BANCARIO','DIFERENCA_CAIXA','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL", results);
+    yield createTableIfMissing("cash_differences", `CREATE TABLE IF NOT EXISTS cash_differences (
+      id INTEGER PRIMARY KEY AUTO_INCREMENT,
+      companyId INTEGER NOT NULL,
+      cashRegisterId INTEGER NOT NULL,
+      cashMovementId INTEGER NULL,
+      userId INTEGER NULL,
+      data_caixa VARCHAR(10) NULL,
+      tipo ENUM('QUEBRA','SOBRA') NOT NULL,
+      valor DECIMAL(15,2) NOT NULL,
+      valor_contado DECIMAL(15,2) NULL,
+      valor_apurado DECIMAL(15,2) NULL,
+      conta_contabilistica VARCHAR(10) NOT NULL DEFAULT '58',
+      status ENUM('PENDENTE','JUSTIFICADA') NOT NULL DEFAULT 'PENDENTE',
+      observacao_operador TEXT NULL,
+      justificacao TEXT NULL,
+      justifiedBy INTEGER NULL,
+      justifiedAt DATETIME NULL,
+      createdAt DATETIME,
+      updatedAt DATETIME,
+      INDEX idx_cash_differences_company_status (companyId, status),
+      INDEX idx_cash_differences_register (cashRegisterId)
+    )`, results);
+    // Observação/justificação do OPERADOR no auto de ocorrência (preenchida no
+    // modal "Auto de Ocorrência - Diferença de Caixa" logo após o fecho cego).
+    yield addColumnIfMissing("cash_differences", "observacao_operador", "TEXT NULL", results);
     // --- bank_transactions: extrato real de cada conta bancária ---
     yield createTableIfMissing("bank_transactions", `CREATE TABLE IF NOT EXISTS bank_transactions (
       id INTEGER PRIMARY KEY AUTO_INCREMENT,
@@ -614,6 +653,31 @@ const runMigrations = () => __awaiter(void 0, void 0, void 0, function* () {
     catch (error) {
         results.errors.push(`REPARAÇÃO totais caixa: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
         console.error("[Migration] Erro ao reparar totais dos caixas:", (error === null || error === void 0 ? void 0 : error.message) || error);
+    }
+    // ==================== CAIXA: SALDO ZERO DISPONÍVEL NA ABERTURA ====================
+    // "Zerar e tirar do rasto": o valor arrastado deixa de ser saldo disponível.
+    // Os caixas ainda ABERTOS são zerados (opening_balance = 0) e o que estava
+    // na gaveta passa a memorando físico (counted_open) — fecha sem sobras ou
+    // quebras fantasma e ninguém ganha direito a esse valor. Caixas FECHADOS são
+    // história: nunca se reescrevem. Idempotente (só corre com aberturas por
+    // zerar) e aplicado no arranque (app.ts) e em `npm run migrate` — no VPS
+    // (deploy.sh) e no Dokploy (Dockerfile → bootstrap) corre em cada deploy.
+    try {
+        if ((yield hasTable("cash_registers")) && (yield hasColumn("cash_registers", "counted_open"))) {
+            const [fixed] = yield db_1.db.query(`UPDATE cash_registers
+            SET counted_open = COALESCE(counted_open, opening_balance),
+                opening_balance = 0
+          WHERE status = 'ABERTO' AND opening_balance <> 0`);
+            const affected = Number(fixed === null || fixed === void 0 ? void 0 : fixed.affectedRows) || 0;
+            if (affected > 0) {
+                results.applied += 1;
+                console.log(`[Migration] ${affected} caixa(s) aberto(s) zerados: saldo inicial invalidado (saldo zero disponível)`);
+            }
+        }
+    }
+    catch (error) {
+        results.errors.push(`CAIXA saldo zero: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+        console.error("[Migration] Erro ao zerar o saldo inicial dos caixas abertos:", (error === null || error === void 0 ? void 0 : error.message) || error);
     }
     // ==================== CARTEIRAS DE FINANCIAMENTO (DINHEIRO ANALÍTICO) ====================
     // Duas camadas de dinheiro: REAL (accounts purpose DESEMBOLSO/REEMBOLSO) e
@@ -940,7 +1004,7 @@ const migrateMicrocredit = (results) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, function* () {
-    var _m;
+    var _m, _o, _p, _q, _r, _s;
     // ── 1. IDEMPOTÊNCIA — header Idempotency-Key no POST de pagamento ──
     yield createTableIfMissing("idempotency_keys", `CREATE TABLE IF NOT EXISTS idempotency_keys (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -987,7 +1051,7 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
     try {
         yield db_1.db.query("UPDATE tranzactions SET tranzactionReference = NULL WHERE tranzactionReference = ''");
     }
-    catch ( /* tabela pode não existir em BD nova */_o) { /* tabela pode não existir em BD nova */ }
+    catch ( /* tabela pode não existir em BD nova */_t) { /* tabela pode não existir em BD nova */ }
     yield addUniqueIndexIfMissing("tranzactions", "uq_tranz_ref", ["companyId", "paymentMethod", "tranzactionReference"], results);
     // ── 5. ALOCAÇÃO DE PAGAMENTOS — para onde foi cada cêntimo ──
     yield createTableIfMissing("payment_allocations", `CREATE TABLE IF NOT EXISTS payment_allocations (
@@ -1009,10 +1073,34 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
       cap_percent DECIMAL(5,2) NOT NULL DEFAULT 100.00,
       base ENUM('INSTALLMENT','OUTSTANDING_BALANCE') NOT NULL DEFAULT 'INSTALLMENT',
       business_days_only TINYINT(1) NOT NULL DEFAULT 0,
+      max_late_days INT NOT NULL DEFAULT 0,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NULL,
       UNIQUE KEY uq_penalty_company (company_id)
     )`, results);
+    // max_late_days: limite de dias de mora (0 = ilimitado). Empresas antigas
+    // que já têm a tabela (sem a coluna) recebem a coluna aqui.
+    yield addColumnIfMissing("company_penalty_rules", "max_late_days", "INT NOT NULL DEFAULT 0", results);
+    // BASE DE MORA = SALDO DEVEDOR (regra de negócio 2026-10): qualquer regra
+    // antiga em INSTALLMENT passa a OUTSTANDING_BALANCE — a mora passa a incidir
+    // sobre o saldo da prestação (installment − paidAmount), não sobre o valor
+    // integral quando há pagamento parcial.
+    try {
+        if (yield hasTable("company_penalty_rules")) {
+            const [needsBaseFix] = yield db_1.db.query(`SELECT COUNT(*) AS n FROM company_penalty_rules WHERE base <> 'OUTSTANDING_BALANCE'`);
+            if (Number((_m = needsBaseFix[0]) === null || _m === void 0 ? void 0 : _m.n) > 0) {
+                yield db_1.db.query(`UPDATE company_penalty_rules SET base = 'OUTSTANDING_BALANCE' WHERE base <> 'OUTSTANDING_BALANCE'`);
+                results.applied += 1;
+                console.log("[Migration] company_penalty_rules.base → OUTSTANDING_BALANCE (mora sobre o saldo devedor)");
+            }
+            else {
+                results.skipped += 1;
+            }
+        }
+    }
+    catch (error) {
+        results.errors.push(`FIX base OUTSTANDING_BALANCE: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+    }
     // Seed: 1 regra por empresa, herdando companies.forfeit; grace 0 = comportamento actual.
     try {
         if ((yield hasTable("company_penalty_rules")) && (yield hasTable("companies"))) {
@@ -1103,7 +1191,7 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
         const [faltam] = yield db_1.db.query(`SELECT COUNT(*) AS n FROM tranzactions
         WHERE bank_account_id IS NULL
           AND EXISTS (SELECT 1 FROM cash_registers WHERE cash_registers.companyId = tranzactions.companyId)`);
-        if (Number((_m = faltam[0]) === null || _m === void 0 ? void 0 : _m.n) > 0) {
+        if (Number((_o = faltam[0]) === null || _o === void 0 ? void 0 : _o.n) > 0) {
             yield db_1.db.query(`UPDATE tranzactions t
            LEFT JOIN cash_registers cr
              ON cr.companyId = t.companyId
@@ -1153,5 +1241,236 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
     }
     else {
         results.skipped += 1;
+    }
+    // ── 13. ALÇADAS DE APROVAÇÃO (SPRINT 5) ──
+    // Separação APROVAR (decisão, sem mexer no caixa) / DESEMBOLSAR (movimenta
+    // o caixa). Estados do crédito: RASCUNHO · AGUARDANDO_APROVACAO ·
+    // APROVADO_PARCIALMENTE · APROVADO · REPROVADO · AGUARDANDO_DESEMBOLSO ·
+    // DESEMBOLSADO. Mantém-se o `status` legado (0 pendente · 1 desembolsado ·
+    // 2/-1 rejeitado · 3 liquidado) para dashboards e relatórios.
+    yield addColumnIfMissing("customer_loans", "approvalState", "VARCHAR(30) NULL", results);
+    // Backfill: deriva o estado de workflow do status legado (uma corrida — só
+    // enquanto existirem NULL).
+    try {
+        const [pendentes] = yield db_1.db.query("SELECT COUNT(*) AS n FROM customer_loans WHERE approvalState IS NULL");
+        if (Number((_p = pendentes[0]) === null || _p === void 0 ? void 0 : _p.n) > 0) {
+            yield db_1.db.query(`UPDATE customer_loans
+            SET approvalState = CASE
+              WHEN status IN (1, 3) THEN 'DESEMBOLSADO'
+              WHEN status IN (2, -1) THEN 'REPROVADO'
+              ELSE 'AGUARDANDO_APROVACAO'
+            END
+          WHERE approvalState IS NULL`);
+            results.applied += 1;
+            console.log("[Migration] customer_loans.approvalState preenchido a partir do status legado");
+        }
+    }
+    catch (error) {
+        results.errors.push(`BACKFILL approvalState: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+    }
+    // Tabela de regras de aprovação (alçadas). companyId NULL = regra global
+    // (default); uma empresa pode ter as suas próprias linhas (têm precedência).
+    if (!(yield hasTable("approval_rules"))) {
+        try {
+            yield db_1.db.query(`
+        CREATE TABLE IF NOT EXISTS approval_rules (
+          id INT NOT NULL AUTO_INCREMENT,
+          companyId INT NULL,
+          role VARCHAR(20) NOT NULL,
+          minAmount DECIMAL(15,2) NOT NULL DEFAULT 0,
+          maxAmount DECIMAL(15,2) NULL,
+          requiredApprovals INT NOT NULL DEFAULT 1,
+          distinctApprovers TINYINT(1) NOT NULL DEFAULT 0,
+          description VARCHAR(255) NULL,
+          active TINYINT(1) NOT NULL DEFAULT 1,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_approval_rules_company (companyId, active)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+            results.applied += 1;
+            console.log("[Migration] tabela approval_rules criada (alçadas de aprovação)");
+        }
+        catch (error) {
+            results.errors.push(`approval_rules: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+            console.error("[Migration] Erro ao criar approval_rules:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        }
+    }
+    else {
+        results.skipped += 1;
+    }
+    // Seed das regras globais (só se a tabela estiver vazia):
+    //   APROVAÇÃO E DESEMBOLSO EXCLUSIVOS DO ADMIN (1 aprovação). O Gestor de
+    //   Crédito apenas lança e valida a instrução do processo — sem alçada.
+    try {
+        const [ruleRows] = yield db_1.db.query("SELECT COUNT(*) AS n FROM approval_rules");
+        if (Number((_q = ruleRows[0]) === null || _q === void 0 ? void 0 : _q.n) === 0) {
+            yield db_1.db.query(`INSERT INTO approval_rules
+           (companyId, role, minAmount, maxAmount, requiredApprovals, distinctApprovers, description, active)
+         VALUES
+           (NULL, 'ADMIN', 0, NULL, 1, 0, 'Administração — aprovação e desembolso exclusivos do Admin (1 aprovação)', 1)`);
+            results.applied += 1;
+            console.log("[Migration] regra global de alçadas semeada (aprovação exclusiva do Admin)");
+        }
+    }
+    catch (error) {
+        results.errors.push(`SEED approval_rules: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+    }
+    // Linha do tempo de aprovação — quem fez o quê, quando (auditável).
+    if (!(yield hasTable("loan_approvals"))) {
+        try {
+            yield db_1.db.query(`
+        CREATE TABLE IF NOT EXISTS loan_approvals (
+          id INT NOT NULL AUTO_INCREMENT,
+          loanId INT NOT NULL,
+          companyId INT NOT NULL,
+          event VARCHAR(30) NOT NULL,
+          actorId INT NULL,
+          actorName VARCHAR(255) NULL,
+          actorRole VARCHAR(60) NULL,
+          amount DECIMAL(15,2) NULL,
+          approvalsCount INT NULL,
+          requiredApprovals INT NULL,
+          notes TEXT NULL,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_loan_approvals_loan (loanId, id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+            results.applied += 1;
+            console.log("[Migration] tabela loan_approvals criada (linha do tempo de aprovações)");
+        }
+        catch (error) {
+            results.errors.push(`loan_approvals: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+            console.error("[Migration] Erro ao criar loan_approvals:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        }
+    }
+    else {
+        results.skipped += 1;
+    }
+    // ── 14. CARTEIRA POR GESTOR + COBRANÇA DE CAMPO (SPRINT 6) ──
+    // Cada cliente e cada crédito pertencem a um Gestor (`creditManager`). O
+    // Gestor só vê a sua carteira; o Admin vê tudo e o ranking por gestor.
+    yield addColumnIfMissing("customers", "creditManager", "INT NULL", results);
+    // Backfill: o cliente herda o gestor do seu crédito mais recente.
+    try {
+        const [semGestor] = yield db_1.db.query("SELECT COUNT(*) AS n FROM customers WHERE creditManager IS NULL");
+        if (Number((_r = semGestor[0]) === null || _r === void 0 ? void 0 : _r.n) > 0) {
+            yield db_1.db.query(`UPDATE customers c
+           JOIN (
+             SELECT l.customerId, l.creditManager
+               FROM customer_loans l
+              WHERE l.customerId IS NOT NULL
+              ORDER BY l.id DESC
+           ) AS ult ON ult.customerId = c.id
+            SET c.creditManager = ult.creditManager
+          WHERE c.creditManager IS NULL`);
+            // Clientes sem crédito: gestor do crédito de quem os criou fica por NULL
+            // (admin trata da atribuição na ficha do cliente).
+            results.applied += 1;
+            console.log("[Migration] customers.creditManager herdado do crédito mais recente");
+        }
+    }
+    catch (error) {
+        results.errors.push(`BACKFILL customers.creditManager: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+    }
+    // Cobrança de campo: visitas, chamadas, promessas de pagamento e recusas.
+    if (!(yield hasTable("collection_activities"))) {
+        try {
+            yield db_1.db.query(`
+        CREATE TABLE IF NOT EXISTS collection_activities (
+          id INT NOT NULL AUTO_INCREMENT,
+          companyId INT NOT NULL,
+          customerId INT NULL,
+          accountNumber BIGINT NOT NULL,
+          loanId INT NULL,
+          activityType VARCHAR(30) NOT NULL,
+          activityDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          promisedDate DATE NULL,
+          promisedAmount DECIMAL(15,2) NULL,
+          notes TEXT NULL,
+          latitude DECIMAL(10,7) NULL,
+          longitude DECIMAL(10,7) NULL,
+          gpsAccuracy DECIMAL(10,2) NULL,
+          status VARCHAR(20) NOT NULL DEFAULT 'REGISTADO',
+          createdBy INT NULL,
+          createdByName VARCHAR(255) NULL,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_collection_company (companyId, activityDate),
+          KEY idx_collection_account (accountNumber),
+          KEY idx_collection_creator (createdBy, activityType),
+          KEY idx_collection_promises (promisedDate, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+            results.applied += 1;
+            console.log("[Migration] tabela collection_activities criada (cobrança de campo)");
+        }
+        catch (error) {
+            results.errors.push(`collection_activities: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+            console.error("[Migration] Erro ao criar collection_activities:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        }
+    }
+    else {
+        results.skipped += 1;
+    }
+    // ── 16. ONBOARDING — progresso do checklist do primeiro dia ──
+    // Uma linha por (utilizador, tarefa) concluída: é o que permite ao Admin ver
+    // o que falta a cada colega e ao utilizador manter o progresso entre
+    // dispositivos. O catálogo das tarefas vive no frontend.
+    if (!(yield hasTable("onboarding_progress"))) {
+        try {
+            yield db_1.db.query(`
+        CREATE TABLE IF NOT EXISTS onboarding_progress (
+          id INT NOT NULL AUTO_INCREMENT,
+          companyId INT NOT NULL,
+          userId INT NOT NULL,
+          taskId VARCHAR(60) NOT NULL,
+          roleId INT NULL,
+          completedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          UNIQUE KEY uq_onboarding_user_task (userId, taskId),
+          KEY idx_onboarding_company (companyId, userId),
+          KEY idx_onboarding_company_task (companyId, taskId)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+      `);
+            results.applied += 1;
+            console.log("[Migration] tabela onboarding_progress criada (checklist de onboarding)");
+        }
+        catch (error) {
+            results.errors.push(`onboarding_progress: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+            console.error("[Migration] Erro ao criar onboarding_progress:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        }
+    }
+    else {
+        results.skipped += 1;
+    }
+    // ── 15. ALÇADAS: aprovação e desembolso EXCLUSIVOS DO ADMIN ÚNICO ──
+    // O Gestor de Crédito apenas lança e valida a instrução do processo;
+    // quem aprova e desembolsa é o Admin (neste momento, um único). Normaliza as
+    // regras globais herdadas da Sprint 5 (Gestor com alçada / Comitê de2).
+    // Condicional → idempotente: só corre enquanto existir a configuração antiga.
+    try {
+        const [oldConfig] = yield db_1.db.query(`SELECT COUNT(*) AS n FROM approval_rules
+        WHERE companyId IS NULL
+          AND (role = 'GESTOR' OR (role = 'ADMIN' AND (maxAmount IS NOT NULL OR requiredApprovals > 1)))`);
+        if (Number((_s = oldConfig[0]) === null || _s === void 0 ? void 0 : _s.n) > 0) {
+            yield db_1.db.query("DELETE FROM approval_rules WHERE companyId IS NULL AND role = 'GESTOR'");
+            yield db_1.db.query(`UPDATE approval_rules
+            SET minAmount = 0, maxAmount = NULL, requiredApprovals = 1, distinctApprovers = 0,
+                description = 'Administração — aprovação e desembolso exclusivos do Admin (1 aprovação)',
+                active = 1
+          WHERE companyId IS NULL AND role = 'ADMIN'`);
+            results.applied += 1;
+            console.log("[Migration] alçadas actualizadas: aprovação e desembolso exclusivos do Admin");
+        }
+    }
+    catch (error) {
+        results.errors.push(`ALCADAS admin único: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
     }
 });

@@ -8,6 +8,7 @@ import { LoanModel } from "../database/models/LoanModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 
 function formatDateBR(date: any): string {
   if (!date) return "-";
@@ -104,10 +105,14 @@ const getBMReport = async (req: Request, res: Response) => {
       });
 
       const amortList = amortizations.map((a) => a.toJSON() as any);
-      const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
+      // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+      const { forfeit: forfeitRep, maxLateDays: maxLateRep, capPercent: capRep } =
+        await getLegacyPenaltyParams(companyIdNum);
       const calculatedAmortizations = installmentPanification(
         amortList,
-        Number(company?.getDataValue("forfeit") || 0)
+        forfeitRep,
+        undefined,
+        { maxLateDays: maxLateRep, capPercent: capRep }
       );
 
       // Buscar transações reais do crédito
@@ -373,6 +378,7 @@ const getBMReportExcel = async (req: Request, res: Response) => {
     const loans = await LoanModel.findAll({ where: loanWhere, order: [["id", "ASC"]] });
     const companyRow = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
     const forfeit = Number(companyRow?.getDataValue("forfeit") || 0);
+    const { forfeit: forfeitLd, maxLateDays: maxLateLd, capPercent: capLd } = await getLegacyPenaltyParams(companyIdNum);
     const now = moment();
 
     const rows: any[] = [];
@@ -385,7 +391,7 @@ const getBMReportExcel = async (req: Request, res: Response) => {
         order: [["dueDate", "ASC"], ["id", "ASC"]],
       });
       const amortList = amortizations.map((a) => a.toJSON() as any);
-      const calculated = installmentPanification(amortList, forfeit);
+      const calculated = installmentPanification(amortList, forfeitLd, undefined, { maxLateDays: maxLateLd, capPercent: capLd });
       const transactions = await TranzactionModel.findAll({ where: { companyId: companyIdNum, loanId: l.id } });
       const txList = transactions.map((t) => t.toJSON() as any);
       const first = amortList[0];

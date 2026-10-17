@@ -40,7 +40,7 @@
             {{ mensagem }}
           </q-banner>
 
-          <div class="hash-box q-mt-md">
+          <div v-if="!ehEntrega" class="hash-box q-mt-md">
             <div class="text-caption text-grey-6">Hash SHA-256 do recibo</div>
             <div class="hash-value">{{ resultado.hash_at }}</div>
           </div>
@@ -49,14 +49,14 @@
             Emitente: <strong>{{ resultado.emitente.nome }}</strong> · NUIT {{ resultado.emitente.nuit }} ·
             {{ resultado.emitente.endereco }}
           </div>
-          <div class="text-caption text-grey-6">
+          <div v-if="!ehEntrega" class="text-caption text-grey-6">
             Selo: {{ resultado.software_certification }} · Código de validação {{ resultado.at_validation_code || '—' }}
           </div>
         </q-card-section>
 
         <q-card-actions align="center" class="q-pb-lg">
           <q-btn
-            v-if="valido"
+            v-if="valido && !ehEntrega"
             outline
             rounded
             no-caps
@@ -126,10 +126,23 @@ const valido = ref(false)
 const mensagem = ref('')
 const numeroManual = ref('')
 const hashManual = ref('')
+// Comprovativo de Entrega de Valores ao Cofre Central (CE-<ano>-<id>):
+// mesmo destino do QR (/validar), endpoint próprio de validação.
+const ehEntrega = ref(false)
 
 const detalhes = computed(() => {
   const r = resultado.value
   if (!r) return []
+  if (ehEntrega.value) {
+    return [
+      { label: 'Número do comprovativo', value: r.numero || '—' },
+      { label: 'Data', value: r.data || '—' },
+      { label: 'Valor entregue', value: fmtValor(r.valor) },
+      { label: 'Descrição', value: r.descricao || '—' },
+      { label: 'Documento', value: 'Entrega de Valores ao Cofre Central' },
+      { label: 'Estado', value: r.valid ? 'Válido' : 'Não confirmado' }
+    ]
+  }
   const data = r.emitido_em ? new Date(r.emitido_em) : null
   const fmt = (value) =>
     `${(Number(value) || 0).toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MT`
@@ -152,15 +165,26 @@ const detalhes = computed(() => {
 const empresa = computed(() => resultado.value?.emitente?.nome || 'Mais Mola')
 
 const titulo = computed(() => {
-  if (loading.value) return 'A validar recibo…'
-  if (resultado.value) return valido.value ? 'RECIBO VÁLIDO' : 'RECIBO NÃO CONFIRMADO'
-  return 'Validação de recibo'
+  if (loading.value) return ehEntrega.value ? 'A validar comprovativo…' : 'A validar recibo…'
+  if (resultado.value) {
+    if (ehEntrega.value) return valido.value ? 'COMPROVATIVO VÁLIDO' : 'COMPROVATIVO NÃO CONFIRMADO'
+    return valido.value ? 'RECIBO VÁLIDO' : 'RECIBO NÃO CONFIRMADO'
+  }
+  return ehEntrega.value ? 'Validação de comprovativo' : 'Validação de recibo'
 })
 
 const subtitulo = computed(() => {
-  if (loading.value) return 'Consulta ao registo da Autoridade Tributária (MBRM)'
-  if (resultado.value) return `${resultado.value.numero} · ${resultado.value.software_certification || ''}`
-  return 'Introduza o número do recibo ou o hash impresso no documento'
+  if (loading.value) {
+    return ehEntrega.value
+      ? 'Consulta ao selo electrónico do comprovativo (MBRM)'
+      : 'Consulta ao registo da Autoridade Tributária (MBRM)'
+  }
+  if (resultado.value) {
+    return ehEntrega.value
+      ? `${resultado.value.numero} · Entrega de Valores ao Cofre Central`
+      : `${resultado.value.numero} · ${resultado.value.software_certification || ''}`
+  }
+  return 'Introduza o número do documento ou o hash impresso'
 })
 
 const iconName = computed(() => {
@@ -174,6 +198,34 @@ const estadoClass = computed(() => {
   return valido.value ? 'head-valid' : 'head-invalid'
 })
 
+const fmtValor = (value) =>
+  `${(Number(value) || 0).toLocaleString('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MT`
+
+// Validação pública do comprovativo de entrega ao Cofre (destino do QR).
+async function validarEntrega({ numero, hash } = {}) {
+  ehEntrega.value = true
+  loading.value = true
+  resultado.value = null
+  try {
+    const params = new URLSearchParams()
+    if (numero) params.set('numero', String(numero))
+    if (hash) params.set('hash', String(hash))
+    const { data } = await api.get(`/api/cash-deliveries/validate?${params.toString()}`)
+    resultado.value = data.result || null
+    valido.value = Boolean(data.result?.valid)
+    mensagem.value = data.result?.message || (valido.value ? 'Comprovativo válido.' : 'Comprovativo não confirmado.')
+  } catch (error) {
+    const data = error.response?.data
+    resultado.value = data?.result || null
+    valido.value = false
+    mensagem.value =
+      data?.message
+      || 'Não foi possível validar o comprovativo. Confirme o número/hash impressos no documento.'
+  } finally {
+    loading.value = false
+  }
+}
+
 async function validar({ rec, hash } = {}) {
   const numero = String(rec || '').trim()
   const digest = String(hash || '').trim()
@@ -183,6 +235,13 @@ async function validar({ rec, hash } = {}) {
     return
   }
 
+  // Comprovativo de entrega ao Cofre: número CE-<ano>-<id>.
+  if (/^CE-\d{4}-\d+$/i.test(numero)) {
+    await validarEntrega({ numero, hash: digest })
+    return
+  }
+
+  ehEntrega.value = false
   loading.value = true
   resultado.value = null
   try {
@@ -220,10 +279,16 @@ function abrirPdf() {
 }
 
 onMounted(() => {
+  // QR do comprovativo de entrega ao Cofre: /validar?entrega=CE-…&hash=…
+  const entrega = route.query.entrega || ''
+  if (entrega) {
+    validarEntrega({ numero: String(entrega), hash: String(route.query.hash || route.query.h || '') })
+    return
+  }
   const rec = route.query.rec || route.query.numero || ''
   const hash = route.query.hash || route.query.h || ''
   if (rec || hash) validar({ rec, hash })
-  else mensagem.value = 'Introduza os dados impressos no recibo para confirmar a autenticidade.'
+  else mensagem.value = 'Introduza os dados impressos no documento para confirmar a autenticidade.'
 })
 </script>
 

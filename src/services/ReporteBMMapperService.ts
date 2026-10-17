@@ -1,6 +1,7 @@
 import { QueryTypes } from "sequelize";
 import { db } from "../database/db";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "./lateInterestService";
 import { AuditLogModel } from "../database/models/paymentsV2Models";
 const MICRO_SECTORS = ["Comércio", "Agricultura", "Pecuária", "Indústria", "Serviços", "Consumo", "Outros"] as const;
 export const riskClassForDays = (days: number): "I" | "II" | "III" | "IV" | null => days <= 0 ? null : days <= 30 ? "I" : days <= 90 ? "II" : days <= 365 ? "III" : "IV";
@@ -152,7 +153,7 @@ export class ReporteBMMapperService {
       partsByLoan.set(Number(installment.loanId), list);
     }
 
-    const [companyPolicy] = await select("SELECT forfeit FROM companies WHERE id=?", [companyId]);
+    const policyParams = await getLegacyPenaltyParams(companyId);
     const states: LoanState[] = loans.map((loan: any) => {
       const parts = partsByLoan.get(Number(loan.id)) || [];
       const historicalPlan = parts.map((part) => {
@@ -163,7 +164,7 @@ export class ReporteBMMapperService {
         const fullyPaid = number(row.amortization) - paidCapital + number(row.rateAmount) - paidInterest <= 0.009;
         return { ...row, status: fullyPaid ? 1 : paidCapital + paidInterest > 0 ? -1 : 0, paidAmount: paidCapital + paidInterest };
       });
-      const calculatedLate: any[] = installmentPanification(historicalPlan, number(companyPolicy?.forfeit), end);
+      const calculatedLate: any[] = installmentPanification(historicalPlan, policyParams.forfeit, end, { maxLateDays: policyParams.maxLateDays, capPercent: policyParams.capPercent });
       const lateDaysById = new Map<number, number>(calculatedLate.map((part: any) => [Number(part.id), number(part.lateDays)]));
       let capital = 0, interest = 0, lateDays = 0;
       for (const part of parts) {
@@ -328,7 +329,7 @@ export class ReporteBMMapperService {
     const txRows = await select("SELECT accountId,balanceAfter,createdAt FROM bank_transactions WHERE companyId=? AND createdAt<=? ORDER BY createdAt,id", [companyId, `${end} 23:59:59`]);
     const bankByAccount = new Map<number, any[]>();
     for (const tx of txRows) { const list = bankByAccount.get(Number(tx.accountId)) || []; list.push(tx); bankByAccount.set(Number(tx.accountId), list); }
-    const registers = await select("SELECT id,userId,opening_date,opening_balance,status,closing_balance_calculated,closing_time FROM cash_registers WHERE companyId=? AND opening_date<=? ORDER BY opening_date,id", [companyId, end]);
+    const registers = await select("SELECT id,userId,opening_date,opening_balance,counted_open,status,closing_balance_calculated,closing_time FROM cash_registers WHERE companyId=? AND opening_date<=? ORDER BY opening_date,id", [companyId, end]);
     const movements = registers.length ? await select(`SELECT cashRegisterId,type,paymentMethod,amount,createdAt FROM cash_movements WHERE companyId=? AND cashRegisterId IN (${registers.map(() => "?").join(",")}) AND createdAt<=?`, [companyId, ...registers.map((r: any) => Number(r.id)), `${end} 23:59:59`]) : [];
     const movementsByRegister = new Map<number, any[]>();
     for (const movement of movements) { const list = movementsByRegister.get(Number(movement.cashRegisterId)) || []; list.push(movement); movementsByRegister.set(Number(movement.cashRegisterId), list); }
@@ -349,7 +350,10 @@ export class ReporteBMMapperService {
       for (const register of latestByUser.values()) {
         const closedAtCutoff = String(register.status) === "FECHADO" && register.closing_balance_calculated !== null && (!register.closing_time || dateKey(register.closing_time) <= cutoff);
         if (closedAtCutoff) { cashTotal += number(register.closing_balance_calculated); continue; }
-        let balance = number(register.opening_balance);
+        // Base física do caixa: fundo de maneio contado na abertura
+        // (counted_open — memorando); registos antigos guardavam-no em
+        // opening_balance. O saldo inicial actual é sempre 0.
+        let balance = number(register.counted_open ?? register.opening_balance);
         for (const movement of movementsByRegister.get(Number(register.id)) || []) {
           if (String(movement.paymentMethod) !== "CASH" || dateKey(movement.createdAt) > cutoff) continue;
           balance += String(movement.type) === "ENTRADA" ? number(movement.amount) : -number(movement.amount);
@@ -436,8 +440,8 @@ export class ReporteBMMapperService {
     const replacements: any[] = [companyId];
     let dateClause = "";
     if (start && end) { if (!validateQuarterRange(start, end)) throw new Error("Período inválido."); dateClause = " AND opening_date BETWEEN ? AND ?"; replacements.push(start, end); }
-    const rows = await select(`SELECT id,userId,opening_date,opening_balance,status,closing_balance_calculated,total_cash_in,total_cash_out,total_bank_in,total_bank_out FROM cash_registers WHERE companyId=?${dateClause} ORDER BY opening_date DESC,id DESC LIMIT 300`, replacements);
-    return rows.map((row: any) => ({ id: row.id, tipo: "Caixa Central", data: row.opening_date, mes: new Date(`${dateKey(row.opening_date)}T00:00:00Z`).getUTCMonth() + 1, montante: round2(number(row.closing_balance_calculated) || number(row.opening_balance) + number(row.total_cash_in) - number(row.total_cash_out)), estado: row.status, banco_entradas: number(row.total_bank_in), banco_saidas: number(row.total_bank_out) }));
+    const rows = await select(`SELECT id,userId,opening_date,opening_balance,counted_open,status,closing_balance_calculated,total_cash_in,total_cash_out,total_bank_in,total_bank_out FROM cash_registers WHERE companyId=?${dateClause} ORDER BY opening_date DESC,id DESC LIMIT 300`, replacements);
+    return rows.map((row: any) => ({ id: row.id, tipo: "Caixa Central", data: row.opening_date, mes: new Date(`${dateKey(row.opening_date)}T00:00:00Z`).getUTCMonth() + 1, montante: round2(number(row.closing_balance_calculated) || number(row.counted_open ?? row.opening_balance) + number(row.total_cash_in) - number(row.total_cash_out)), estado: row.status, banco_entradas: number(row.total_bank_in), banco_saidas: number(row.total_bank_out) }));
   }
 
   static async getDashboard(companyId: number): Promise<any> {

@@ -13,7 +13,7 @@
     </div>
 
     <!-- Filters -->
-    <q-card flat bordered class="q-mb-md" style="border-radius: 10px">
+    <q-card flat bordered class="q-mb-md" style="border-radius: 10px" data-tour="logs-filters">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
           <div class="col-12 col-sm-3">

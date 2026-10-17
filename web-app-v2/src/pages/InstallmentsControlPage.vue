@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md">
     <!-- Filtros + Acções -->
-    <q-card flat bordered class="q-mb-md filter-card">
+    <q-card flat bordered class="q-mb-md filter-card" data-tour="installments-body">
       <q-card-section class="row q-col-gutter-sm items-center">
         <div class="col-12 col-sm-6 col-md-2">
           <q-select v-model="filter.status" :options="statusOptions" label="Estado" dense outlined emit-value map-options clearable />

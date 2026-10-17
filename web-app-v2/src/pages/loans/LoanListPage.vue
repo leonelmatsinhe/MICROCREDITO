@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md credits-page">
     <!-- ============ HEADER ============ -->
-    <div class="row items-center q-mb-md no-wrap">
+    <div class="row items-center q-mb-md no-wrap" data-tour="loans-header">
       <div class="col">
         <div class="text-h5 text-weight-bold">Créditos</div>
         <div class="text-caption text-grey-5">Pendentes, desembolsados, terminados e rejeitados</div>
@@ -248,21 +248,39 @@
           </q-td>
         </template>
 
-        <!-- Ações: o olho abre sempre o painel do mutuário (não há página de detalhe/amortização do crédito) -->
+        <!-- Estado do ciclo de aprovação (SPRINT 5): Rascunho → … → Desembolsado -->
+        <template v-slot:body-cell-state="props">
+          <q-td :props="props" class="text-center">
+            <q-badge :color="approvalStateColor(props.row)" text-color="white" rounded>
+              {{ approvalStateLabel(props.row) }}
+            </q-badge>
+            <div
+              v-if="rowApprovalState(props.row) === 'APROVADO_PARCIALMENTE'"
+              class="text-caption text-grey-6"
+              style="font-size: 10px"
+            >
+              Comitê de Crédito — falta a 2.ª aprovação
+            </div>
+          </q-td>
+        </template>
+
+        <!-- Ações: o olho abre sempre o painel do mutuário — é lá que estão os
+             pagamentos, recibos e prestações. O antigo atalho (receipt_long) para
+             a página /loans/:id foi retirado: duplicava a ficha do mutuário. -->
         <template v-slot:body-cell-actions="props">
           <q-td :props="props" class="text-center">
             <div class="row items-center no-wrap justify-center" style="gap: 2px">
-              <!-- Pagamentos e recibos do crédito — página de detalhe (/loans/:id) -->
+              <!-- Linha do tempo de aprovação — quem aprovou e quando (SPRINT 5) -->
               <q-btn
                 flat
                 round
                 dense
-                icon="receipt_long"
-                color="primary"
+                icon="history"
+                color="blue-8"
                 size="xs"
-                @click.stop="goToLoanDetail(props.row)"
+                @click.stop="openTimeline(props.row)"
               >
-                <q-tooltip>Pagamentos, recibos e prestações do crédito</q-tooltip>
+                <q-tooltip>Linha do tempo de aprovação (quem aprovou e quando)</q-tooltip>
               </q-btn>
 
               <!-- Rejeitados: reabrir (re-submeter) + painel do mutuário + eliminar -->
@@ -287,13 +305,45 @@
                 </q-btn>
               </template>
 
-              <!-- Pendentes: revisão de documentos + painel do mutuário + eliminar -->
+              <!-- Pendentes: acções do ciclo de aprovação (SPRINT 5) + revisão + eliminar -->
               <template v-else-if="segment.key === 'pending'">
+                <!-- Rascunho → o Gestor valida a instrução (submete ao Admin) -->
+                <q-btn
+                  v-if="rowApprovalState(props.row) === 'RASCUNHO'"
+                  flat round dense icon="task_alt" color="indigo" size="xs"
+                  @click.stop="submitDraft(props.row)"
+                >
+                  <q-tooltip>Validar instrução e submeter ao Admin</q-tooltip>
+                </q-btn>
+                <!-- APROVAR (decisão do Admin — não mexe no caixa) -->
+                <q-btn
+                  v-if="isAdminUser && ['AGUARDANDO_APROVACAO', 'APROVADO_PARCIALMENTE'].includes(rowApprovalState(props.row))"
+                  flat round dense icon="how_to_vote" color="positive" size="xs"
+                  @click.stop="openDecision(props.row)"
+                >
+                  <q-tooltip>Aprovar (exclusivo do Administrador)</q-tooltip>
+                </q-btn>
+                <!-- Preparar desembolso (Aprovado → Aguardando Desembolso) -->
+                <q-btn
+                  v-if="isAdminUser && rowApprovalState(props.row) === 'APROVADO'"
+                  flat round dense icon="event_available" color="indigo" size="xs"
+                  @click.stop="prepareDisbursement(props.row)"
+                >
+                  <q-tooltip>Marcar como aguardando desembolso</q-tooltip>
+                </q-btn>
+                <!-- DESEMBOLSAR (mexe no caixa — exclusivo do Admin) -->
+                <q-btn
+                  v-if="isAdminUser && ['APROVADO', 'AGUARDANDO_DESEMBOLSO'].includes(rowApprovalState(props.row))"
+                  flat round dense icon="payments" color="primary" size="xs"
+                  @click.stop="openApproval(props.row)"
+                >
+                  <q-tooltip>Desembolsar (mexe no caixa — exclusivo do Administrador)</q-tooltip>
+                </q-btn>
                 <q-btn
                   flat round dense icon="fact_check" color="teal" size="xs"
                   @click.stop="openReview(props.row)"
                 >
-                  <q-tooltip>Revisar documentos e aprovar</q-tooltip>
+                  <q-tooltip>Revisar documentos</q-tooltip>
                 </q-btn>
                 <q-btn
                   flat round dense icon="visibility" color="primary" size="xs"
@@ -554,9 +604,9 @@
           <q-btn outline label="Rejeitar" color="negative" icon="cancel" no-caps rounded @click="openReject" />
           <q-btn
             unelevated
-            label="Aprovar Crédito"
+            :label="reviewNextActionLabel"
             color="positive"
-            icon="check_circle"
+            :icon="reviewNextActionIcon"
             no-caps
             rounded
             @click="openApprovalFromReview"
@@ -599,6 +649,12 @@
 
     <!-- Aprovação (reutiliza o modal de aprovação do painel do mutuário) -->
     <LoanApprovalModal v-model="showApproval" :loan="approvalLoan" @approved="onLoanApproved" />
+
+    <!-- Aprovação com alçadas (SPRINT 5) — decisão, não mexe no caixa -->
+    <LoanDecisionModal v-model="showDecision" :loan="decisionLoan" @approved="onLoanDecided" />
+
+    <!-- Linha do tempo: quem aprovou e quando -->
+    <LoanApprovalTimelineModal v-model="showTimeline" :loan="timelineLoan" />
 
     <!-- SMS pré-preenchido para solicitar documentos em falta -->
     <SendMessageModal
@@ -778,6 +834,8 @@ import { api } from '@/boot/axios'
 import { formatMoney, formatDateShort, formatInterestRate, formatPeriod, getInitials } from '@/utils/formatters'
 import { logReopenLoan, logApproveLoan, logRejectLoan, logSendSms, logInvalidateDisbursement } from '@/utils/logger'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
+import LoanDecisionModal from '@/components/modals/LoanDecisionModal.vue'
+import LoanApprovalTimelineModal from '@/components/modals/LoanApprovalTimelineModal.vue'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
@@ -829,6 +887,106 @@ const showDocumentRequestSms = ref(false)
 const showRejectDialog = ref(false)
 const rejectOpinion = ref('')
 const rejecting = ref(false)
+
+// ─── Alçadas / ciclo de aprovação ───
+// Modelo actual: aprovação e desembolso EXCLUSIVOS DO ADMIN (papéis 0/1);
+// o Gestor de Crédito (3) apenas lança e valida a instrução do processo.
+const isAdminUser = computed(() => [0, 1].includes(Number(authStore.userRole)))
+const showDecision = ref(false)
+const decisionLoan = ref(null)
+const showTimeline = ref(false)
+const timelineLoan = ref(null)
+
+const APPROVAL_STATE_LABELS = {
+  RASCUNHO: 'Rascunho',
+  AGUARDANDO_APROVACAO: 'Aguardando Aprovação',
+  APROVADO_PARCIALMENTE: 'Aprovado Parcialmente',
+  APROVADO: 'Aprovado',
+  REPROVADO: 'Reprovado',
+  AGUARDANDO_DESEMBOLSO: 'Aguardando Desembolso',
+  DESEMBOLSADO: 'Desembolsado'
+}
+const APPROVAL_STATE_COLORS = {
+  RASCUNHO: 'grey-7',
+  AGUARDANDO_APROVACAO: 'orange-8',
+  APROVADO_PARCIALMENTE: 'amber-9',
+  APROVADO: 'green-8',
+  REPROVADO: 'red-8',
+  AGUARDANDO_DESEMBOLSO: 'indigo-6',
+  DESEMBOLSADO: 'teal-7'
+}
+
+// Estado do ciclo (deriva do status legado em registos antigos sem approvalState)
+function rowApprovalState(row) {
+  if (row?.approvalState && APPROVAL_STATE_LABELS[row.approvalState]) return row.approvalState
+  const status = Number(row?.status)
+  if (status === 1 || status === 3) return 'DESEMBOLSADO'
+  if (status === 2 || status === -1) return 'REPROVADO'
+  return 'AGUARDANDO_APROVACAO'
+}
+function approvalStateLabel(row) {
+  return APPROVAL_STATE_LABELS[rowApprovalState(row)] || '—'
+}
+function approvalStateColor(row) {
+  return APPROVAL_STATE_COLORS[rowApprovalState(row)] || 'grey-7'
+}
+
+const reviewNextActionLabel = computed(() => {
+  const state = reviewLoan.value ? rowApprovalState(reviewLoan.value) : 'AGUARDANDO_APROVACAO'
+  if (state === 'RASCUNHO') return 'Validar Instrução'
+  if (!isAdminUser.value) return 'Aprovar (só Admin)'
+  return ['APROVADO', 'AGUARDANDO_DESEMBOLSO'].includes(state) ? 'Desembolsar' : 'Aprovar'
+})
+const reviewNextActionIcon = computed(() => {
+  const state = reviewLoan.value ? rowApprovalState(reviewLoan.value) : 'AGUARDANDO_APROVACAO'
+  if (state === 'RASCUNHO') return 'task_alt'
+  if (!isAdminUser.value) return 'lock'
+  return ['APROVADO', 'AGUARDANDO_DESEMBOLSO'].includes(state) ? 'payments' : 'how_to_vote'
+})
+
+function openDecision(row) {
+  decisionLoan.value = row
+  showDecision.value = true
+}
+
+function openTimeline(row) {
+  timelineLoan.value = row
+  showTimeline.value = true
+}
+
+function openApproval(row) {
+  approvalLoan.value = row
+  showApproval.value = true
+}
+
+// Validação da instrução (Gestor ou Admin) → submete ao Admin para aprovação
+async function submitDraft(row) {
+  try {
+    await api.post(`/api/loan/${row.id}/submit`, {})
+    $q.notify({ type: 'positive', message: 'Instrução validada e submetida para aprovação do Administrador', position: 'top' })
+    fetchLoans()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao validar a instrução', position: 'top' })
+  }
+}
+
+async function prepareDisbursement(row) {
+  try {
+    await api.post(`/api/loan/${row.id}/prepare-disbursement`, {})
+    $q.notify({ type: 'positive', message: 'Crédito colocado na fila de desembolso', position: 'top' })
+    fetchLoans()
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao preparar o desembolso', position: 'top' })
+  }
+}
+
+function onLoanDecided() {
+  showDecision.value = false
+  decisionLoan.value = null
+  reviewLoan.value = null
+  showReview.value = false
+  fetchLoans()
+}
 
 function openReview(row) {
   reviewLoan.value = row
@@ -882,11 +1040,32 @@ const reviewCapacity = computed(() => {
   }
 })
 
-// Aprovar directamente da revisão, sem abrir o painel do mutuário
+// Da revisão: VALIDAR INSTRUÇÃO (rascunho), APROVAR ou DESEMBOLSAR (só Admin)
 function openApprovalFromReview() {
-  approvalLoan.value = reviewLoan.value
+  const loan = reviewLoan.value
+  if (!loan) return
+  const state = rowApprovalState(loan)
+  if (state === 'RASCUNHO') {
+    submitDraft(loan)
+    showReview.value = false
+    return
+  }
+  if (!isAdminUser.value) {
+    $q.notify({
+      type: 'warning',
+      message: 'A aprovação e o desembolso de créditos são exclusivos do Administrador. O Gestor de Crédito lança e valida a instrução do processo.',
+      position: 'top'
+    })
+    return
+  }
+  if (state === 'APROVADO' || state === 'AGUARDANDO_DESEMBOLSO') {
+    approvalLoan.value = loan
+    showApproval.value = true
+  } else {
+    decisionLoan.value = loan
+    showDecision.value = true
+  }
   showReview.value = false
-  showApproval.value = true
 }
 
 function onLoanApproved() {
@@ -899,8 +1078,17 @@ function onLoanApproved() {
   fetchLoans()
 }
 
-// Rejeitar directamente da revisão, com parecer registado no pedido
+// Rejeitar directamente da revisão, com parecer registado no pedido.
+// A reprovação é uma DECISÃO — exclusiva do Administrador.
 function openReject() {
+  if (!isAdminUser.value) {
+    $q.notify({
+      type: 'warning',
+      message: 'A reprovação de créditos é exclusiva do Administrador.',
+      position: 'top'
+    })
+    return
+  }
   rejectOpinion.value = ''
   showRejectDialog.value = true
 }
@@ -1099,6 +1287,7 @@ const columns = computed(() => {
       { name: 'amount', label: 'Valor solicitado', field: 'amount', align: 'right', sortable: true },
       { name: 'rate', label: 'Taxa de juro', field: 'interestRate', align: 'center', sortable: true },
       { name: 'installments', label: 'Prestações', field: 'numberOfInstallments', align: 'center', sortable: true },
+      { name: 'state', label: 'Estado', field: 'approvalState', align: 'center', sortable: true },
       { name: 'actions', label: 'Acções', field: 'actions', align: 'center' }
     ]
   }
@@ -1137,10 +1326,6 @@ function clearFilters() {
   dateTo.value = ''
   managerFilter.value = null
   resetPage()
-}
-
-function goToLoanDetail(row) {
-  router.push({ name: 'LoanDetail', params: { id: row.id } })
 }
 
 function goToCustomer(accountNumber) {

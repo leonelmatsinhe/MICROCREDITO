@@ -44,8 +44,8 @@ const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanMode
 const DebtModel_1 = require("../database/models/DebtModel");
 const UserModel_1 = require("../database/models/UserModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
-const CompanyModel_1 = require("../database/models/CompanyModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
+const lateInterestService_1 = require("../services/lateInterestService");
 const parseDateSafe = (value) => {
     if (!value)
         return null;
@@ -171,8 +171,8 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             ],
             order: [["id", "DESC"]],
         });
-        const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
-        const forfeit = toNumber(company === null || company === void 0 ? void 0 : company.getDataValue("forfeit"));
+        // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
         const fromMoment = from ? (0, moment_1.default)(String(from)).startOf("day") : null;
         const toMoment = to ? (0, moment_1.default)(String(to)).endOf("day") : null;
         const loanIds = loans.map((l) => l.id);
@@ -265,7 +265,7 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             }
             return toNumber(a.installment);
         };
-        const calculatedInstallments = (0, calculateLateAmount_1.installmentPanification)(amortizations, forfeit);
+        const calculatedInstallments = (0, calculateLateAmount_1.installmentPanification)(amortizations, forfeit, undefined, { maxLateDays, capPercent });
         const overdueRows = calculatedInstallments
             .map((a) => {
             const due = parseDateSafe(a.dueDate);

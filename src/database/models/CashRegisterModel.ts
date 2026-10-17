@@ -7,9 +7,31 @@ import { db } from "../db";
  * Regras:
  *  - 1 caixa ABERTO por utilizador/dia/empresa (índice único na migration);
  *  - separa totais CASH (dinheiro físico) e BANK (electrónico/bancário);
- *  - FECHADO é imutável; ao fechar calcula closing_balance_calculated e
- *    difference no backend (o frontend nunca decide divergência).
+ *  - a ABERTURA e o FECHO guardam a CONTAGEM POR DENOMINAÇÃO (notas e moedas)
+ *    em `denominations_open` / `denominations_close` (JSON);
+ *  - FECHADO é imutável; ao fechar o backend calcula o saldo apurado e a
+ *    diferença (closing_balance_calculated nunca é devolvido ao frontend —
+ *    a contagem é cega, feita pelo operador denominação a denominação);
+ *  - `tipo_fechamento` classifica o fecho: NORMAL, com entrega ao cofre, com
+ *    depósito bancário do excedente, ou DIVERGENCIA (quebra/sobra apurada).
  */
+
+/** Tipos de fecho de caixa aceites (contabilidade moçambicana). */
+export const CASH_CLOSING_TYPES = [
+  "NORMAL",
+  "ENTREGA_COFRE",
+  "DEPOSITO_BANCARIO",
+  "DIVERGENCIA",
+] as const;
+
+export type CashClosingType = typeof CASH_CLOSING_TYPES[number];
+
+export const CASH_CLOSING_TYPE_LABELS: Record<string, string> = {
+  NORMAL: "Fecho normal (sem divergência)",
+  ENTREGA_COFRE: "Fecho com entrega do excedente ao Cofre",
+  DEPOSITO_BANCARIO: "Fecho com depósito do excedente no banco",
+  DIVERGENCIA: "Fecho com divergência — auto de ocorrência (conta 58)",
+};
 export const CashRegisterModel = db.define("cash_registers", {
   id: {
     type: DataTypes.INTEGER,
@@ -46,7 +68,12 @@ export const CashRegisterModel = db.define("cash_registers", {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
     defaultValue: 0,
-    comment: "Fundo de troco em dinheiro físico na abertura",
+    comment: "Saldo inicial do caixa — sempre 0 (o caixa abre com saldo zero disponível)",
+  },
+  counted_open: {
+    type: DataTypes.DECIMAL(15, 2),
+    allowNull: true,
+    comment: "Fundo de maneio contado na abertura (memorando físico — não é saldo disponível)",
   },
   total_in: {
     type: DataTypes.DECIMAL(15, 2),
@@ -97,12 +124,27 @@ export const CashRegisterModel = db.define("cash_registers", {
   closing_balance_calculated: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
-    comment: "opening_balance + total_cash_in − total_cash_out (cash apenas)",
+    comment: "fundo de maneio (counted_open) + total_cash_in − total_cash_out (cash apenas)",
   },
   difference: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
     comment: "closing_balance_informed − closing_balance_calculated",
+  },
+  denominations_open: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Contagem por denominação na abertura: { "1000": 3, "500": 2, ... } (notas e moedas em MZN)',
+  },
+  denominations_close: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: 'Contagem por denominação no fecho (dinheiro físico contado pelo operador)',
+  },
+  tipo_fechamento: {
+    type: DataTypes.ENUM(...CASH_CLOSING_TYPES),
+    allowNull: true,
+    comment: "Tipo de fecho: NORMAL, ENTREGA_COFRE, DEPOSITO_BANCARIO ou DIVERGENCIA",
   },
   notes: {
     type: DataTypes.TEXT,

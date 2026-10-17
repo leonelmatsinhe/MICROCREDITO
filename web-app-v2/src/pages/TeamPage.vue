@@ -1,7 +1,7 @@
 <template>
   <q-page class="team-page q-pa-md">
     <!-- ═══════ CABEÇALHO + CONTADORES ═══════ -->
-    <q-card flat class="glass-card q-mb-md">
+    <q-card flat class="glass-card q-mb-md" data-tour="team-header">
       <q-card-section class="q-py-sm">
         <div class="row items-center q-col-gutter-sm">
           <div class="col-12 col-md">

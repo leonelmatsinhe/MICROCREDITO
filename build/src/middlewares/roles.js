@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCurrentUser = exports.getPartner = exports.isPartner = exports.isStaff = exports.isAdmin = exports.FINANCING_PARTNER_ROLE = void 0;
+exports.getCurrentUser = exports.getPartner = exports.isPartner = exports.isLoanAdmin = exports.isCompanyAdmin = exports.isSessionUser = exports.isStaff = exports.isAdmin = exports.FINANCING_PARTNER_ROLE = void 0;
 const jwt = __importStar(require("jsonwebtoken"));
 const UserModel_1 = require("../database/models/UserModel");
 const FinancingWalletModel_1 = require("../database/models/FinancingWalletModel");
@@ -113,6 +113,67 @@ const isStaff = (req, res, next) => __awaiter(void 0, void 0, void 0, function* 
     next();
 });
 exports.isStaff = isStaff;
+/**
+ * QUALQUER SESSÃO VÁLIDA — staff ou parceiro financiador.
+ *
+ * Usado pelos endpoints que só mexem em dados DO PRÓPRIO utilizador, como o
+ * progresso do checklist de onboarding: o parceiro (userRole 4) também tem
+ * checklist, logo `isStaff` (0-3) seria demasiado restritivo. A empresa nunca
+ * vem do pedido — vem sempre do utilizador autenticado (`req.currentUser`).
+ */
+const isSessionUser = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const user = yield loadUserOrRaise(req, res);
+    if (!user)
+        return;
+    req.currentUser = user;
+    next();
+});
+exports.isSessionUser = isSessionUser;
+/**
+ * Apenas o ADMIN da empresa (userRole 1) — o Super Admin (0) é aceite porque
+ * em instalações multi-empresa é ele que faz a governança da plataforma.
+ *
+ * Distingue-se do `isAdmin` acima, que também aceita o Operador (2): aqui o
+ * objectivo é CONTROLO INTERNO — as funcionalidades financeiras (caixa,
+ * tesouraria, histórico de caixa) são do Admin, tal como justificar diferenças
+ * de caixa (quebras/sobras) e lançá-las no Livro Caixa (conta 58x).
+ */
+const isCompanyAdmin = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const user = yield loadUserOrRaise(req, res);
+    if (!user)
+        return;
+    const role = Number(user.userRole);
+    if (![0, 1].includes(role)) {
+        return res.status(403).json({
+            success: false,
+            message: "Apenas o Administrador da empresa pode aceder às funcionalidades financeiras (caixa, tesouraria e diferenças de caixa).",
+        });
+    }
+    req.currentUser = user;
+    next();
+});
+exports.isCompanyAdmin = isCompanyAdmin;
+/**
+ * DESEMBOLSO DE CRÉDITOS — exclusivo do Administrador (userRole 0 ou 1).
+ * O Gestor de Crédito (3) apenas lança e valida a instrução do processo;
+ * quem aprova e desembolsa é o Admin (modelo de um único Admin).
+ */
+const isLoanAdmin = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const user = yield loadUserOrRaise(req, res);
+    if (!user)
+        return;
+    const role = Number(user.userRole);
+    if (![0, 1].includes(role)) {
+        return res.status(403).json({
+            success: false,
+            error: "FORBIDDEN",
+            message: "Apenas o Administrador pode aprovar e desembolsar créditos. O Gestor de Crédito lança e valida a instrução do processo.",
+        });
+    }
+    req.currentUser = user;
+    next();
+});
+exports.isLoanAdmin = isLoanAdmin;
 /**
  * Parceiro financiador (userRole 4) — portal do financiador.
  * Exige carteira associada e portal activo; injecta `req.partner`.

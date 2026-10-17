@@ -45,6 +45,7 @@ const LoanModel_1 = require("../database/models/LoanModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
+const lateInterestService_1 = require("../services/lateInterestService");
 function formatDateBR(date) {
     if (!date)
         return "-";
@@ -132,8 +133,9 @@ const getBMReport = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 order: [["dueDate", "ASC"], ["id", "ASC"]],
             });
             const amortList = amortizations.map((a) => a.toJSON());
-            const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
-            const calculatedAmortizations = (0, calculateLateAmount_1.installmentPanification)(amortList, Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0));
+            // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+            const { forfeit: forfeitRep, maxLateDays: maxLateRep, capPercent: capRep } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
+            const calculatedAmortizations = (0, calculateLateAmount_1.installmentPanification)(amortList, forfeitRep, undefined, { maxLateDays: maxLateRep, capPercent: capRep });
             // Buscar transações reais do crédito
             const transactions = yield TranzactionModel_1.TranzactionModel.findAll({
                 where: {
@@ -379,6 +381,7 @@ const getBMReportExcel = (req, res) => __awaiter(void 0, void 0, void 0, functio
         const loans = yield LoanModel_1.LoanModel.findAll({ where: loanWhere, order: [["id", "ASC"]] });
         const companyRow = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
         const forfeit = Number((companyRow === null || companyRow === void 0 ? void 0 : companyRow.getDataValue("forfeit")) || 0);
+        const { forfeit: forfeitLd, maxLateDays: maxLateLd, capPercent: capLd } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
         const now = (0, moment_1.default)();
         const rows = [];
         for (const loan of loans) {
@@ -390,7 +393,7 @@ const getBMReportExcel = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 order: [["dueDate", "ASC"], ["id", "ASC"]],
             });
             const amortList = amortizations.map((a) => a.toJSON());
-            const calculated = (0, calculateLateAmount_1.installmentPanification)(amortList, forfeit);
+            const calculated = (0, calculateLateAmount_1.installmentPanification)(amortList, forfeitLd, undefined, { maxLateDays: maxLateLd, capPercent: capLd });
             const transactions = yield TranzactionModel_1.TranzactionModel.findAll({ where: { companyId: companyIdNum, loanId: l.id } });
             const txList = transactions.map((t) => t.toJSON());
             const first = amortList[0];

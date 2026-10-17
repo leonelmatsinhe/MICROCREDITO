@@ -13,35 +13,63 @@ const calculatePendingDays = (installment, referenceDate) => {
 };
 /**
  * Calcula os juros de mora diários de uma prestação em atraso.
- * Fórmula: Mora = Prestação × (forfeit / 100) × Dias em atraso
  *
- * O forfeit vem como percentagem (ex: 2 = 2% por dia).
- * Divide-se por 100 para converter em taxa decimal antes de aplicar.
+ * REGRAS (2026-10):
+ * - BASE = SALDO DEVEDOR da prestação (installment − paidAmount), NUNCA o
+ *   valor integral quando há pagamento parcial.
+ * - Fórmula: Mora = saldo × (forfeit/100) × dias em atraso
+ * - FORFEIT 0 → mora INVÁLIDA/desactivada (devolve sempre 0).
+ * - maxLateDays > 0 → dias de atraso limitados (mora cessa após N dias).
+ * - capPercent > 0 → mora nunca passa capPercent% do saldo devedor.
  *
- * @param installment - Objecto da prestação (com installment, dueDate, status)
- * @param fine - Taxa diária de mora em percentagem (ex: 2 para 2%/dia)
+ * @param installment - Objecto da prestação (installment, dueDate, status, paidAmount)
+ * @param fine - Taxa diária de mora em percentagem (ex: 2 = 2%/dia)
+ * @param referenceDate - Data de referência (default: hoje)
+ * @param limits - Limites de invalidação/limitação da mora
  * @returns Valor total dos juros de mora acumulados
  */
-const latePaymentInterest = (installment, fine, referenceDate) => {
+const latePaymentInterest = (installment, fine, referenceDate, limits) => {
+    var _a, _b;
+    const dailyRate = Number(fine || 0) / 100;
+    // ── INVALIDAÇÃO: taxa 0 → sem mora ──
+    if (dailyRate <= 0) {
+        return 0;
+    }
     const today = referenceDate ? (0, moment_1.default)(referenceDate).startOf("day") : (0, moment_1.default)().startOf("day");
     const diffDays = (0, moment_1.default)(today).diff((0, moment_1.default)(installment.dueDate), "days");
-    // Calcula juros de mora se atrasada (dias positivos)
+    // Calcula juros de mora apenas com atraso positivo (dias efectivos)
     // Status 1 = totalmente pago (sem juros)
     // Status 0 = pendente (com juros)
-    // Status -1 = parcialmente pago (com juros sobre o que falta)
+    // Status -1 = parcialmente pago (com juros sobre o saldo)
     if (diffDays <= 0 || installment.status === 1) {
         return 0;
     }
-    // Converte a percentagem para taxa decimal: ex: 2 → 0.02
-    const dailyRate = Number(fine || 0) / 100;
-    // A mora incide sobre o valor integral da prestação vencida.
-    // O pagamento parcial reduz o saldo da prestação, mas não retroage
-    // o valor da mora já acumulada até à data do pagamento.
-    const installmentAmount = Math.max(0, parseFloat(installment.installment) || 0);
-    const dailyPenalty = installmentAmount * dailyRate;
-    return Math.round(dailyPenalty * diffDays * 100) / 100;
+    // ── LIMITE DE DIAS: mora cessa após maxLateDays dias ──
+    const maxLateDays = Number((_a = limits === null || limits === void 0 ? void 0 : limits.maxLateDays) !== null && _a !== void 0 ? _a : 0) || 0;
+    const days = maxLateDays > 0 ? Math.min(diffDays, maxLateDays) : diffDays;
+    if (days <= 0) {
+        return 0;
+    }
+    // ── BASE = SALDO DEVEDOR (pagamento parcial reduz a mora) ──
+    const outstandingBalance = Math.max(0, Math.round((parseFloat(installment.installment) || 0) - (parseFloat(installment.paidAmount) || 0)) * 100) / 100;
+    if (outstandingBalance <= 0) {
+        return 0;
+    }
+    const dailyPenalty = outstandingBalance * dailyRate;
+    let mora = Math.round(dailyPenalty * days * 100) / 100;
+    // ── CAP: mora nunca excede capPercent% do saldo devedor ──
+    const capPercent = Number((_b = limits === null || limits === void 0 ? void 0 : limits.capPercent) !== null && _b !== void 0 ? _b : 0) || 0;
+    if (capPercent > 0) {
+        const cap = Math.round(outstandingBalance * (capPercent / 100) * 100) / 100;
+        mora = Math.min(mora, cap);
+    }
+    return mora;
 };
-const installmentPanification = (installments, forfeit, referenceDate) => {
+/**
+ * Panificação com limites de mora. `fineLimits` propaga as regras de
+ * invalidação (0 = não aplicar) para todas as prestações.
+ */
+const installmentPanification = (installments, forfeit, referenceDate, limits) => {
     const installmentPlan = [];
     // ── BASE DO SALDO = CAPITAL (Σ amortização), NÃO Σ prestações ──
     // BUG antigo: totalLoanAmount somava as PRESTAÇÕES (capital + juros),
@@ -77,7 +105,7 @@ const installmentPanification = (installments, forfeit, referenceDate) => {
             // a última linha é forçada a 0,00.
             remainingBalance: isLast ? 0 : Math.max(0, Math.round(calculatedRemainingBalance * 100) / 100),
             lateDays: calculatePendingDays(element, referenceDate),
-            latePaymentInterest: latePaymentInterest(element, forfeit, referenceDate),
+            latePaymentInterest: latePaymentInterest(element, forfeit, referenceDate, limits),
             dueDate: element.dueDate,
             status: element.status,
             createdAt: element.createdAt,

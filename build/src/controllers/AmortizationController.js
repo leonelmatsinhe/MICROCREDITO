@@ -46,9 +46,11 @@ const CustomerModel_1 = require("../database/models/CustomerModel");
 const CompanyModel_1 = require("../database/models/CompanyModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
+const lateInterestService_1 = require("../services/lateInterestService");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
 const dateFormatMZ_1 = require("../utils/dateFormatMZ");
 const kycDocuments_1 = require("../utils/kycDocuments");
+const guaranteeCoverageService_1 = require("../services/guaranteeCoverageService");
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const concessionPackageService_1 = require("../services/concessionPackageService");
 const getUpcomingAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -123,7 +125,7 @@ const getPastAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.getPastAmortizations = getPastAmortizations;
 const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f;
     try {
         const { companyId, loanId, accountNumber, interestRate, numberOfInstallments, amount, dueDate, status } = req.body;
         // Validações de entrada
@@ -178,6 +180,21 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 message: "O crédito ainda não está associado a uma conta oficial.",
             });
         }
+        // ── SPRINT 5 (ALÇADAS): APROVAR ≠ DESEMBOLSAR ──
+        // O dinheiro só sai depois de o crédito estar totalmente aprovado pelas
+        // alçadas (Gestor ≤ 25.000 · Admin ≤ 100.000 · acima, Comitê de Crédito
+        // com 2 aprovações de Admins diferentes). Verificado ANTES das restantes
+        // validações para que um crédito não aprovado receba sempre este erro.
+        const { assertDisbursable } = yield Promise.resolve().then(() => __importStar(require("../services/loanApprovalService")));
+        const disbursable = assertDisbursable(loan);
+        if (!disbursable.ok) {
+            return res.status(409).json({
+                success: false,
+                error: "APPROVAL_REQUIRED",
+                message: disbursable.message,
+                approvalState: disbursable.state,
+            });
+        }
         // ── KYC BLOQUEANTE NO DESEMBOLSO ──
         // Última linha de defesa: mesmo que o pedido tenha sido criado antes da
         // regra, o dinheiro só sai sem os 3 documentos base (BI, NUIT,
@@ -197,6 +214,20 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 message: `Desembolso bloqueado: checklist KYC incompleta. Documentos em falta: ${kyc.missing.join(", ")}.`,
                 missing: kyc.missing,
             });
+        }
+        // ── GARANTIAS BLOQUEANTES NA APROVAÇÃO/DESEMBOLSO ──
+        // O crédito só avança se o valor das garantias registadas cobrir o total a
+        // pagar (capital + juros do plano que vai ser gerado) — regra: impedir a
+        // aprovação antes de garantias que superem o valor do crédito e seus juros.
+        const coverage = yield (0, guaranteeCoverageService_1.getGuaranteeCoverage)({
+            loan,
+            amount: loanAmount,
+            interestRate: rate,
+            numberOfInstallments: installments,
+            dueDate,
+        });
+        if (!coverage.covered) {
+            return res.status(400).json((0, guaranteeCoverageService_1.guaranteeCoverageError)(coverage));
         }
         // ── CARTEIRA DE FINANCIAMENTO (analítica) + SALDO REAL ──
         // O desembolso tem obrigatoriamente de ser classificado numa carteira de
@@ -332,11 +363,36 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         const bulckInsert = yield AmortizationLoanModel_1.AmorizationLoanModel.bulkCreate(customerAmortizationPlan.map((installment) => (Object.assign(Object.assign({}, installment), { customerId, walletId: walletId || loan.getDataValue("walletId") || null }))));
         // Atualiza o status do empréstimo e guarda a data real de desembolso:
         // o dueDate enviado é a base do plano (a 1ª prestação vence 1 mês depois).
-        yield LoanModel_1.LoanModel.update(Object.assign({ status: 1, disbursementDate: String(dueDate || "").slice(0, 10) || null }, (walletId ? { walletId } : {})), {
+        yield LoanModel_1.LoanModel.update(Object.assign({ status: 1, 
+            // ── SPRINT 5: desembolso executado = estado final do ciclo ──
+            approvalState: "DESEMBOLSADO", disbursementDate: String(dueDate || "").slice(0, 10) || null }, (walletId ? { walletId } : {})), {
             where: {
                 id: loanId
             }
         });
+        // ── SPRINT 5: linha do tempo — quem desembolsou e quando ──
+        // (auditável; best-effort como o pacote de concessão — o estado já está
+        // consistente no update acima e a falha fica registada no log)
+        try {
+            const timelineJwt = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
+            const timelineDecoded = timelineJwt.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
+            const { UserModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/UserModel")));
+            const timelineUser = yield UserModel.findByPk(Number(timelineDecoded === null || timelineDecoded === void 0 ? void 0 : timelineDecoded.id) || 0, { raw: true });
+            const { recordLoanDisbursementEvent } = yield Promise.resolve().then(() => __importStar(require("../services/loanApprovalService")));
+            yield recordLoanDisbursementEvent({
+                loanId: Number(loanId),
+                actor: {
+                    id: Number(timelineDecoded === null || timelineDecoded === void 0 ? void 0 : timelineDecoded.id) || null,
+                    name: (timelineUser === null || timelineUser === void 0 ? void 0 : timelineUser.name) ? String(timelineUser.name) : null,
+                    role: timelineUser ? Number(timelineUser.userRole) : null,
+                    companyId: Number(companyId),
+                },
+                notes: `Desembolso via ${String(((_c = req.body) === null || _c === void 0 ? void 0 : _c.payment_method) || "CASH")}`,
+            });
+        }
+        catch (timelineError) {
+            console.error("[Alçadas] Falha ao registar desembolso na linha do tempo:", (timelineError === null || timelineError === void 0 ? void 0 : timelineError.message) || timelineError);
+        }
         try {
             yield (0, SmsGatewayService_1.enqueueDisbursementSms)({
                 companyId: Number(companyId),
@@ -344,7 +400,7 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 accountNumber,
                 amount: Number(amount),
                 installments: Number(numberOfInstallments),
-                firstDueDate: ((_c = customerAmortizationPlan[0]) === null || _c === void 0 ? void 0 : _c.dueDate)
+                firstDueDate: ((_d = customerAmortizationPlan[0]) === null || _d === void 0 ? void 0 : _d.dueDate)
                     ? (0, dateFormatMZ_1.formatDateMZ)(customerAmortizationPlan[0].dueDate)
                     : null,
             });
@@ -391,8 +447,8 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                     amount: Number(amount),
                     accountNumber,
                     // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
-                    paymentMethod: String(((_d = req.body) === null || _d === void 0 ? void 0 : _d.payment_method) || "CASH"),
-                    bankAccountId: ((_e = req.body) === null || _e === void 0 ? void 0 : _e.bank_account_id)
+                    paymentMethod: String(((_e = req.body) === null || _e === void 0 ? void 0 : _e.payment_method) || "CASH"),
+                    bankAccountId: ((_f = req.body) === null || _f === void 0 ? void 0 : _f.bank_account_id)
                         ? Number(req.body.bank_account_id)
                         : null,
                 });
@@ -440,18 +496,19 @@ exports.createAmortizationLoan = createAmortizationLoan;
  * dados financeiros).
  */
 const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _f;
+    var _g;
     try {
         const { companyId } = req.params;
         const companyIdNum = Number(companyId);
         if (!Number.isFinite(companyIdNum) || companyIdNum <= 0) {
             return res.status(400).json({ success: false, message: "companyId inválido." });
         }
-        const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["id", "forfeit"] });
+        const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["id"] });
         if (!company) {
             return res.status(404).json({ success: false, message: "Empresa não encontrada." });
         }
-        const forfeit = Number(company.getDataValue("forfeit") || 0);
+        // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
         // 1. Créditos activos (1) ou liquidados (3)
         const loans = yield LoanModel_1.LoanModel.findAll({
             where: { companyId: companyIdNum, status: { [sequelize_1.Op.in]: [1, 3] } },
@@ -512,7 +569,7 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
         today.setHours(0, 0, 0, 0);
         const result = [];
         for (const loan of loans) {
-            const plan = (0, calculateLateAmount_1.installmentPanification)(amortByLoan[Number(loan.id)] || [], forfeit);
+            const plan = (0, calculateLateAmount_1.installmentPanification)(amortByLoan[Number(loan.id)] || [], forfeit, undefined, { maxLateDays, capPercent });
             // Mesma ordem de resolução usada historicamente no frontend: conta → id
             const customer = customerByAccount[String(loan.accountNumber)] ||
                 customerById[Number(loan.customerId)] ||
@@ -535,7 +592,7 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
                     customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || null,
                     customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "",
                     hasCustomer: !!customer,
-                    installmentOrder: (_f = a.installmentOrder) !== null && _f !== void 0 ? _f : "",
+                    installmentOrder: (_g = a.installmentOrder) !== null && _g !== void 0 ? _g : "",
                     installment: Number(a.installment) || 0,
                     paidAmount: Number(a.paidAmount) || 0,
                     status,

@@ -1,7 +1,7 @@
 <template>
   <q-page class="bank-accounts-page q-pa-md">
     <!-- ═══════ CABEÇALHO ═══════ -->
-    <div class="row items-center q-col-gutter-sm q-mb-md">
+    <div class="row items-center q-col-gutter-sm q-mb-md" data-tour="bank-header">
       <div class="col-12 col-md">
         <div class="row items-center no-wrap">
           <div class="page-icon q-mr-sm"><q-icon name="account_balance" size="20px" color="white" /></div>

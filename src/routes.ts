@@ -111,7 +111,25 @@ import {
   updateLoan,
   updateLoanInstallmentDates,
   simulateLoan,
+  getLoanGuaranteeCoverage,
+  loanApprovalRules,
+  loanApprovalTimeline,
+  submitLoanForApproval,
+  approveLoan,
+  rejectLoan,
+  prepareLoanDisbursement,
 } from "./controllers/LoanController";
+
+import {
+  registerCollectionActivity,
+  listCollectionActivities,
+  getCollectionPortfolio,
+  claimCollectionClient,
+  listOverdueCustomers,
+  getGestorDashboard,
+  getCollectionRanking,
+  getCollectionMeta,
+} from "./controllers/CollectionController";
 
 // LIQUIDAÇÃO TOTAL ATÓMICA — todas as prestações numa única sequelize.transaction
 import { addTranzactionBulk } from "./controllers/TranzactionBulkController";
@@ -211,6 +229,7 @@ import {
 } from "./controllers/NotificationController";
 import { getDashboardOverview } from "./controllers/DashboardController";
 import { checkCashRegisterOpen } from "./middlewares/checkCashRegisterOpen";
+import { getMyOnboarding, saveMyOnboarding, getTeamOnboarding } from "./controllers/OnboardingController";
 import { getBMReport, getBMReportExcel } from "./controllers/BMReportController";
 
 // CARTEIRAS DE FINANCIAMENTO (dinheiro analítico) — CRUD + KPIs
@@ -271,7 +290,7 @@ import {
 // PDF TABELAR GENÉRICO — relatórios do frontend gerados no backend (pdfkit)
 import { tablePdf } from "./controllers/TablePdfController";
 
-import { isAdmin, isPartner, isStaff } from "./middlewares/roles";
+import { isAdmin, isCompanyAdmin, isLoanAdmin, isPartner, isSessionUser, isStaff } from "./middlewares/roles";
 import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
 import * as MicrocreditController from "./controllers/MicrocreditController";
 
@@ -401,14 +420,19 @@ routes.get("/api/document/file/:fileName", (req: Request, res: Response) => {
 });
 
 // FLUXO DE SUBSCRIÇÃO — cadastro público (antes do middleware auth)
-routes.post("/api/companies/register", registerCompany);
+// DESACTIVADO EM MODO SINGLE-TENANT: a instalação serve uma só empresa, logo
+// não existe auto-registo de instituições (a página /registar-empresa do
+// frontend fica sem endpoint). Reactivar apenas em deployments multi-empresa.
+// routes.post("/api/companies/register", registerCompany);
 // Planos de subscrição — público (landing + registo de empresa)
 routes.get("/api/subscription-plans", listPlans);
 // Províncias e distritos públicos (usados no cadastro público da empresa)
 routes.get("/api/provinces", findAllProvinces);
 routes.get("/api/districts", findAllDistricts);
 // TEMPORÁRIO: debug de empresas sem auth (remover em produção)
-routes.get("/api/debug/companies", debugCompanies);
+// DESACTIVADO: expunha a lista de empresas SEM autenticação — inaceitável numa
+// instalação single-tenant (e em produção em geral).
+// routes.get("/api/debug/companies", debugCompanies);
 // VALIDAÇÃO PÚBLICA DO RECIBO — é o destino do QR Code impresso no documento,
 // por isso não pode exigir sessão (tem de vir antes do middleware auth).
 routes.get("/api/recibos/validar", validarRecibo);
@@ -419,18 +443,22 @@ routes.get("/api/validar-recibo", validarRecibo);
 routes.use("/api", auth);
 
 // SUPER ADMIN — aprovação de empresas (apenas userRole = 0)
-routes.use("/api/super-admin", isSuperAdmin);
-routes.get("/api/super-admin/companies", listCompanies);
-routes.post("/api/super-admin/companies/:id/approve", approveCompany);
-routes.post("/api/super-admin/companies/:id/reject", rejectCompany);
-routes.post("/api/super-admin/companies/:id/suspend", suspendCompany);
-routes.get("/api/super-admin/users", listSuperAdmins);
-routes.post("/api/super-admin/users", createSuperAdmin);
-routes.delete("/api/super-admin/users/:id", deleteSuperAdmin);
-routes.get("/api/super-admin/plans", listPlans);
-routes.post("/api/super-admin/plans", createPlan);
-routes.put("/api/super-admin/plans/:id", updatePlan);
-routes.delete("/api/super-admin/plans/:id", deactivatePlan);
+// DESACTIVADO EM MODO SINGLE-TENANT: não existe governança de plataforma nem
+// aprovação de novas empresas numa instalação dedicada. O painel Super Admin
+// (web-app-v2) deixa de ter backend. Reactivar apenas em deployments
+// multi-empresa.
+// routes.use("/api/super-admin", isSuperAdmin);
+// routes.get("/api/super-admin/companies", listCompanies);
+// routes.post("/api/super-admin/companies/:id/approve", approveCompany);
+// routes.post("/api/super-admin/companies/:id/reject", rejectCompany);
+// routes.post("/api/super-admin/companies/:id/suspend", suspendCompany);
+// routes.get("/api/super-admin/users", listSuperAdmins);
+// routes.post("/api/super-admin/users", createSuperAdmin);
+// routes.delete("/api/super-admin/users/:id", deleteSuperAdmin);
+// routes.get("/api/super-admin/plans", listPlans);
+// routes.post("/api/super-admin/plans", createPlan);
+// routes.put("/api/super-admin/plans/:id", updatePlan);
+// routes.delete("/api/super-admin/plans/:id", deactivatePlan);
 routes.get("/api/sms-gateway/pending", getPendingSmsGateway);
 routes.patch("/api/sms-gateway/:id/status", updateGatewaySmsStatus);
 routes.post("/api/sms-gateway/enqueue", enqueueSmsManually);
@@ -454,6 +482,36 @@ routes.delete("/api/users/:id", destroy);
 // SIMULAÇÃO NO BACKEND — plano Price com a mesma função do desembolso
 // (paridade garantida entre o simulador do frontend e o plano gravado).
 routes.post("/api/loan/simulate", simulateLoan);
+// ── SPRINT 5: ALÇADAS DE APROVAÇÃO (aprovar ≠ desembolsar) ──
+// Registadas ANTES de GET /api/loan/:id — senão "approval-rules" seria lido
+// como id de crédito. Aprovar é decisão (não mexe no caixa); desembolsar é
+// POST /api/createInstallmentsLoan e só corre com o crédito aprovado.
+routes.get("/api/loan/approval-rules", isStaff, loanApprovalRules);
+routes.get("/api/loan/:id/approval-timeline", isStaff, loanApprovalTimeline);
+routes.post("/api/loan/:id/submit", isStaff, submitLoanForApproval);
+routes.post("/api/loan/:id/approve", isStaff, approveLoan);
+routes.post("/api/loan/:id/reject", isStaff, rejectLoan);
+routes.post("/api/loan/:id/prepare-disbursement", isStaff, prepareLoanDisbursement);
+
+// ── SPRINT 6: COBRANÇA DE CAMPO + CARTEIRA POR GESTOR ──
+// O Gestor só vê/opera a sua carteira; o Admin vê tudo e o ranking por gestor.
+routes.get("/api/collection/meta", isStaff, getCollectionMeta);
+routes.get("/api/collection/activities", isStaff, listCollectionActivities);
+routes.post("/api/collection/activities", isStaff, registerCollectionActivity);
+routes.get("/api/collection/overdue", isStaff, listOverdueCustomers);
+routes.get("/api/collection/portfolio", isStaff, getCollectionPortfolio);
+routes.post("/api/collection/claim", isStaff, claimCollectionClient);
+routes.get("/api/collection/dashboard", isStaff, getGestorDashboard);
+routes.get("/api/collection/ranking", isAdmin, getCollectionRanking);
+
+// ── ONBOARDING — CHECKLIST DO PRIMEIRO DIA ──
+// O progresso segue o utilizador (não o dispositivo) e o Admin vê o que falta a
+// cada colega. O catálogo das tarefas vive no frontend; aqui só o progresso.
+// A empresa vem SEMPRE da sessão: /team nunca aceita companyId do pedido.
+routes.get("/api/onboarding/me", isSessionUser, getMyOnboarding);
+routes.put("/api/onboarding/me", isSessionUser, saveMyOnboarding);
+routes.get("/api/onboarding/team", isCompanyAdmin, getTeamOnboarding);
+
 routes.get("/api/loan/:id", findLoanByCustomer);
 // DOSSIÊ DO CRÉDITO (página de detalhe: pagamentos + recibos + prestações)
 // DOCUMENTOS LEGAIS DO CRÉDITO — DOIS FLUXOS:
@@ -468,14 +526,18 @@ routes.get("/api/loans/:loanId/concession/:key/pdf", isStaff, concessionDocPdf);
 // e extracto (dinâmico, sempre on-demand).
 routes.get("/api/loans/:loanId/documents/:tipo/pdf", downloadLegalDoc);
 routes.get("/api/loan/:id/detail", isStaff, loanDetail);
+// Cobertura de garantias vs total a pagar (capital + juros) — aviso/bloqueio de aprovação
+routes.get("/api/loan/:id/guarantee-coverage", isStaff, getLoanGuaranteeCoverage);
 routes.get("/api/loan/amortization/:id", getLoanAmortization);
 routes.get("/api/loan/amortization/:id/:forfeit", getLoanAmortization);
 routes.get("/api/loan/findAllLoans/:id/:companyId", findAllLoans);
 routes.get("/api/loans/overview/:companyId", findAllLoansOverview);
 routes.put("/api/loan/:id/invalidate-disbursement", invalidateDisbursedLoan);
+// APROVAÇÃO / ACTUALIZAÇÃO DE CRÉDITO: SEM checkCashRegisterOpen (Gestor pode aprovar sem exigir caixa aberto)
 routes.put("/api/loan/:id", updateLoan);
 routes.put("/api/loan/:id/update-dates", updateLoanInstallmentDates);
 routes.delete("/api/loan/:id", destroyLoan);
+// CRIAÇÃO DE PEDIDO DE CRÉDITO: SEM checkCashRegisterOpen
 routes.post("/api/loan", createLoan);
 
 // Documents Route
@@ -563,7 +625,9 @@ routes.post("/api/tranzaction/bulk", checkCashRegisterOpen, addTranzactionBulk);
 // Installments Routes
 // POST createInstallmentsLoan = desembolso do crédito (cria plano + activa).
 // Exige caixa ABERTO hoje — o movimento SAIDA/DESEMBOLSO é criado no controller.
-routes.post("/api/createInstallmentsLoan/", checkCashRegisterOpen, createAmortizationLoan);
+// Desembolso = movimenta o caixa. EXCLUSIVO DO ADMIN (isLoanAdmin): o Gestor
+// de Crédito apenas lança e valida a instrução (SPRINT de alçadas).
+routes.post("/api/createInstallmentsLoan/", isLoanAdmin, checkCashRegisterOpen, createAmortizationLoan);
 routes.get("/api/getpastInstallments/:id", getPastAmortizations);
 routes.get("/api/getUpcomingInstallments/:id", getUpcomingAmortizations);
 // Controle de Prestações consolidado (nomes resolvidos no servidor, sem N+1)

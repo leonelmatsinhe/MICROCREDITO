@@ -9,9 +9,11 @@ import { CustomerModel } from "../database/models/CustomerModel";
 import { CompanyModel } from "../database/models/CompanyModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 import { enqueueDisbursementSms } from "../services/SmsGatewayService";
 import { formatDateMZ } from "../utils/dateFormatMZ";
 import { evaluateKyc } from "../utils/kycDocuments";
+import { getGuaranteeCoverage, guaranteeCoverageError } from "../services/guaranteeCoverageService";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { PackageAlreadyIssuedError } from "../services/concessionPackageService";
 
@@ -164,6 +166,22 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       });
     }
 
+    // ── SPRINT 5 (ALÇADAS): APROVAR ≠ DESEMBOLSAR ──
+    // O dinheiro só sai depois de o crédito estar totalmente aprovado pelas
+    // alçadas (Gestor ≤ 25.000 · Admin ≤ 100.000 · acima, Comitê de Crédito
+    // com 2 aprovações de Admins diferentes). Verificado ANTES das restantes
+    // validações para que um crédito não aprovado receba sempre este erro.
+    const { assertDisbursable } = await import("../services/loanApprovalService");
+    const disbursable = assertDisbursable(loan);
+    if (!disbursable.ok) {
+      return res.status(409).json({
+        success: false,
+        error: "APPROVAL_REQUIRED",
+        message: disbursable.message,
+        approvalState: disbursable.state,
+      });
+    }
+
     // ── KYC BLOQUEANTE NO DESEMBOLSO ──
     // Última linha de defesa: mesmo que o pedido tenha sido criado antes da
     // regra, o dinheiro só sai sem os 3 documentos base (BI, NUIT,
@@ -183,6 +201,21 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
         message: `Desembolso bloqueado: checklist KYC incompleta. Documentos em falta: ${kyc.missing.join(", ")}.`,
         missing: kyc.missing,
       });
+    }
+
+    // ── GARANTIAS BLOQUEANTES NA APROVAÇÃO/DESEMBOLSO ──
+    // O crédito só avança se o valor das garantias registadas cobrir o total a
+    // pagar (capital + juros do plano que vai ser gerado) — regra: impedir a
+    // aprovação antes de garantias que superem o valor do crédito e seus juros.
+    const coverage = await getGuaranteeCoverage({
+      loan,
+      amount: loanAmount,
+      interestRate: rate,
+      numberOfInstallments: installments,
+      dueDate,
+    });
+    if (!coverage.covered) {
+      return res.status(400).json(guaranteeCoverageError(coverage));
     }
 
     // ── CARTEIRA DE FINANCIAMENTO (analítica) + SALDO REAL ──
@@ -334,6 +367,8 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
     await LoanModel.update(
       {
         status: 1,
+        // ── SPRINT 5: desembolso executado = estado final do ciclo ──
+        approvalState: "DESEMBOLSADO",
         disbursementDate: String(dueDate || "").slice(0, 10) || null,
         ...(walletId ? { walletId } : {}),
       },
@@ -343,6 +378,32 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
         }
       }
     );
+
+    // ── SPRINT 5: linha do tempo — quem desembolsou e quando ──
+    // (auditável; best-effort como o pacote de concessão — o estado já está
+    // consistente no update acima e a falha fica registada no log)
+    try {
+      const timelineJwt = await import("jsonwebtoken");
+      const timelineDecoded: any = timelineJwt.verify(
+        (req.headers.authorization || "").split(" ")[1] || "",
+        process.env.APP_SECRET + ""
+      );
+      const { UserModel } = await import("../database/models/UserModel");
+      const timelineUser: any = await UserModel.findByPk(Number(timelineDecoded?.id) || 0, { raw: true });
+      const { recordLoanDisbursementEvent } = await import("../services/loanApprovalService");
+      await recordLoanDisbursementEvent({
+        loanId: Number(loanId),
+        actor: {
+          id: Number(timelineDecoded?.id) || null,
+          name: timelineUser?.name ? String(timelineUser.name) : null,
+          role: timelineUser ? Number(timelineUser.userRole) : null,
+          companyId: Number(companyId),
+        },
+        notes: `Desembolso via ${String((req.body as any)?.payment_method || "CASH")}`,
+      });
+    } catch (timelineError: any) {
+      console.error("[Alçadas] Falha ao registar desembolso na linha do tempo:", timelineError?.message || timelineError);
+    }
 
     try {
       await enqueueDisbursementSms({
@@ -459,11 +520,12 @@ const getInstallmentsControl = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "companyId inválido." });
     }
 
-    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["id", "forfeit"] });
+    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["id"] });
     if (!company) {
       return res.status(404).json({ success: false, message: "Empresa não encontrada." });
     }
-    const forfeit = Number(company.getDataValue("forfeit") || 0);
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyIdNum);
 
     // 1. Créditos activos (1) ou liquidados (3)
     const loans: any[] = await LoanModel.findAll({
@@ -532,7 +594,7 @@ const getInstallmentsControl = async (req: Request, res: Response) => {
     today.setHours(0, 0, 0, 0);
     const result: any[] = [];
     for (const loan of loans) {
-      const plan = installmentPanification(amortByLoan[Number(loan.id)] || [], forfeit);
+      const plan = installmentPanification(amortByLoan[Number(loan.id)] || [], forfeit, undefined, { maxLateDays, capPercent });
       // Mesma ordem de resolução usada historicamente no frontend: conta → id
       const customer =
         customerByAccount[String(loan.accountNumber)] ||

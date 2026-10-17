@@ -63,6 +63,13 @@ export const LoanModel = db.define("customer_loans", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  approvalState: {
+    type: DataTypes.STRING(30),
+    allowNull: true,
+    comment:
+      "Estado do ciclo de aprovação/desembolso (SPRINT 5): RASCUNHO · AGUARDANDO_APROVACAO · " +
+      "APROVADO_PARCIALMENTE · APROVADO · REPROVADO · AGUARDANDO_DESEMBOLSO · DESEMBOLSADO",
+  },
   borrowerInfo: {
     type: DataTypes.TEXT,
     allowNull: true,

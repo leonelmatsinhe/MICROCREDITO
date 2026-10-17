@@ -13,7 +13,7 @@
       />
 
       <!-- Route Title + Breadcrumbs (Home / Painel) -->
-      <div class="row items-center no-wrap">
+      <div class="row items-center no-wrap" data-tour="navbar-title">
         <q-icon :name="routeIcon" size="22px" class="q-mr-sm text-green-10" />
         <div>
           <div class="text-grey-9 text-weight-bold" style="font-size: 15px; line-height: 1.2">
@@ -47,6 +47,7 @@
           flat
           round
           dense
+          data-tour="navbar-theme"
           :icon="isDark ? 'light_mode' : 'dark_mode'"
           text-color="grey-8"
           size="sm"
@@ -63,6 +64,7 @@
           borderless
           emit-value
           map-options
+          data-tour="navbar-lang"
           class="locale-select q-mx-xs"
         >
           <template v-slot:selected-item="scope">
@@ -78,10 +80,12 @@
         </q-select>
 
         <!-- ALERTAS DO SISTEMA — sino com badge vermelho + modal -->
-        <AlertBell />
+        <div class="row items-center" data-tour="navbar-alerts">
+          <AlertBell />
+        </div>
 
         <!-- Notifications -->
-        <q-btn flat round dense icon="notifications" text-color="grey-8" size="sm">
+        <q-btn flat round dense icon="notifications" text-color="grey-8" size="sm" data-tour="navbar-notifications">
           <q-badge color="negative" floating v-if="unreadCount > 0">
             {{ unreadCount > 99 ? '99+' : unreadCount }}
           </q-badge>
@@ -148,7 +152,7 @@
         </q-btn>
 
         <!-- User Profile -->
-        <q-btn flat round dense no-caps>
+        <q-btn flat round dense no-caps data-tour="navbar-user">
           <q-avatar color="positive" text-color="white" size="32px">
             <span style="font-size: 13px">{{ userInitials }}</span>
           </q-avatar>

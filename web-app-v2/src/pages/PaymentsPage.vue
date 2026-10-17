@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md payments-page">
     <!-- ============ FILTROS ============ -->
-    <q-card flat bordered class="q-mb-md filters-card" style="border-radius: 12px">
+    <q-card flat bordered class="q-mb-md filters-card" style="border-radius: 12px" data-tour="payments-filters">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
           <div class="col-12 col-md-3">

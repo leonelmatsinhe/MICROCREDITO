@@ -11,6 +11,7 @@ import { LoanModel } from "../database/models/LoanModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { Op } from "sequelize";
 import { hashPasswordIfNeeded } from "../utils/password";
+import { actorFromRequest, gestorScopeWhere } from "../utils/requestActor";
 
 // Remove o hash da senha antes de devolver mutuários ao frontend — a BD é a
 // única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
@@ -29,12 +30,15 @@ const isValidNuit = (nuit: unknown): boolean => {
   return /^\d{9}$/.test(value);
 };
 
-// BI: 12 caracteres alfanuméricos no formato oficial (ex: 110100123456B).
-const isValidNationalId = (nationalId: unknown): boolean => {
-  const value = String(nationalId ?? "").trim();
-  if (!value) return true; // vazio é permitido (opcional)
-  return /^[A-Z0-9]{12}$/.test(value.toUpperCase());
-};
+// BI / Passaporte / Carta de condução: SEM validação de formato.
+// O número do documento de identificação é livre: BI novo (12 caracteres), BI
+// antigo, passaporte, carta de condução e documentos estrangeiros não
+// partilham o mesmo número de dígitos nem o mesmo alfabeto. Exigir uma
+// contagem explícita de dígitos/caracteres travava submissões legítimas — a
+// conferência é feita pela instituição sobre o ficheiro carregado. Aqui só se
+// normaliza o texto (trim), que alimenta a detecção de duplicados.
+const normalizeNationalId = (nationalId: unknown): string =>
+  String(nationalId ?? "").trim();
 
 // Gera password temporária de 8 caracteres legível (sem caracteres ambíguos).
 const generateRandomPassword = (): string =>
@@ -65,7 +69,8 @@ const findAllCustomers = async (req: Request, res: Response) => {
 
   try {
     // Condição base: filtrar por empresa
-    const whereClause: any = { companyId: id };
+    // SPRINT 6: o Gestor só vê a SUA carteira (customers.creditManager).
+    const whereClause: any = { companyId: id, ...gestorScopeWhere(await actorFromRequest(req)) };
 
     if (bairro.trim()) {
       whereClause.customerBairro = { [Op.like]: `%${bairro.trim()}%` };
@@ -207,13 +212,6 @@ const createCustomer = async (req: Request, res: Response) => {
       message: "NUIT inválido: deve conter exactamente 9 dígitos numéricos.",
     });
   }
-  if (!isValidNationalId(customerNationalId)) {
-    return res.status(400).json({
-      success: false,
-      message: "BI inválido: deve conter 12 caracteres alfanuméricos (ex: 110100123456B).",
-    });
-  }
-
   // ── Duplicidade (NUIT/BI/telefone/email) — cadastro interno, igual ao
   // auto-cadastro: impede duas contas com a mesma identificação. ──
   const duplicateWhere: any[] = [];
@@ -223,7 +221,7 @@ const createCustomer = async (req: Request, res: Response) => {
   if (email) duplicateWhere.push({ customerEmail: email });
   const nuit = String(customerNuit || "").trim();
   if (nuit) duplicateWhere.push({ customerNuit: nuit });
-  const nationalId = String(customerNationalId || "").trim();
+  const nationalId = normalizeNationalId(customerNationalId);
   if (nationalId) duplicateWhere.push({ customerNationalId: nationalId });
   if (duplicateWhere.length > 0) {
     const existing = await CustomerModel.findOne({ where: { [Op.or]: duplicateWhere } });
@@ -264,7 +262,7 @@ const createCustomer = async (req: Request, res: Response) => {
       password: hash,
       customerNuit,
       customerPhone,
-      customerNationalId,
+      customerNationalId: nationalId || null,
       issuedAt,
       localOfIssue,
       customerDateOfBirth,
@@ -389,7 +387,7 @@ const registerCustomer = async (req: Request, res: Response) => {
     if (email) duplicateWhere.push({ customerEmail: email });
     const nuit = String(customerNuit || "").trim();
     if (nuit) duplicateWhere.push({ customerNuit: nuit });
-    const nationalId = String(customerNationalId || "").trim();
+    const nationalId = normalizeNationalId(customerNationalId);
     if (nationalId) duplicateWhere.push({ customerNationalId: nationalId });
 
     const existing = await CustomerModel.findOne({ where: { [Op.or]: duplicateWhere } });

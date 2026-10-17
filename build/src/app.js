@@ -47,6 +47,7 @@ const overdueCollectionSmsService_1 = require("./services/overdueCollectionSmsSe
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
+const tenantGuard_1 = require("./middlewares/tenantGuard");
 // Express 4 não captura erros de handlers async — um erro não tratado numa rota
 // derrubava o processo inteiro em silêncio (sem log útil). Estes handlers
 // registam o erro e mantêm o servidor vivo.
@@ -67,6 +68,8 @@ const publicDir = process.env.PUBLIC_DIR
 // Uploads
 const uploadsDir = process.env.UPLOADS_DIR
     || path_1.default.join(projectRoot, "uploads");
+// ISOLAMENTO SINGLE-TENANT: primeiro middleware executado antes de todas as rotas
+app.use(tenantGuard_1.tenantGuard);
 app.use(body_parser_1.default.urlencoded({ extended: true, limit: "10mb" }));
 app.use(body_parser_1.default.json({ limit: "10mb" }));
 app.use(express_1.default.static(uploadsDir));

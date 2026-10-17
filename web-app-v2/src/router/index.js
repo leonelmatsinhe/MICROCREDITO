@@ -13,6 +13,9 @@ const CustomerListPage = () => import('@/pages/customers/CustomerListPage.vue')
 const CustomerDetailPage = () => import('@/pages/customers/CustomerDetailPage.vue')
 const LoanListPage = () => import('@/pages/loans/LoanListPage.vue')
 const LoanDetailPage = () => import('@/pages/loans/LoanDetailPage.vue')
+// SPRINT 6 — Cobrança de campo e carteira por gestor
+const CobrancaPage = () => import('@/pages/cobranca/CobrancaPage.vue')
+const CarteiraGestorPage = () => import('@/pages/cobranca/CarteiraGestorPage.vue')
 // Páginas removidas: LoanDetailPage, AmortizationPage, PaymentsPage, InstallmentsPage, ReportsPage
 // Funcionalidades integradas nos Mutuários (painel do mutuário) e na página de Créditos
 const SettingsPage = () => import('@/pages/SettingsPage.vue')
@@ -34,6 +37,7 @@ const CaixaCentralPage = () => import('@/pages/CaixaCentralPage.vue')
 const BankAccountsPage = () => import('@/pages/BankAccountsPage.vue')
 const CaixaHistoricoPage = () => import('@/pages/CaixaHistoricoPage.vue')
 const LogsPage = () => import('@/pages/LogsPage.vue')
+const OnboardingProgressPage = () => import('@/pages/OnboardingProgressPage.vue')
 const SmsPendingCredentialsPage = () => import('@/pages/SmsPendingCredentialsPage.vue')
 
 // CARTEIRAS DE FINANCIAMENTO (dinheiro analítico) + PARCEIROS FINANCIADORES
@@ -138,6 +142,22 @@ const routes = [
     meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
   },
 
+  // SPRINT 6 — COBRANÇA DE CAMPO: vencidas + visitas/ligações/promessas
+  {
+    path: '/cobranca',
+    name: 'Cobranca',
+    component: CobrancaPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
+  },
+
+  // SPRINT 6 — DASHBOARD DO GESTOR: carteira, PAR 30, promessas + ranking (Admin)
+  {
+    path: '/carteira',
+    name: 'CarteiraGestor',
+    component: CarteiraGestorPage,
+    meta: { requiresAuth: true, allowedRoles: [1, 3] }
+  },
+
   // DETALHE DO CRÉDITO — pagamentos e recibos + prestações
   {
     path: '/loans/:id',
@@ -157,7 +177,7 @@ const routes = [
     path: '/admin/installments',
     name: 'InstallmentsControl',
     component: InstallmentsControlPage,
-    meta: { requiresAuth: true, allowedRoles: [1] }
+    meta: { requiresAuth: true, allowedRoles: [1, 3] }
   },
   {
     path: '/pagamentos',
@@ -169,6 +189,8 @@ const routes = [
     path: '/caixa',
     name: 'Caixa',
     component: CaixaPage,
+    // Caixa é funcionalidade FINANCEIRA — exclusiva do Admin (o Gestor de
+    // Crédito não visualiza nem opera caixa; ver AppSidebar).
     meta: { requiresAuth: true, allowedRoles: [1] }
   },
   // CAIXA CENTRAL — tesouraria com carteira real (cash + contas bancárias)
@@ -215,6 +237,13 @@ const routes = [
     path: '/logs',
     name: 'Logs',
     component: LogsPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  // ONBOARDING DA EQUIPA — progresso do checklist do primeiro dia, por utilizador
+  {
+    path: '/onboarding',
+    name: 'OnboardingTeam',
+    component: OnboardingProgressPage,
     meta: { requiresAuth: true, allowedRoles: [1] }
   },
   {

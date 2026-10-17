@@ -16,6 +16,11 @@ export const CustomerModel = db.define("customers", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  creditManager: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Gestor de Crédito dono da carteira deste cliente (SPRINT 6)",
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false,

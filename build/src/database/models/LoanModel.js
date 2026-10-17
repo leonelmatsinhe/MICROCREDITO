@@ -65,6 +65,12 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    approvalState: {
+        type: sequelize_1.DataTypes.STRING(30),
+        allowNull: true,
+        comment: "Estado do ciclo de aprovação/desembolso (SPRINT 5): RASCUNHO · AGUARDANDO_APROVACAO · " +
+            "APROVADO_PARCIALMENTE · APROVADO · REPROVADO · AGUARDANDO_DESEMBOLSO · DESEMBOLSADO",
+    },
     borrowerInfo: {
         type: sequelize_1.DataTypes.TEXT,
         allowNull: true,

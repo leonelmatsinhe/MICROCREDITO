@@ -56,23 +56,40 @@ function before(fn) {
 function after(fn) {
     suiteHooks.push({ suite: (currentSuite === null || currentSuite === void 0 ? void 0 : currentSuite.name) || "", after: fn });
 }
+// Mini-expect: `to.be.true` / `to.not.be.undefined` usam GETTERS para
+// executarem no simples ACESSO à propriedade (sem parênteses). Antes eram
+// métodos nunca invocados — asserções silenciosas que deixavam passar falhas
+// reais (uma coluna em falta rebentava depois como TypeError noutro sítio).
 const expect = (actual) => ({
     to: {
         equal: (expected) => {
             if (actual !== expected)
                 throw new Error(`esperado ${JSON.stringify(expected)}, obtido ${JSON.stringify(actual)}`);
         },
-        be: {
-            true: () => { if (actual !== true)
-                throw new Error(`esperado true, obtido ${JSON.stringify(actual)}`); },
-            undefined: () => { if (actual !== undefined)
-                throw new Error(`esperado undefined, obtido ${JSON.stringify(actual)}`); },
+        get be() {
+            return {
+                get true() {
+                    if (actual !== true)
+                        throw new Error(`esperado true, obtido ${JSON.stringify(actual)}`);
+                    return true;
+                },
+                get undefined() {
+                    if (actual !== undefined)
+                        throw new Error(`esperado undefined, obtido ${JSON.stringify(actual)}`);
+                    return true;
+                },
+            };
         },
-        not: {
-            be: {
-                undefined: () => { if (actual === undefined)
-                    throw new Error("esperado valor, obtido undefined"); },
-            },
+        get not() {
+            return {
+                be: {
+                    get undefined() {
+                        if (actual === undefined)
+                            throw new Error("esperado valor, obtido undefined");
+                        return true;
+                    },
+                },
+            };
         },
     },
 });
@@ -135,18 +152,35 @@ const callReverse = (tranzactionId, token, reason = "Motivo de estorno de teste 
     return res;
 });
 const insertIdOf = (raw) => { var _a, _b, _c; return Number((_c = (_b = (_a = raw === null || raw === void 0 ? void 0 : raw[0]) === null || _a === void 0 ? void 0 : _a.insertId) !== null && _b !== void 0 ? _b : raw === null || raw === void 0 ? void 0 : raw[0]) !== null && _c !== void 0 ? _c : raw === null || raw === void 0 ? void 0 : raw.insertId) || 0; };
+/**
+ * Crédito (customer_loans) NOVO para cada cenário.
+ *
+ * IMPORTANTE: o excesso de um pagamento (acceptOverpay) é automaticamente
+ * abatido nas prestações PENDENTES do MESMO crédito antes de virar crédito a
+ * favor (customer_credits). Se os cenários partilhassem um único loan, as
+ * prestações nunca pagas dos cenários anteriores absorveriam o excesso do
+ * cenário de overpay e o crédito nunca seria criado — cada cenário tem de ter
+ * o seu próprio crédito para ser independente.
+ */
+const createLoan = () => __awaiter(void 0, void 0, void 0, function* () {
+    const loanRaw = yield db_1.db.query(`INSERT INTO customer_loans
+       (companyId, creditManager, accountNumber, customerId, amount, numberOfInstallments, interestRate, loanDescription, administrativeFee, rate_type, status, dateCreated, createdAt, updatedAt)
+     VALUES (?, 329, ?, ?, 30000, 3, 0.12, 'Teste V2', 0, 'MENSAL', 1, CURDATE(), NOW(), NOW())`, { replacements: [companyId, accountNumber, customerId] });
+    return insertIdOf(loanRaw);
+});
 const createInstallment = (params) => __awaiter(void 0, void 0, void 0, function* () {
-    var _d;
+    var _d, _e;
     const dueDate = daysFromToday(-((_d = params.daysAgoDue) !== null && _d !== void 0 ? _d : 0));
     // daysAgoDue: positivo = venceu há N dias (passado); negativo = vence no futuro
     // (daysFromToday soma; subtrair daysAgoDue dá a data correcta)
+    const scenarioLoanId = (_e = params.loanId) !== null && _e !== void 0 ? _e : (yield createLoan());
     const raw = yield db_1.db.query(`INSERT INTO amortization_loans
        (companyId, loanId, installmentOrder, accountNumber, customerId,
         amortization, rateAmount, installment, remainingBalance, dueDate, status, paidAmount, mora_amount, mora_days, createdAt, updatedAt)
      VALUES (?, ?, '1ª', ?, ?, ?, 0, ?, 0, ?, 0, 0, 0, 0, NOW(), NOW())`, 
     // 7 placeholders: company, loan, accN, cust, amortization, installment, dueDate
     // (rateAmount e remainingBalance ficam a 0 literais no SQL)
-    { replacements: [companyId, loanId, accountNumber, customerId, (0, money_1.round2)(params.value), params.value, dueDate] });
+    { replacements: [companyId, scenarioLoanId, accountNumber, customerId, (0, money_1.round2)(params.value), params.value, dueDate] });
     return insertIdOf(raw);
 });
 const getInstallment = (id) => __awaiter(void 0, void 0, void 0, function* () {
@@ -158,11 +192,11 @@ const countConfirmed = (amortizationLoanId) => __awaiter(void 0, void 0, void 0,
     return Number(rows[0].n);
 });
 const getAccountBalance = (accountId) => __awaiter(void 0, void 0, void 0, function* () {
-    var _e;
+    var _f;
     const [rows] = yield db_1.db.query("SELECT balance FROM accounts WHERE id = ?", {
         replacements: [accountId],
     });
-    return (0, money_1.round2)(Number((_e = rows[0]) === null || _e === void 0 ? void 0 : _e.balance) || 0);
+    return (0, money_1.round2)(Number((_f = rows[0]) === null || _f === void 0 ? void 0 : _f.balance) || 0);
 });
 // ── Suítes ──────────────────────────────────────────────────────────────────
 describe("QUOTE (mora server-side)", () => {
@@ -263,10 +297,15 @@ describe("EXCESSO (overpay)", () => {
         expect(res.statusCode).to.equal(201);
         expect(Number(res.body.allocation.applied)).to.equal(5000);
         expect(Number(res.body.allocation.overpay)).to.equal(2000);
+        // Sem prestações seguintes pendentes, o excesso integral vira crédito a
+        // favor (customer_credits) — nunca é absorvido silenciosamente.
+        expect((res.body.allocation.overpayAppliedToNextInstallments || []).length).to.equal(0);
+        expect(Number(res.body.allocation.overpayAsCredit)).to.equal(2000);
         const [creditRows] = yield db_1.db.query("SELECT amount, remaining_amount, status FROM customer_credits WHERE source_payment_id = ?", { replacements: [res.body.tranzactionId] });
         const credit = creditRows[0];
         expect(credit).to.not.be.undefined;
         expect(Number(credit.amount)).to.equal(2000);
+        expect(Number(credit.remaining_amount)).to.equal(2000);
         expect(String(credit.status)).to.equal("ACTIVE");
         // Prestação paga exactamente 5000
         const inst = yield getInstallment(instId);

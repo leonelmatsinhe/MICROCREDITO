@@ -48,6 +48,7 @@ const LoanModel_1 = require("../database/models/LoanModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const sequelize_1 = require("sequelize");
 const password_1 = require("../utils/password");
+const requestActor_1 = require("../utils/requestActor");
 // Remove o hash da senha antes de devolver mutuários ao frontend — a BD é a
 // única fonte de verdade para login e nenhum hash deve voltar a ser reenviado.
 const stripPassword = (entity) => {
@@ -65,13 +66,14 @@ const isValidNuit = (nuit) => {
         return true; // vazio é permitido (opcional)
     return /^\d{9}$/.test(value);
 };
-// BI: 12 caracteres alfanuméricos no formato oficial (ex: 110100123456B).
-const isValidNationalId = (nationalId) => {
-    const value = String(nationalId !== null && nationalId !== void 0 ? nationalId : "").trim();
-    if (!value)
-        return true; // vazio é permitido (opcional)
-    return /^[A-Z0-9]{12}$/.test(value.toUpperCase());
-};
+// BI / Passaporte / Carta de condução: SEM validação de formato.
+// O número do documento de identificação é livre: BI novo (12 caracteres), BI
+// antigo, passaporte, carta de condução e documentos estrangeiros não
+// partilham o mesmo número de dígitos nem o mesmo alfabeto. Exigir uma
+// contagem explícita de dígitos/caracteres travava submissões legítimas — a
+// conferência é feita pela instituição sobre o ficheiro carregado. Aqui só se
+// normaliza o texto (trim), que alimenta a detecção de duplicados.
+const normalizeNationalId = (nationalId) => String(nationalId !== null && nationalId !== void 0 ? nationalId : "").trim();
 // Gera password temporária de 8 caracteres legível (sem caracteres ambíguos).
 const generateRandomPassword = () => crypto_1.default.randomBytes(16).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
 const validateCustomerDates = (dateOfBirth, issuedAt) => {
@@ -99,7 +101,8 @@ const findAllCustomers = (req, res) => __awaiter(void 0, void 0, void 0, functio
     const offset = (page - 1) * limit;
     try {
         // Condição base: filtrar por empresa
-        const whereClause = { companyId: id };
+        // SPRINT 6: o Gestor só vê a SUA carteira (customers.creditManager).
+        const whereClause = Object.assign({ companyId: id }, (0, requestActor_1.gestorScopeWhere)(yield (0, requestActor_1.actorFromRequest)(req)));
         if (bairro.trim()) {
             whereClause.customerBairro = { [sequelize_1.Op.like]: `%${bairro.trim()}%` };
         }
@@ -201,12 +204,6 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
             message: "NUIT inválido: deve conter exactamente 9 dígitos numéricos.",
         });
     }
-    if (!isValidNationalId(customerNationalId)) {
-        return res.status(400).json({
-            success: false,
-            message: "BI inválido: deve conter 12 caracteres alfanuméricos (ex: 110100123456B).",
-        });
-    }
     // ── Duplicidade (NUIT/BI/telefone/email) — cadastro interno, igual ao
     // auto-cadastro: impede duas contas com a mesma identificação. ──
     const duplicateWhere = [];
@@ -219,7 +216,7 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
     const nuit = String(customerNuit || "").trim();
     if (nuit)
         duplicateWhere.push({ customerNuit: nuit });
-    const nationalId = String(customerNationalId || "").trim();
+    const nationalId = normalizeNationalId(customerNationalId);
     if (nationalId)
         duplicateWhere.push({ customerNationalId: nationalId });
     if (duplicateWhere.length > 0) {
@@ -258,7 +255,7 @@ const createCustomer = (req, res) => __awaiter(void 0, void 0, void 0, function*
             password: hash,
             customerNuit,
             customerPhone,
-            customerNationalId,
+            customerNationalId: nationalId || null,
             issuedAt,
             localOfIssue,
             customerDateOfBirth,
@@ -359,7 +356,7 @@ const registerCustomer = (req, res) => __awaiter(void 0, void 0, void 0, functio
         const nuit = String(customerNuit || "").trim();
         if (nuit)
             duplicateWhere.push({ customerNuit: nuit });
-        const nationalId = String(customerNationalId || "").trim();
+        const nationalId = normalizeNationalId(customerNationalId);
         if (nationalId)
             duplicateWhere.push({ customerNationalId: nationalId });
         const existing = yield CustomerModel_1.CustomerModel.findOne({ where: { [sequelize_1.Op.or]: duplicateWhere } });

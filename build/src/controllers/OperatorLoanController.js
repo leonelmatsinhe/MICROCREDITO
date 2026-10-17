@@ -13,6 +13,7 @@ exports.companyLoansPaginated = exports.companyLoans = void 0;
 const LoanModel_1 = require("../database/models/LoanModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const sequelize_1 = require("sequelize");
+const requestActor_1 = require("../utils/requestActor");
 const companyLoans = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { companyId } = req.params;
     const { from, to, status, creditManager, search } = req.query;
@@ -24,6 +25,9 @@ const companyLoans = (req, res) => __awaiter(void 0, void 0, void 0, function* (
         if (creditManager !== undefined && creditManager !== "") {
             whereClause.creditManager = parseInt(creditManager);
         }
+        // SPRINT 6: escopo de carteira FORÇADO pelo JWT — o parâmetro nunca
+        // alarga o alcance do Gestor (que só vê a sua carteira).
+        Object.assign(whereClause, (0, requestActor_1.gestorScopeWhere)(yield (0, requestActor_1.actorFromRequest)(req)));
         // dateCreated é armazenado como string no formato YYYY-MM-DD.
         // Aplicar filtro no SQL reduz leitura em memória.
         if (from && to) {
@@ -111,6 +115,9 @@ const companyLoansPaginated = (req, res) => __awaiter(void 0, void 0, void 0, fu
         if (creditManager) {
             whereClause.creditManager = parseInt(creditManager);
         }
+        // SPRINT 6: escopo de carteira FORÇADO pelo JWT — o parâmetro nunca
+        // alarga o alcance do Gestor (que só vê a sua carteira).
+        Object.assign(whereClause, (0, requestActor_1.gestorScopeWhere)(yield (0, requestActor_1.actorFromRequest)(req)));
         // Se houver pesquisa, buscar por accountNumber ou por customers com nome correspondente
         if (search.trim()) {
             // Buscar accountNumbers de customers cujo nome corresponde à pesquisa

@@ -22,6 +22,7 @@ const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanMode
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const CompanyModel_1 = require("../database/models/CompanyModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
+const lateInterestService_1 = require("../services/lateInterestService");
 const financingWalletService_1 = require("./financingWalletService");
 /**
  * PORTAL DO PARCEIRO FINANCIADOR (userRole 4)
@@ -72,8 +73,8 @@ const loadMoraByLoan = (scope) => __awaiter(void 0, void 0, void 0, function* ()
     }));
     if (loans.length === 0)
         return { byLoan: new Map(), byInstallment: new Map() };
-    const forfeitRow = (yield CompanyModel_1.CompanyModel.findByPk(scope.companyId, { attributes: ["forfeit"], raw: true }));
-    const forfeit = num(forfeitRow === null || forfeitRow === void 0 ? void 0 : forfeitRow.forfeit);
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(scope.companyId);
     const installments = (yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
         where: { loanId: { [sequelize_1.Op.in]: loans.map((loan) => Number(loan.id)) } },
         order: [["dueDate", "ASC"], ["id", "ASC"]],
@@ -89,7 +90,7 @@ const loadMoraByLoan = (scope) => __awaiter(void 0, void 0, void 0, function* ()
         grouped.get(loanId).push(item);
     });
     grouped.forEach((list, loanId) => {
-        const calculated = (0, calculateLateAmount_1.installmentPanification)(list, forfeit);
+        const calculated = (0, calculateLateAmount_1.installmentPanification)(list, forfeit, undefined, { maxLateDays, capPercent });
         let generated = 0;
         let overdueCount = 0;
         let maxDays = 0;

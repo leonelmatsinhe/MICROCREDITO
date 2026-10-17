@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { LoanModel } from "../database/models/LoanModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { Op } from "sequelize";
+import { actorFromRequest, gestorScopeWhere } from "../utils/requestActor";
 
 const companyLoans = async (req: Request, res: Response) => {
     const { companyId } = req.params;
@@ -17,6 +18,10 @@ const companyLoans = async (req: Request, res: Response) => {
         if (creditManager !== undefined && creditManager !== "") {
             whereClause.creditManager = parseInt(creditManager as string);
         }
+
+        // SPRINT 6: escopo de carteira FORÇADO pelo JWT — o parâmetro nunca
+        // alarga o alcance do Gestor (que só vê a sua carteira).
+        Object.assign(whereClause, gestorScopeWhere(await actorFromRequest(req)));
 
         // dateCreated é armazenado como string no formato YYYY-MM-DD.
         // Aplicar filtro no SQL reduz leitura em memória.
@@ -110,6 +115,10 @@ const companyLoansPaginated = async (req: Request, res: Response) => {
         if (creditManager) {
             whereClause.creditManager = parseInt(creditManager);
         }
+
+        // SPRINT 6: escopo de carteira FORÇADO pelo JWT — o parâmetro nunca
+        // alarga o alcance do Gestor (que só vê a sua carteira).
+        Object.assign(whereClause, gestorScopeWhere(await actorFromRequest(req)));
 
         // Se houver pesquisa, buscar por accountNumber ou por customers com nome correspondente
         if (search.trim()) {

@@ -60,6 +60,7 @@ function getRouteLabel(name) {
     CustomerPortal: 'Meu Painel',
     SmsPendingCredentials: 'Centro de Mensagens',
     Logs: 'Histórico do Sistema',
+    OnboardingTeam: 'Onboarding da Equipa',
     InstallmentsControl: 'Controle de Prestações',
     ReportsBM: 'Relatório Banco de Moçambique',
     FinancingWallets: 'Carteiras de Financiamento',

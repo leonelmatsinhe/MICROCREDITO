@@ -186,6 +186,23 @@
             />
           </template>
 
+          <!-- Atribuição de carteira (SPRINT 6) — gestor dono deste cliente -->
+          <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
+            <q-icon name="badge" size="16px" class="q-mr-xs" />
+            Carteira
+          </div>
+          <q-select
+            v-model="form.creditManager"
+            :options="gestorOptions"
+            emit-value
+            map-options
+            dense
+            outlined
+            clearable
+            label="Gestor de Crédito (dono da carteira)"
+            hint="Define de quem é a carteira deste cliente — cada gestor só vê os seus clientes"
+          />
+
           <!-- Contacto (comum aos dois tipos) -->
           <div class="text-subtitle2 text-primary q-mb-xs q-mt-md">
             <q-icon name="phone" size="16px" class="q-mr-xs" />
@@ -407,10 +424,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useCustomerStore } from '@/stores/customers'
+import { useSettingsStore } from '@/stores/settings'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -425,6 +443,17 @@ const emit = defineEmits(['update:modelValue', 'saved'])
 const $q = useQuasar()
 const authStore = useAuthStore()
 const customerStore = useCustomerStore()
+const settingsStore = useSettingsStore()
+
+// SPRINT 6: atribuição de carteira — gestor dono deste cliente
+const gestorOptions = computed(() =>
+  (settingsStore.users || [])
+    .filter((u) => Number(u.userRole) === 3)
+    .map((u) => ({ label: u.name, value: Number(u.id) }))
+)
+onMounted(() => {
+  try { settingsStore.fetchUsers(authStore.companyId) } catch { /* silencioso */ }
+})
 
 const dialogModel = computed({
   get: () => props.modelValue,
@@ -463,7 +492,8 @@ const defaultForm = {
   companyLicenseNumber: '',
   companyMainActivity: '',
   customerPPE: 0,
-  customerStatus: 1
+  customerStatus: 1,
+  creditManager: null
 }
 
 const form = ref({ ...defaultForm })

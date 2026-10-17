@@ -171,9 +171,19 @@
               <div class="row justify-end q-gutter-sm q-mt-md">
                 <q-btn flat label="Cancelar" color="grey" @click="router.back()" no-caps />
                 <q-btn
+                  flat
+                  label="Guardar Rascunho"
+                  color="grey-7"
+                  icon="drafts"
+                  no-caps
+                  rounded
+                  :disable="!canSubmit || saving"
+                  @click="submitLoan(true)"
+                />
+                <q-btn
                   type="submit"
                   unelevated
-                  label="Registar Crédito"
+                  label="Registar e Validar Instrução"
                   color="primary"
                   icon="save"
                   :loading="saving"
@@ -411,8 +421,11 @@ const canSubmit = computed(() => {
   return true
 })
 
-// Submit loan
-async function submitLoan() {
+// Submit loan — `asDraft` guarda como RASCUNHO (sem submeter para aprovação).
+// NOTA: o q-form @submit entrega o evento ao handler, pelo que só `true`
+// explícito (botão Guardar Rascunho) conta como rascunho.
+async function submitLoan(asDraft = false) {
+  const saveAsDraft = asDraft === true
   try {
     const rate = settingsStore.rates.find(r => r.id === form.value.interestRateId)
     
@@ -427,11 +440,16 @@ async function submitLoan() {
       loanDescription: form.value.loanDescription || 'Crédito registado via sistema',
       capacityExcessObservation: form.value.capacityExcessObservation || '',
       dateCreated: new Date().toISOString().split('T')[0],
-      status: 0 // Pendente
+      status: 0, // nasce sempre por aprovar (SPRINT 5)
+      asDraft: saveAsDraft
     }
 
     await loansStore.createLoan(payload)
-    $q.notify({ type: 'positive', message: 'Crédito registado com sucesso', position: 'top' })
+    $q.notify({
+      type: 'positive',
+      message: saveAsDraft ? 'Rascunho guardado — valide a instrução quando estiver pronta' : 'Instrução registada e validada — submetida para aprovação do Administrador',
+      position: 'top'
+    })
     router.push('/loans')
   } catch (error) {
     $q.notify({ 

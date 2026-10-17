@@ -1,5 +1,5 @@
 <template>
-  <div class="super-admin-page">
+  <div class="super-admin-page" data-tour="company-body">
     <div class="q-pa-md">
       <div class="row justify-between items-center q-mb-md">
         <div class="text-h6 text-weight-bold text-dark">Painel da Empresa</div>

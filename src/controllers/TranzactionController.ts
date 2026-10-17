@@ -18,7 +18,7 @@ import {
   PaymentAllocationModel,
   CustomerCreditModel,
 } from "../database/models/paymentsV2Models";
-import { getAccruedLateInterest } from "../services/lateInterestService";
+import { getAccruedLateInterest, getLegacyPenaltyParams } from "../services/lateInterestService";
 import {
   validateReembolsoAccount,
   getFirstCashAccount,
@@ -332,13 +332,16 @@ const getLoanLateInterest = async (req: Request, res: Response) => {
 
   let totalLateInterest = chargedLateInterest;
   if (Number(loan.status) === 1) {
-    const company = await CompanyModel.findByPk(loan.companyId, { attributes: ["forfeit"] });
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(Number(loan.companyId));
     const pendingInstallments = await AmorizationLoanModel.findAll({
       where: { loanId: id, status: { [Op.ne]: 1 } },
     });
     const calculated = installmentPanification(
       pendingInstallments,
-      Number(company?.getDataValue("forfeit") || 0)
+      forfeit,
+      undefined,
+      { maxLateDays, capPercent }
     );
     totalLateInterest = calculated.reduce(
       (sum: number, installment: any) => sum + (Number(installment.latePaymentInterest) || 0),

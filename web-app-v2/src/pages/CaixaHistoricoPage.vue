@@ -113,7 +113,7 @@
               {{ formatMZN(props.row.total_out) }}
             </q-td>
             <q-td key="calculated" :props="props" class="text-right text-primary text-weight-medium" style="font-size: 12px">
-              {{ formatMZN(props.row.closing_balance_calculated ?? calculatedBalance(props.row)) }}
+              {{ formatMZN(calculatedBalance(props.row)) }}
             </q-td>
             <q-td key="closing_balance_informed" :props="props" class="text-right" style="font-size: 12px">
               {{ props.row.closing_balance_informed != null ? formatMZN(props.row.closing_balance_informed) : '—' }}
@@ -290,10 +290,18 @@ function differenceColor(difference) {
   return diff < 0 ? 'red' : 'amber-8'
 }
 
-// Saldo calculado de caixas antigos sem o campo preenchido (fallback)
+// Saldo apurado (numerário que devia estar em gaveta).
+// O backend deixou de devolver `closing_balance_calculated` no fecho — o valor
+// apurado é confrontado com a contagem do operador apenas para gerar o auto de
+// ocorrência (DIFERENCA_CAIXA) — por isso o derivamos aqui dos totais do dia.
+// Base física: o FUNDO DE MANEIO contado na abertura (counted_open — memorando,
+// não é saldo) + movimentos; registos antigos guardavam o fundo em
+// opening_balance. O Saldo Inicial (saldo disponível) é sempre 0 na abertura.
 function calculatedBalance(row) {
+  const counted = row.counted_open
+  const base = Number(counted != null ? counted : row.opening_balance) || 0
   return Math.round(
-    ((Number(row.opening_balance) || 0) +
+    (base +
      (Number(row.total_in) || 0) -
      (Number(row.total_out) || 0)) * 100
   ) / 100
@@ -379,7 +387,7 @@ async function exportRegister(row, format) {
 
 // Linhas comuns (Excel e PDF usam as mesmas colunas)
 function registerSummaryRows(row) {
-  const calc = row.closing_balance_calculated ?? calculatedBalance(row)
+  const calc = calculatedBalance(row)
   return [
     ['Dia', formatDay(row.opening_date)],
     ['Responsável', row.userName || '—'],
@@ -387,8 +395,8 @@ function registerSummaryRows(row) {
     ['Saldo Inicial', formatMZN(row.opening_balance)],
     ['Entradas (total)', formatMZN(row.total_in)],
     ['Saídas (total)', formatMZN(row.total_out)],
-    ['Saldo Calculado', formatMZN(calc)],
-    ['Valor Contado', row.closing_balance_informed != null ? formatMZN(row.closing_balance_informed) : '—'],
+    ['Saldo Apurado', formatMZN(calc)],
+    ['Numerário Contado', row.closing_balance_informed != null ? formatMZN(row.closing_balance_informed) : '—'],
     ['Divergência', row.difference != null ? formatMZN(row.difference) : '—']
   ]
 }
@@ -468,8 +476,8 @@ const columns = [
   { name: 'opening_balance', label: 'Saldo Inicial', field: 'opening_balance', align: 'right', sortable: true },
   { name: 'total_in', label: 'Entradas', field: 'total_in', align: 'right', sortable: true },
   { name: 'total_out', label: 'Saídas', field: 'total_out', align: 'right', sortable: true },
-  { name: 'calculated', label: 'Saldo Calculado', field: 'closing_balance_calculated', align: 'right', sortable: true },
-  { name: 'closing_balance_informed', label: 'Valor Contado', field: 'closing_balance_informed', align: 'right', sortable: true },
+  { name: 'calculated', label: 'Saldo Apurado', field: () => '', align: 'right' },
+  { name: 'closing_balance_informed', label: 'Numerário Contado', field: 'closing_balance_informed', align: 'right', sortable: true },
   { name: 'difference', label: 'Divergência', field: 'difference', align: 'center', sortable: true },
   { name: 'exports', label: 'Exportar', field: () => '', align: 'center' },
   { name: 'expand', label: '', field: () => '', align: 'center' }

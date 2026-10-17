@@ -4,6 +4,8 @@ import { AccountModel, ACCOUNT_PURPOSES, ACCOUNT_TYPES } from "../database/model
 import { CashRegisterModel } from "../database/models/CashRegisterModel";
 import { CashMovementModel } from "../database/models/CashMovementModel";
 import { BankTransactionModel } from "../database/models/BankTransactionModel";
+import { CASH_LIMIT_EXEMPT_CATEGORIES } from "../database/models/CashMovementModel";
+import { getCashLimitMzn, isCashLimitEnabled } from "../utils/cashLimit";
 
 /**
  * TESOURARIA — SERVIÇO CENTRAL (único ponto que altera saldos reais).
@@ -255,6 +257,47 @@ export const registerMovement = async (input: MovementInput): Promise<any> => {
 
     if (!register) {
       throw { code: "CAIXA_FECHADO", message: "Abra o caixa do dia para continuar" };
+    }
+
+    // ── LIMITE DE NUMERÁRIO EM CAIXA (circular do Banco de Moçambique) ──
+    // Dinheiro físico a entrar na gaveta não pode empurrar o saldo acima do
+    // limite da instalação. Quando ultrapassa, o operador tem de ENTREGAR o
+    // excedente ao Cofre Central/Tesoureiro (ENTREGA_COFRE, com comprovativo
+    // assinado) ou depositá-lo no banco (DEPOSITO_BANCARIO, guia de depósito)
+    // ANTES de continuar a operar. As próprias regularizações (entrega,
+    // depósito, diferença de caixa) e as transferências estão isentas — são a
+    // forma de cumprir a regra. A linha do caixa está bloqueada por
+    // SELECT ... FOR UPDATE nesta transacção, logo o cálculo é à prova de corrida.
+    if (
+      !isElectronic(paymentMethod) &&
+      type === "ENTRADA" &&
+      isCashLimitEnabled() &&
+      !(CASH_LIMIT_EXEMPT_CATEGORIES as readonly string[]).includes(String(category))
+    ) {
+      const limite = getCashLimitMzn();
+      // Posição física na gaveta: fundo de maneio contado na abertura
+      // (counted_open — memorando; ver openingFundoMemo no cashRegisterService.
+      // Registos antigos guardavam o fundo em opening_balance) + cash do dia.
+      const fundoAbertura = register.getDataValue("counted_open");
+      const naGaveta = round2(
+        (Number(fundoAbertura != null ? fundoAbertura : register.getDataValue("opening_balance")) || 0) +
+          (Number(register.getDataValue("total_cash_in")) || 0) -
+          (Number(register.getDataValue("total_cash_out")) || 0)
+      );
+      const depoisDoMovimento = round2(naGaveta + round2(amount));
+      if (depoisDoMovimento > limite) {
+        throw {
+          code: "CASH_LIMIT_EXCEEDED",
+          message:
+            `Limite de numerário em caixa excedido: ${depoisDoMovimento.toFixed(2)} MZN em gaveta ` +
+            `(limite ${limite.toFixed(2)} MZN). Registe uma ENTREGA_COFRE (entrega do excedente ao ` +
+            `Cofre Central/Tesoureiro, com comprovativo assinado) ou um DEPOSITO_BANCARIO ` +
+            `(guia de depósito do excedente no banco) antes de continuar a operar.`,
+          limite,
+          dinheiro_em_caixa: naGaveta,
+          excedente: round2(depoisDoMovimento - limite),
+        };
+      }
     }
 
     // ── Passo 2: validações de método/conta ──

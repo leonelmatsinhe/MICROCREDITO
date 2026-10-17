@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md">
     <!-- Filtros + Acções -->
-    <q-card flat bordered class="q-mb-md filter-card">
+    <q-card flat bordered class="q-mb-md filter-card" data-tour="gestor-filters">
       <q-card-section class="row q-col-gutter-xs items-center no-wrap">
         <div class="col">
           <q-select v-model="filter.status" :options="statusOptions" label="Estado" dense outlined emit-value map-options clearable />
@@ -34,7 +34,7 @@
     <!-- Alertas SMS: agora vivem no sino do navbar (AlertBell) -->
 
     <!-- KPIs -->
-    <div class="row q-col-gutter-md q-mb-md">
+    <div class="row q-col-gutter-md q-mb-md" data-tour="gestor-kpis">
       <div class="col-12 col-sm-3">
         <q-card flat bordered class="kpi-card">
           <q-card-section class="row items-center">

@@ -13,6 +13,13 @@ import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
  * Fórmula diária: base × (forfeit_percent/100) por dia de atraso efectivo.
  * Atraso efectivo = max(0, diasEntre(dueDate, dataReferência) − grace_days).
  * Cap: mora acumulada nunca passa cap_percent da base.
+ *
+ * REGRAS DE NEGÓCIO (2026-10):
+ * - A base da mora é SEMPRE o saldo devedor da prestação (installment −
+ *   paidAmount). Pagamento parcial reduz a mora dos dias seguintes — a coluna
+ *   `base` da tabela é mantida por compatibilidade mas é IGNORADA.
+ * - max_late_days > 0 → a mora CESSA após N dias de atraso.
+ * - forfeit_percent = 0 → mora INVÁLIDA/desactivada para a empresa.
  */
 
 export type PenaltyRule = {
@@ -21,13 +28,26 @@ export type PenaltyRule = {
   cap_percent: number;
   base: "INSTALLMENT" | "OUTSTANDING_BALANCE";
   business_days_only: boolean;
+  /** 0 ou NULL = sem limite de dias de mora; > 0 = mora cessa após N dias. */
+  max_late_days: number;
 };
+
+/**
+ * Base de cálculo da mora = SALDO DEVEDOR da prestação (nunca o valor
+ * integral quando há pagamento parcial).
+ */
+const outstandingBase = (installmentValue: number, paidAmount: number): number =>
+  round2(Math.max(0, round2(num(installmentValue)) - round2(num(paidAmount))));
+
+/** Limita os dias de atraso ao máximo configurado (0/NULL = ilimitado). */
+const cappedDays = (days: number, rule: PenaltyRule): number =>
+  rule.max_late_days > 0 ? Math.min(days, rule.max_late_days) : days;
 
 /** Lê a regra de mora da empresa; fallback = companies.forfeit (legado). */
 export const getPenaltyRule = async (companyId: number): Promise<PenaltyRule> => {
   try {
     const [rows]: any = await db.query(
-      "SELECT forfeit_percent, grace_days, cap_percent, base, business_days_only FROM company_penalty_rules WHERE company_id = ? LIMIT 1",
+      "SELECT forfeit_percent, grace_days, cap_percent, base, business_days_only, max_late_days FROM company_penalty_rules WHERE company_id = ? LIMIT 1",
       { replacements: [companyId] }
     );
     const rule = (rows as any[])[0];
@@ -38,6 +58,7 @@ export const getPenaltyRule = async (companyId: number): Promise<PenaltyRule> =>
         cap_percent: num(rule.cap_percent) || 100,
         base: String(rule.base) === "OUTSTANDING_BALANCE" ? "OUTSTANDING_BALANCE" : "INSTALLMENT",
         business_days_only: !!Number(rule.business_days_only),
+        max_late_days: Math.max(0, Number(rule.max_late_days) || 0),
       };
     }
   } catch { /* tabela ainda não migrada → segue legado */ }
@@ -53,6 +74,23 @@ export const getPenaltyRule = async (companyId: number): Promise<PenaltyRule> =>
     cap_percent: 100,
     base: "INSTALLMENT",
     business_days_only: false,
+    max_late_days: 0,
+  };
+};
+
+/**
+ * Parâmetros prontos para a fórmula legada (installmentPanification):
+ * substitui companies.forfeit e propaga os limites de invalidação/limitação
+ * (dias máximos + cap) para todos os cálculos legados.
+ */
+export const getLegacyPenaltyParams = async (
+  companyId: number
+): Promise<{ forfeit: number; maxLateDays: number; capPercent: number }> => {
+  const rule = await getPenaltyRule(companyId);
+  return {
+    forfeit: rule.forfeit_percent,
+    maxLateDays: rule.max_late_days,
+    capPercent: rule.cap_percent,
   };
 };
 
@@ -89,29 +127,28 @@ export const effectiveLateDays = (
 
 /**
  * Mora diária do dia D para uma prestação (usada pelo job de accrual).
- * Respeita a base configurada: prestação integral OU saldo em falta.
+ * Base = SALDO DEVEDOR (installment − paidAmount), nunca o valor integral.
  */
 export const dailyAccrualAmount = (params: {
   installmentValue: number;
-  outstandingBalance: number;
+  paidAmount: number;
   dueDate: string;
   accrualDate: string;
   rule: PenaltyRule;
 }): { days: number; baseAmount: number; amount: number } => {
-  const { installmentValue, outstandingBalance, dueDate, accrualDate, rule } = params;
-  const days = effectiveLateDays(dueDate, accrualDate, rule);
-  if (days <= 0) return { days: 0, baseAmount: 0, amount: 0 };
+  const { installmentValue, paidAmount, dueDate, accrualDate, rule } = params;
+  const rawDays = effectiveLateDays(dueDate, accrualDate, rule);
+  if (rawDays <= 0) return { days: 0, baseAmount: 0, amount: 0 };
 
-  const baseAmount =
-    rule.base === "OUTSTANDING_BALANCE"
-      ? round2(Math.max(0, outstandingBalance))
-      : round2(Math.max(0, installmentValue));
+  // Base = SALDO DEVEDOR (pagamento parcial reduz a mora futura)
+  const baseAmount = outstandingBase(installmentValue, paidAmount);
   if (baseAmount <= 0) return { days: 0, baseAmount: 0, amount: 0 };
 
-  // Mora acumulada até ao dia anterior (para respeitar o cap)
+  // Dias de atraso ao alcance do limite + mora diária
+  const days = 1;
   const daily = round2(baseAmount * (rule.forfeit_percent / 100));
 
-  return { days: 1, baseAmount, amount: daily };
+  return { days, baseAmount, amount: daily };
 };
 
 /**
@@ -147,30 +184,31 @@ export const getAccruedLateInterest = async (params: {
       const maxDays = Number(row.max_days) || 0;
       const daysLate = effectiveLateDays(dueDate, ref, rule);
       if (daysLate > maxDays) {
-        const baseAmount =
-          rule.base === "OUTSTANDING_BALANCE"
-            ? round2(Math.max(0, installmentValue - paidAmount))
-            : round2(Math.max(0, installmentValue));
+        // Dias adicionais a completar, respeitando o limite máximo de dias
+        const rawMissing = daysLate - maxDays;
+        const missingDays = cappedDays(daysLate, rule) > maxDays
+          ? Math.min(rawMissing, Math.max(0, cappedDays(daysLate, rule) - maxDays))
+          : 0;
+        const baseAmount = outstandingBase(installmentValue, paidAmount);
         const daily = round2(baseAmount * (rule.forfeit_percent / 100));
-        total = round2(total + daily * (daysLate - maxDays));
+        total = round2(total + daily * Math.max(0, missingDays));
       }
-      // Aplica o cap
-      const baseCap =
-        rule.base === "OUTSTANDING_BALANCE"
-          ? round2(Math.max(0, installmentValue - paidAmount))
-          : round2(Math.max(0, installmentValue));
-      const cap = round2(baseCap * (rule.cap_percent / 100));
-      return { amount: Math.min(round2(total), cap), daysLate: Math.max(maxDays, effectiveLateDays(dueDate, ref, rule)), source: "accruals" };
+      // Aplica o cap (sobre o saldo devedor)
+      const cap = round2(outstandingBase(installmentValue, paidAmount) * (rule.cap_percent / 100));
+      return {
+        amount: Math.min(round2(total), cap),
+        daysLate: Math.max(maxDays, cappedDays(effectiveLateDays(dueDate, ref, rule), rule)),
+        source: "accruals",
+      };
     }
   } catch { /* tabela ausente → fórmula */ }
 
   // 2) Fórmula ao vivo (legado compatível)
-  const daysLate = effectiveLateDays(dueDate, ref, rule);
+  const rawDays = effectiveLateDays(dueDate, ref, rule);
+  const daysLate = cappedDays(rawDays, rule);
   if (daysLate <= 0) return { amount: 0, daysLate: 0, source: "formula" };
-  const baseAmount =
-    rule.base === "OUTSTANDING_BALANCE"
-      ? round2(Math.max(0, installmentValue - paidAmount))
-      : round2(Math.max(0, installmentValue));
+  // Base = SALDO DEVEDOR (nunca a prestação integral com pagamento parcial)
+  const baseAmount = outstandingBase(installmentValue, paidAmount);
   const raw = round2(baseAmount * (rule.forfeit_percent / 100) * daysLate);
   const cap = round2(baseAmount * (rule.cap_percent / 100));
   return { amount: Math.min(raw, cap), daysLate, source: "formula" };
@@ -201,13 +239,11 @@ export const runLateAccrualJob = async (): Promise<{
         if (!dueDate || dueDate >= today) { skipped += 1; continue; }
 
         const rule = await getPenaltyRule(Number(inst.companyId));
-        const days = effectiveLateDays(dueDate, today, rule);
+        const days = cappedDays(effectiveLateDays(dueDate, today, rule), rule);
         if (days <= 0) { skipped += 1; continue; }
 
-        const baseAmount =
-          rule.base === "OUTSTANDING_BALANCE"
-            ? round2(Math.max(0, num(inst.installment) - num(inst.paidAmount)))
-            : round2(Math.max(0, num(inst.installment)));
+        // Base = SALDO DEVEDOR (pagamento parcial reduz a mora futura)
+        const baseAmount = outstandingBase(num(inst.installment), num(inst.paidAmount));
         if (baseAmount <= 0) { skipped += 1; continue; }
 
         // Cap: não accrue além do cap acumulado

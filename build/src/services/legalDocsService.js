@@ -46,6 +46,7 @@ const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanMode
 const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
 const AccountModel_1 = require("../database/models/AccountModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
+const lateInterestService_1 = require("../services/lateInterestService");
 const COLORS = {
     primary: "#1565c0",
     navy: "#1a237e",
@@ -350,8 +351,9 @@ const loadLegalDocsData = (loanId) => __awaiter(void 0, void 0, void 0, function
         where: { loanId },
         order: [["dueDate", "ASC"], ["id", "ASC"]],
     });
-    const forfeit = Number(company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0;
-    const amortizations = (0, calculateLateAmount_1.installmentPanification)(amorts, forfeit);
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyId);
+    const amortizations = (0, calculateLateAmount_1.installmentPanification)(amorts, forfeit, undefined, { maxLateDays, capPercent });
     const guarantees = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.findAll({
         where: { loanId },
         order: [["id", "DESC"]],

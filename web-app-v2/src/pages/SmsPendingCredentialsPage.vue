@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md pending-creds-page">
     <!-- Filtros + acções -->
-    <q-card flat bordered class="q-mb-md" style="border-radius: 10px">
+    <q-card flat bordered class="q-mb-md" style="border-radius: 10px" data-tour="sms-filters">
       <q-card-section class="q-py-sm">
         <div class="row items-center q-col-gutter-sm no-wrap">
           <div class="col-auto items-center" style="width: 220px">

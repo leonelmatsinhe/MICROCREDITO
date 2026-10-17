@@ -13,6 +13,12 @@
     "push": "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1",
     "migrate": "ts-node --transpile-only src/migrations/run.ts",
     "test:payments": "ts-node --transpile-only src/tests/payment.test.ts",
+    "test:tenant": "ts-node --transpile-only src/tests/tenantGuard.test.ts",
+    "test:cash": "ts-node --transpile-only src/tests/cashRegisterConformidade.test.ts",
+    "test:approvals": "ts-node --transpile-only src/tests/loanApprovalAlcadas.test.ts",
+    "test:collection": "ts-node --transpile-only src/tests/collectionCobranca.test.ts",
+    "test:onboarding": "ts-node --transpile-only src/tests/onboardingProgress.test.ts",
+    "audit:manual": "node scripts/audit-manual.js",
     "seed:contracts": "ts-node --transpile-only src/scripts/seedContracts.ts"
   },
   "engines": {

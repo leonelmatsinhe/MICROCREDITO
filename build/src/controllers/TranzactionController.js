@@ -47,7 +47,6 @@ const NotificationModel_1 = require("../database/models/NotificationModel");
 const UserModel_1 = require("../database/models/UserModel");
 const ReciboModel_1 = require("../database/models/ReciboModel");
 const SmsGatewayService_1 = require("../services/SmsGatewayService");
-const CompanyModel_1 = require("../database/models/CompanyModel");
 const money_1 = require("../utils/money");
 const paymentsV2Models_1 = require("../database/models/paymentsV2Models");
 const lateInterestService_1 = require("../services/lateInterestService");
@@ -314,11 +313,12 @@ const getLoanLateInterest = (req, res) => __awaiter(void 0, void 0, void 0, func
     const chargedLateInterest = Object.values(lateInterestByDate).reduce((sum, interest) => sum + interest, 0);
     let totalLateInterest = chargedLateInterest;
     if (Number(loan.status) === 1) {
-        const company = yield CompanyModel_1.CompanyModel.findByPk(loan.companyId, { attributes: ["forfeit"] });
+        // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(Number(loan.companyId));
         const pendingInstallments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
             where: { loanId: id, status: { [sequelize_1.Op.ne]: 1 } },
         });
-        const calculated = (0, calculateLateAmount_1.installmentPanification)(pendingInstallments, Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0));
+        const calculated = (0, calculateLateAmount_1.installmentPanification)(pendingInstallments, forfeit, undefined, { maxLateDays, capPercent });
         totalLateInterest = calculated.reduce((sum, installment) => sum + (Number(installment.latePaymentInterest) || 0), 0);
     }
     return res.status(200).json({
@@ -806,14 +806,90 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 before_data: null,
                 after_data: { tranzactionId, amount: appliedAmount },
             }, { transaction: t });
-            // ── 11. EXCESSO → customer_credits (troco nunca desaparece) ──
-            if (overpayAmount > 0 && acceptOverpay) {
+            // ── 11. EXCESSO → abate a(s) próxima(s) prestação(ões) pendente(s) do
+            // mesmo crédito (ordem crescente); só vai para customer_credits o que
+            // sobrar depois de esgotar todas as prestações em aberto (troco nunca
+            // desaparece, mas prioriza-se a liquidação antecipada do crédito).
+            const { DebtModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/DebtModel")));
+            let remainingOverpay = overpayAmount;
+            const overpayAllocations = [];
+            if (remainingOverpay > 0 && acceptOverpay) {
+                const pendingInstallments = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
+                    where: {
+                        loanId: installment.getDataValue("loanId"),
+                        id: { [sequelize_1.Op.ne]: Number(amortizationLoanId) },
+                        status: { [sequelize_1.Op.ne]: 1 }, // ainda não totalmente paga
+                    },
+                    order: [["installmentOrder", "ASC"]],
+                    transaction: t,
+                    lock: t.LOCK.UPDATE,
+                });
+                for (const next of pendingInstallments) {
+                    if (remainingOverpay <= 0)
+                        break;
+                    const nextValue = (0, money_1.round2)((0, money_1.num)(next.getDataValue("installment")));
+                    const nextPaid = (0, money_1.round2)((0, money_1.num)(next.getDataValue("paidAmount")));
+                    const nextOwed = (0, money_1.round2)(Math.max(0, nextValue - nextPaid));
+                    if (nextOwed <= 0)
+                        continue;
+                    const applyToNext = (0, money_1.round2)(Math.min(remainingOverpay, nextOwed));
+                    const newNextPaid = (0, money_1.round2)(nextPaid + applyToNext);
+                    const nextFull = (0, money_1.moneyGte)(newNextPaid, nextValue);
+                    const nextDebtAmount = (0, money_1.round2)(Math.max(0, nextValue - newNextPaid));
+                    yield AmortizationLoanModel_1.AmorizationLoanModel.update({
+                        status: nextFull ? 1 : -1,
+                        paidAmount: newNextPaid,
+                        remainingBalance: nextFull ? 0 : nextDebtAmount,
+                    }, { where: { id: next.getDataValue("id") }, transaction: t });
+                    // Mesma transacção/recibo original — só regista a alocação na
+                    // prestação seguinte (sem duplicar o dinheiro já recebido).
+                    yield paymentsV2Models_1.PaymentAllocationModel.create({
+                        payment_id: tranzactionId,
+                        amortization_loan_id: Number(next.getDataValue("id")),
+                        component: "CAPITAL",
+                        amount: applyToNext,
+                    }, { transaction: t });
+                    if (nextFull) {
+                        yield DebtModel.destroy({ where: { amortisationId: next.getDataValue("id") }, transaction: t });
+                    }
+                    else {
+                        const nextDebt = yield DebtModel.findOne({
+                            where: { amortisationId: next.getDataValue("id") },
+                            transaction: t,
+                        });
+                        if (nextDebt) {
+                            yield DebtModel.update({ debtAmount: nextDebtAmount }, { where: { id: nextDebt.getDataValue("id") }, transaction: t });
+                        }
+                        else {
+                            yield DebtModel.create({
+                                companyId: loanCompanyId,
+                                customerId: installment.getDataValue("customerId"),
+                                accountNumber: String(accountNumber),
+                                loanId: realLoanId,
+                                amortisationId: Number(next.getDataValue("id")),
+                                debtAmount: nextDebtAmount,
+                                updatedBy: String(body.staffName || ""),
+                                dateInserted: payDate,
+                            }, { transaction: t });
+                        }
+                    }
+                    overpayAllocations.push({
+                        amortizationLoanId: Number(next.getDataValue("id")),
+                        installmentOrder: next.getDataValue("installmentOrder"),
+                        amount: applyToNext,
+                        fullyPaid: nextFull,
+                    });
+                    remainingOverpay = (0, money_1.round2)(remainingOverpay - applyToNext);
+                }
+            }
+            // Sobra sem prestação seguinte onde abater → crédito a favor do cliente.
+            if (remainingOverpay > 0 && acceptOverpay) {
                 yield paymentsV2Models_1.CustomerCreditModel.create({
                     company_id: loanCompanyId,
                     customer_id: Number(installment.getDataValue("customerId")),
                     account_number: Number(accountNumber),
-                    amount: overpayAmount,
-                    remaining_amount: overpayAmount,
+                    amount: remainingOverpay,
+                    remaining_amount: remainingOverpay,
                     source_payment_id: tranzactionId,
                     status: "ACTIVE",
                 }, { transaction: t });
@@ -826,7 +902,6 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 }
                 : {})), { where: { id: Number(amortizationLoanId) }, transaction: t });
             // ── 13. Dívida parcial — mesma transacção ──
-            const { DebtModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/DebtModel")));
             if (!isFullPayment) {
                 const existingDebt = yield DebtModel.findOne({
                     where: { amortisationId: Number(amortizationLoanId) },
@@ -866,6 +941,8 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                     amount: appliedAmount,
                     latePaymentInterest,
                     overpayAmount,
+                    overpayAppliedToNextInstallments: overpayAllocations,
+                    overpayAsCredit: remainingOverpay,
                     reference: refNormalized,
                 },
             }, { transaction: t });
@@ -886,6 +963,8 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 appliedAmount,
                 latePaymentInterest,
                 overpayAmount,
+                overpayAppliedToNextInstallments: overpayAllocations,
+                overpayAsCredit: remainingOverpay,
                 walletId,
                 realLoanId,
                 bankAccountId,
@@ -999,6 +1078,8 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 applied: result.appliedAmount,
                 lateInterest: result.latePaymentInterest,
                 overpay: result.overpayAmount,
+                overpayAppliedToNextInstallments: result.overpayAppliedToNextInstallments || [],
+                overpayAsCredit: result.overpayAsCredit || 0,
             },
             recibo: recibo ? { id: Number(recibo.id), numero: recibo.numero, hash: recibo.hash || null, pdf_url: `/api/recibos/${Number(recibo.id)}/pdf`, pdf_path: recibo.pdf_url || null, qr_url: recibo.qr_url || null } : null,
         };

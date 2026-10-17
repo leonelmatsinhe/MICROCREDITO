@@ -2,7 +2,7 @@
   <div class="q-pa-md">
     <div class="settings-layout row no-wrap q-col-gutter-md">
       <!-- Sidebar de Navegação -->
-      <div class="col-auto settings-nav">
+      <div class="col-auto settings-nav" data-tour="settings-nav">
         <q-card flat class="nav-card">
           <q-list>
             <q-item-label header class="text-grey-5 q-pb-xs" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em">

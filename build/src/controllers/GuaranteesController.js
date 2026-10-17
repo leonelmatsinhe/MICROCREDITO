@@ -12,6 +12,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteGuarantee = exports.createGuarantee = exports.getAllLoanGuarantees = void 0;
 const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
+const LoanModel_1 = require("../database/models/LoanModel");
+const guaranteeCoverageService_1 = require("../services/guaranteeCoverageService");
+const round2 = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 const getAllLoanGuarantees = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id } = req.params;
     const guarantees = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.findAll({
@@ -66,6 +69,22 @@ const deleteGuarantee = (req, res) => __awaiter(void 0, void 0, void 0, function
                     success: false,
                     message: `Não é possível eliminar esta garantia porque o crédito associado tem ${transactionCount} pagamento(s)/transacção(ões). Remova primeiro os pagamentos.`,
                 });
+            }
+            // ── COBERTURA MÍNIMA: crédito activo (status 1) não pode ficar
+            // com garantias abaixo do total a pagar (capital + juros) ──
+            const loan = yield LoanModel_1.LoanModel.findByPk(loanId);
+            if (loan && Number(loan.getDataValue("status")) === 1) {
+                const coverage = yield (0, guaranteeCoverageService_1.getGuaranteeCoverage)({ loan });
+                const guaranteeAmount = Number(guarantee.getDataValue("purchaseAmount")) || 0;
+                const remainingTotal = round2(coverage.guaranteesTotal - guaranteeAmount);
+                if (remainingTotal + 0.005 < coverage.requiredTotal) {
+                    const fmt = (v) => v.toLocaleString("pt-MZ", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    return res.status(409).json({
+                        success: false,
+                        error: "GARANTIAS_INSUFICIENTES",
+                        message: `Não é possível eliminar esta garantia: as garantias restantes (${fmt(remainingTotal)} MZN) ficariam abaixo do total a pagar do crédito (${fmt(coverage.requiredTotal)} MZN). Registe outra garantia antes de eliminar esta.`,
+                    });
+                }
             }
         }
         const deleted = yield GuarateeAssessmentModel_1.GuarateeAssessmentModel.destroy({ where: { id: id } });

@@ -29,7 +29,7 @@
     </q-header>
 
     <!-- ═══════════ MENU DO PARCEIRO ═══════════ -->
-    <q-drawer v-model="drawer" show-if-above bordered :width="248" class="partner-drawer">
+    <q-drawer v-model="drawer" show-if-above bordered :width="248" class="partner-drawer" data-tour="partner-menu">
       <q-list class="q-py-sm">
         <q-item-label header class="partner-menu-header">
           A minha carteira
@@ -49,7 +49,7 @@
       </q-list>
 
       <!-- Resumo rápido da carteira -->
-      <div v-if="wallet" class="partner-wallet-card">
+      <div v-if="wallet" class="partner-wallet-card" data-tour="partner-wallet">
         <div class="text-caption text-grey-4">Capital alocado</div>
         <div class="text-subtitle2 text-white">{{ formatMoney(wallet.allocated_amount, 'Ilimitado') }}</div>
         <q-linear-progress
@@ -71,6 +71,12 @@
     <q-page-container>
       <router-view />
     </q-page-container>
+
+    <!-- Ajuda / tour guiado (botão flutuante «?») -->
+    <HelpTourButton />
+
+    <!-- Checklist do primeiro dia (tarefas persistentes por utilizador) -->
+    <OnboardingChecklistDialog />
   </q-layout>
 </template>
 
@@ -81,6 +87,10 @@ import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useWalletsStore } from '@/stores/wallets'
+import HelpTourButton from '@/components/HelpTourButton.vue'
+import OnboardingChecklistDialog from '@/components/onboarding/OnboardingChecklistDialog.vue'
+import { useAppTour } from '@/composables/useAppTour'
+import { useOnboardingChecklist } from '@/composables/useOnboardingChecklist'
 
 /**
  * LAYOUT DO PORTAL DO PARCEIRO FINANCIADOR (userRole 4).
@@ -92,6 +102,14 @@ const router = useRouter()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
 const walletsStore = useWalletsStore()
+const { shouldPromptOnboarding, startTour, markSeen, isActive: tourActive } = useAppTour({ router })
+
+const {
+  openPanel: openChecklist,
+  shouldAutoOpen: shouldAutoOpenChecklist,
+  markAutoOpened: markChecklistAutoOpened,
+  loadFromServer: loadChecklistFromServer
+} = useOnboardingChecklist({ router })
 
 // Em ecrãs largos o drawer fica sempre visível (show-if-above); em telemóvel
 // começa fechado e abre pelo botão do menu.
@@ -124,6 +142,36 @@ function logout() {
 }
 
 onMounted(async () => {
+  // Progresso do checklist vive no servidor (segue o utilizador) — o
+  // localStorage fica como cache/fallback offline.
+  loadChecklistFromServer()
+
+  // Checklist do primeiro dia: abre-se sozinho uma única vez por utilizador.
+  window.setTimeout(() => {
+    if (tourActive.value || !shouldAutoOpenChecklist()) return
+    markChecklistAutoOpened()
+    openChecklist()
+  }, 6000)
+
+  // Primeiro acesso do financiador: sugere o onboarding uma única vez.
+  if (shouldPromptOnboarding(4)) {
+    markSeen(4)
+    window.setTimeout(() => {
+      $q.notify({
+        type: 'positive',
+        message: 'Quer um tour guiado pelo portal?',
+        caption: 'Mostramos o que cada vista da sua carteira contém.',
+        position: 'top',
+        timeout: 12000,
+        multiLine: true,
+        actions: [
+          { label: 'Ver tour', color: 'white', handler: () => startTour('full', 4) },
+          { label: 'Agora não', color: 'white' }
+        ]
+      })
+    }, 1400)
+  }
+
   try {
     await walletsStore.fetchPartnerProfile()
   } catch (error) {

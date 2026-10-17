@@ -17,6 +17,7 @@ import { checkAndLiquidateLoan } from "./TranzactionController";
 import mpesa from "mpesa-node-api";
 import { MpesaResponse } from "../interfaces/Simulator";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 import { CompanyModel } from "../database/models/CompanyModel";
 
 const toNumber = (value: any) => {
@@ -46,10 +47,9 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
 
     const customerData = customer.toJSON() as any;
 
-    // Taxa diária de mora da empresa (percentagem, ex.: 0.1 = 0,1%/dia) — mesma
-    // fonte usada pelo Admin/Gestor em /api/loan/amortization (installmentPanification)
-    const company = await CompanyModel.findByPk(companyIdNum);
-    const forfeit = toNumber((company as any)?.forfeit);
+    // Taxa diária de mora + limites de invalidação/limitação — MESMA FONTE
+    // (motor V2 company_penalty_rules com fallback companies.forfeit)
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyIdNum);
 
     // Buscar créditos do cliente
     const loans = await LoanModel.findAll({
@@ -76,7 +76,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
       // MESMA FONTE DE VERDADE do Admin/Gestor (/api/loan/amortization): enriquece
       // cada prestação com paidAmount, remainingBalance, lateDays e latePaymentInterest
       // (mora = prestação × (forfeit/100) × dias em atraso).
-      const installmentList = installmentPanification(installments, forfeit);
+      const installmentList = installmentPanification(installments, forfeit, undefined, { maxLateDays, capPercent });
       const installmentIds = installments.map((item: any) => item.id);
       const paidTransactions: any[] = installmentIds.length > 0
         ? await TranzactionModel.findAll({
@@ -419,12 +419,13 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
     if (remaining <= 0) {
       return res.status(400).json({ success: false, message: "Não existe saldo em falta nesta prestação." });
     }
-
-    const company = await CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
-    const forfeit = Number(company?.getDataValue("forfeit") || 0);
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyIdNum);
     const calculatedInstallment = installmentPanification(
       [{ ...installmentData, paidAmount: alreadyPaid }],
-      forfeit
+      forfeit,
+      undefined,
+      { maxLateDays, capPercent }
     )[0];
     const currentLateInterest = round2(Number(calculatedInstallment?.latePaymentInterest || 0));
     const currentTotalDue = round2(remaining + currentLateInterest);

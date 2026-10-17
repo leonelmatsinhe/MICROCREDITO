@@ -3,7 +3,7 @@
     <q-card style="width: 520px; max-width: 95vw; border-radius: 16px">
       <q-card-section class="bg-primary text-white row items-center" style="border-radius: 16px 16px 0 0">
         <q-icon name="check_circle" size="24px" class="q-mr-sm" />
-        <div class="text-h6">Aprovar Crédito</div>
+        <div class="text-h6">Desembolso do Crédito</div>
         <q-space />
         <q-btn flat round dense icon="close" @click="close" />
       </q-card-section>
@@ -217,6 +217,24 @@
           </q-card-section>
         </q-card>
 
+        <!-- Garantias: cobertura mínima para APROVAR (capital + juros) -->
+        <q-banner v-if="coverage" dense rounded class="q-mb-md" :class="coverageBlocked ? 'bg-red-1 text-red-9' : 'bg-green-1 text-green-9'">
+          <template v-slot:avatar>
+            <q-icon :name="coverageBlocked ? 'gavel' : 'verified_user'" :color="coverageBlocked ? 'negative' : 'positive'" />
+          </template>
+          <div class="text-caption">
+            <template v-if="coverageBlocked">
+              <strong>Aprovação bloqueada — garantias insuficientes.</strong>
+              Garantias registadas: {{ formatMoney(coverage.guaranteesTotal) }} · Total a pagar (capital + juros): {{ formatMoney(coverage.requiredTotal) }} ·
+              Faltam <strong>{{ formatMoney(coverage.shortfall) }} MZN</strong>.
+              Registe garantias que cubram o total (aba Garantias & Recibos) e reabra esta aprovação.
+            </template>
+            <template v-else>
+              Garantias suficientes: {{ formatMoney(coverage.guaranteesTotal) }} cobrem o total a pagar de {{ formatMoney(coverage.requiredTotal) }} MZN ({{ coverage.coveragePct }}%).
+            </template>
+          </div>
+        </q-banner>
+
         <!-- Taxa de preparos administrativos (dinâmica da taxa escolhida) -->
         <q-card v-if="rateId" flat bordered class="q-mb-md" style="border-radius: 8px">
           <q-card-section class="q-py-sm">
@@ -267,13 +285,13 @@
         <q-btn flat label="Cancelar" color="grey" no-caps @click="close" />
         <q-btn
           unelevated
-          label="Aprovar Crédito"
+          label="Desembolsar"
           color="positive"
           icon="check_circle"
           no-caps
           rounded
           :loading="submitting"
-          :disable="!rateId"
+          :disable="!rateId || coverageBlocked"
           @click="confirmApproval"
         />
       </q-card-actions>
@@ -307,6 +325,36 @@ const show = computed({
 })
 
 const rateList = ref([])
+
+// ── GARANTIAS: cobertura mínima (capital + juros) para poder aprovar ──
+const coverage = ref(null)
+const loadingCoverage = ref(false)
+const coverageBlocked = computed(() => !!coverage.value && !coverage.value.covered)
+
+async function fetchCoverage() {
+  const loan = props.loan
+  if (!loan?.id) {
+    coverage.value = null
+    return
+  }
+  loadingCoverage.value = true
+  try {
+    const tax = rateId.value ? rateTax(rateId.value) : null
+    const { data } = await api.get(`/api/loan/${loan.id}/guarantee-coverage`, {
+      params: {
+        amount: loan.amount,
+        numberOfInstallments: loan.numberOfInstallments,
+        ...(tax !== null ? { interestRate: tax } : {})
+      }
+    })
+    coverage.value = data.success ? data.result : null
+  } catch (e) {
+    console.error('Erro ao verificar cobertura de garantias:', e)
+    coverage.value = null
+  } finally {
+    loadingCoverage.value = false
+  }
+}
 const loadingRates = ref(false)
 const rateId = ref(null)
 // ─── CARTEIRA DE FINANCIAMENTO (analítica) — obrigatória no desembolso ───
@@ -510,7 +558,11 @@ function presetRateFromLoan() {
 }
 
 // Escolher a taxa sugere a carteira a ela associada (o Admin pode trocar).
-watch(rateId, () => presetWalletFromRate())
+// A taxa define os juros do plano, logo também a cobertura de garantias exigida.
+watch(rateId, () => {
+  presetWalletFromRate()
+  fetchCoverage()
+})
 
 watch(show, async (val) => {
   if (val) {
@@ -532,6 +584,8 @@ watch(show, async (val) => {
       await fetchRates()
     }
     await fetchDocumentsCount()
+    // Cobertura de garantias com a taxa actual (bloqueia aprovação se insuficiente)
+    await fetchCoverage()
     // Para créditos criados pela equipa com taxa já definida, pré-seleccionar o plano correspondente
     presetRateFromLoan()
     // Se o crédito já tiver sido marcado como isento, manter a isenção
@@ -549,6 +603,15 @@ function close() {
 async function confirmApproval() {
   const loan = props.loan
   if (!loan || !rateId.value) return
+  // ── GARANTIAS: bloqueio authoritative no backend, mas aviso imediato aqui ──
+  if (coverageBlocked.value) {
+    $q.notify({
+      type: 'negative',
+      message: `Garantias insuficientes: faltam ${formatMoney(coverage.value.shortfall)} MZN para cobrir o total a pagar. Registe garantias antes de aprovar.`,
+      position: 'top'
+    })
+    return
+  }
   const tax = rateTax(rateId.value)
   if (tax <= 0) {
     $q.notify({ type: 'warning', message: 'Seleccione uma taxa de juro válida', position: 'top' })
@@ -630,8 +693,8 @@ async function confirmApproval() {
     $q.notify({
       type: 'positive',
       message: rateTaxDisplay.value
-        ? `Crédito aprovado com taxa de ${rateTaxDisplay.value}% e plano gerado com sucesso`
-        : 'Crédito aprovado com sucesso',
+        ? `Crédito desembolsado com taxa de ${rateTaxDisplay.value}% e plano gerado com sucesso`
+        : 'Crédito desembolsado com sucesso',
       position: 'top'
     })
   } catch (e) {

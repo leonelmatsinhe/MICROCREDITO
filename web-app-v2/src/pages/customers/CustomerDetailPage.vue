@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div data-tour="mutuario-body">
     <!-- ===================== HEADER FIXO (sticky — sem conflito com o QLayout do MainLayout) ===================== -->
     <div class="mutuario-header sticky-header">
       <q-toolbar>

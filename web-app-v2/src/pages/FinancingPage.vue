@@ -14,6 +14,7 @@
           <div class="col-12 col-md-auto">
             <q-tabs
               v-model="tab"
+              data-tour="financing-tabs"
               dense
               no-caps
               align="right"

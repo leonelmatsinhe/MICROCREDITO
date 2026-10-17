@@ -1,5 +1,5 @@
 <template>
-  <div class="q-pa-md caixa-page">
+  <div class="q-pa-md caixa-page" data-tour="caixa-central">
     <!-- ═══════════ CARREGAMENTO ═══════════ -->
     <div v-if="loading" class="text-center q-pa-xl">
       <q-spinner-dots size="40px" color="primary" />
@@ -50,6 +50,36 @@
                 Aberto às {{ formatTime(register.opening_time || register.createdAt) }}
                 <template v-if="!isOpen"> · Fechado às {{ formatTime(register.closing_time || register.closed_at) }}</template>
               </div>
+
+              <!-- ═══ LIMITE DE NUMERÁRIO EM CAIXA (circular do Banco de Moçambique) ═══ -->
+              <!-- CONFERÊNCIA CEGA: escondido durante o fecho (nunca mostrar
+                   dinheiro em gaveta/saldo teórico enquanto o operador conta). -->
+              <div v-if="!closeDialog && register.limites" class="q-mt-xs">
+                <q-banner
+                  v-if="register.limites.excedido"
+                  dense
+                  rounded
+                  class="bg-negative text-white"
+                  style="border-radius: 8px"
+                >
+                  <template v-slot:avatar>
+                    <q-icon name="warning" color="white" />
+                  </template>
+                  <div class="text-caption">
+                    <strong>Limite de Numerário Excedido - Efectuar Entrega ao Cofre Central nos termos da Circular BM</strong>
+                    — em gaveta <strong>{{ formatMZN(register.limites.dinheiro_em_caixa) }}</strong>
+                    (limite {{ formatMZN(register.limites.cash_limit_mzn) }}, excedente
+                    {{ formatMZN(register.limites.excedente) }}). Registe uma
+                    <strong>Entrega de Valores ao Cofre Central</strong> (ENTREGA_COFRE) ou uma
+                    <strong>Guia de Depósito Bancário</strong> (DEPOSITO_BANCARIO) do excedente antes de continuar a operar.
+                  </div>
+                </q-banner>
+                <div v-else class="text-caption text-grey-6" style="font-size: 10px">
+                  <q-icon name="savings" size="12px" class="q-mr-xs" />
+                  Limite de numerário em caixa: <strong>{{ formatMZN(register.limites.cash_limit_mzn) }}</strong>
+                  · em gaveta: <strong>{{ formatMZN(register.limites.dinheiro_em_caixa) }}</strong>
+                </div>
+              </div>
             </div>
             <div class="row q-gutter-sm no-wrap">
               <q-btn flat no-caps icon="account_balance" label="Contas Bancárias" @click="$router.push('/bank-accounts')">
@@ -67,7 +97,7 @@
                 outline
                 no-caps
                 icon="lock"
-                label="Fechar Caixa"
+                label="Efectuar Fecho"
                 @click="openCloseDialog"
               />
             </div>
@@ -193,13 +223,33 @@
             />
           </template>
           <span class="text-body2">
-            Valor contado (cash): <strong>{{ formatMZN(register.closing_balance_informed) }}</strong> ·
-            Calculado (cash): <strong>{{ formatMZN(register.closing_balance_calculated) }}</strong> ·
-            Divergência:
+            Numerário contado (por denominação): <strong>{{ formatMZN(register.closing_balance_informed) }}</strong> ·
+            Diferença apurada:
             <strong :class="Math.abs(Number(register.difference)) < 0.01 ? 'text-positive' : 'text-negative'">
               {{ formatMZN(register.difference) }}
             </strong>
+            <template v-if="register.tipo_fechamento">
+              · Tipo de fecho:
+              <strong>{{ register.mapa_bm?.tipo_fechamento_label || register.tipo_fechamento }}</strong>
+            </template>
           </span>
+          <template v-slot:action>
+            <q-btn
+              no-caps
+              color="primary"
+              icon="print"
+              label="Imprimir Mapa Diário de Caixa - Modelo BM"
+              @click="exportPDF"
+            />
+          </template>
+          <div
+            v-if="Math.abs(Number(register.difference)) >= 0.01"
+            class="text-caption text-negative q-mt-xs"
+          >
+            <q-icon name="gavel" size="13px" class="q-mr-xs" />
+            Auto de ocorrência gerado automaticamente (DIFERENCA_CAIXA) e <strong>pendente</strong> de
+            justificação pelo Administrador e de lançamento na conta <strong>58 — Quebras de Caixa</strong>.
+          </div>
         </q-banner>
 
         <!-- ═══════════ TABS: MOVIMENTOS / CONTAS BANCÁRIAS ═══════════ -->
@@ -207,6 +257,15 @@
           <q-tabs v-model="tab" dense no-caps align="left" active-color="primary" class="text-grey-7">
             <q-tab name="movimentos" icon="receipt_long" label="Movimentos do Dia" />
             <q-tab name="bancos" icon="account_balance" label="Contas Bancárias" />
+            <q-tab name="diferencas" icon="report_problem" label="Diferenças de Caixa">
+              <q-badge
+                v-if="pendingDifferencesCount > 0"
+                color="negative"
+                floating
+                :label="pendingDifferencesCount"
+              />
+            </q-tab>
+            <q-tab name="tesouraria" icon="savings" label="Painel de Tesouraria" />
           </q-tabs>
           <q-separator />
           <q-tab-panels v-model="tab" animated>
@@ -290,6 +349,24 @@
                 <template v-slot:body-cell-user="props">
                   <q-td :props="props" class="text-center text-caption">{{ props.row.createdByName || '—' }}</q-td>
                 </template>
+
+                <!-- Comprovativo de Entrega de Valores ao Cofre Central (PDF + QR) -->
+                <template v-slot:body-cell-comprovativo="props">
+                  <q-td :props="props" class="text-center">
+                    <q-btn
+                      v-if="props.row.category === 'ENTREGA_COFRE'"
+                      flat
+                      dense
+                      round
+                      icon="description"
+                      color="primary"
+                      @click.stop="downloadComprovativo(props.row)"
+                    >
+                      <q-tooltip>Comprovativo de Entrega de Valores ao Cofre Central (PDF + QR de validação)</q-tooltip>
+                    </q-btn>
+                    <span v-else class="text-grey-5">—</span>
+                  </q-td>
+                </template>
               </q-table>
             </q-tab-panel>
 
@@ -335,28 +412,315 @@
                 </template>
               </q-table>
             </q-tab-panel>
+
+            <!-- ── TAB 3: DIFERENÇAS DE CAIXA (QUEBRAS / SOBRAS) — ADMIN ── -->
+            <q-tab-panel name="diferencas" class="q-pa-none">
+              <q-card-section class="q-py-sm">
+                <div class="text-caption text-grey-7">
+                  <q-icon name="info" size="14px" class="q-mr-xs" />
+                  Diferenças apuradas no fecho do caixa (contagem cega por denominação). Quebras e sobras
+                  ficam <strong>pendentes</strong> até o Administrador justificar o auto de ocorrência e
+                  lançar o valor na conta <strong>58 — Quebras de Caixa</strong> do Livro Caixa.
+                </div>
+              </q-card-section>
+
+              <q-card-section class="row q-col-gutter-md q-pt-none">
+                <div class="col-12 col-sm-4">
+                  <q-card flat bordered style="border-radius: 12px">
+                    <q-card-section class="q-pa-sm">
+                      <div class="text-caption text-grey-6" style="font-size: 10px">Diferenças pendentes</div>
+                      <div class="text-weight-bold text-negative" style="font-size: 16px">
+                        {{ formatMZN(differenceSummary.valor_pendente) }}
+                      </div>
+                    </q-card-section>
+                  </q-card>
+                </div>
+                <div class="col-12 col-sm-4">
+                  <q-card flat bordered style="border-radius: 12px">
+                    <q-card-section class="q-pa-sm">
+                      <div class="text-caption text-grey-6" style="font-size: 10px">Nº pendentes</div>
+                      <div class="text-weight-bold" style="font-size: 16px">{{ differenceSummary.pendentes }}</div>
+                    </q-card-section>
+                  </q-card>
+                </div>
+                <div class="col-12 col-sm-4">
+                  <q-card flat bordered style="border-radius: 12px">
+                    <q-card-section class="q-pa-sm">
+                      <div class="text-caption text-grey-6" style="font-size: 10px">Conta de lançamento</div>
+                      <div class="text-weight-bold text-primary" style="font-size: 14px">
+                        {{ differenceSummary.conta_contabilistica || '58 — Quebras de Caixa' }}
+                      </div>
+                    </q-card-section>
+                  </q-card>
+                </div>
+              </q-card-section>
+
+              <q-card-section class="row items-center q-py-sm">
+                <q-select
+                  v-model="differenceFilter"
+                  :options="differenceFilterOptions"
+                  outlined
+                  dense
+                  emit-value
+                  map-options
+                  label="Filtro"
+                  style="min-width: 180px"
+                  class="q-mr-sm"
+                />
+                <q-space />
+                <q-btn
+                  outline
+                  color="primary"
+                  no-caps
+                  icon="sync"
+                  label="Actualizar"
+                  size="sm"
+                  :loading="loadingDifferences"
+                  @click="fetchDifferences"
+                />
+              </q-card-section>
+
+              <q-table
+                :rows="differences"
+                :columns="differenceColumns"
+                row-key="id"
+                flat
+                bordered
+                dense
+                separator="horizontal"
+                :rows-per-page-options="[10, 25, 50]"
+                :loading="loadingDifferences"
+                no-data-label="Nenhuma diferença de caixa registada."
+              >
+                <!-- Dia -->
+                <template v-slot:body-cell-dia="props">
+                  <q-td :props="props" class="text-center">
+                    {{ props.row.data_caixa ? formatDay(props.row.data_caixa) : '—' }}
+                  </q-td>
+                </template>
+
+                <!-- Tipo: quebra (falta) ou sobra (excesso) -->
+                <template v-slot:body-cell-tipo="props">
+                  <q-td :props="props" class="text-center">
+                    <q-chip
+                      :color="props.row.tipo === 'QUEBRA' ? 'negative' : 'positive'"
+                      text-color="white"
+                      dense
+                      style="font-size: 10px"
+                    >
+                      {{ props.row.tipo_label || props.row.tipo }}
+                    </q-chip>
+                  </q-td>
+                </template>
+
+                <!-- Valores (o apurado é informação de controlo do Admin) -->
+                <template v-slot:body-cell-valor="props">
+                  <q-td :props="props" class="text-right text-weight-bold">
+                    <span :class="props.row.tipo === 'QUEBRA' ? 'text-negative' : 'text-positive'">
+                      {{ props.row.tipo === 'QUEBRA' ? '−' : '+' }} {{ formatMZN(props.row.valor) }}
+                    </span>
+                  </q-td>
+                </template>
+                <template v-slot:body-cell-contado="props">
+                  <q-td :props="props" class="text-right text-caption">{{ formatMZN(props.row.valor_contado) }}</q-td>
+                </template>
+                <template v-slot:body-cell-apurado="props">
+                  <q-td :props="props" class="text-right text-caption">{{ formatMZN(props.row.valor_apurado) }}</q-td>
+                </template>
+
+                <!-- Estado -->
+                <template v-slot:body-cell-estado="props">
+                  <q-td :props="props" class="text-center">
+                    <q-badge :color="props.row.status === 'PENDENTE' ? 'warning' : 'positive'">
+                      {{ props.row.status === 'PENDENTE' ? 'PENDENTE' : 'LANÇADA' }}
+                    </q-badge>
+                  </q-td>
+                </template>
+
+                <!-- Auto de ocorrência (justificação lançada) -->
+                <template v-slot:body-cell-justificacao="props">
+                  <q-td :props="props" class="text-caption" style="max-width: 260px">
+                    <template v-if="props.row.status === 'JUSTIFICADA'">
+                      <div class="ellipsis" style="max-width: 250px">
+                        {{ props.row.justificacao }}
+                        <q-tooltip max-width="380px">
+                          {{ props.row.justificacao }}<br />
+                          Justificado em {{ formatDateTime(props.row.justifiedAt) }}
+                          (utilizador #{{ props.row.justifiedBy }})
+                        </q-tooltip>
+                      </div>
+                      <div class="text-grey-6" style="font-size: 10px">
+                        {{ formatDateTime(props.row.justifiedAt) }}
+                      </div>
+                    </template>
+                    <span v-else class="text-grey-6">—</span>
+                  </q-td>
+                </template>
+
+                <!-- Acção: justificar e lançar (só para pendentes) -->
+                <template v-slot:body-cell-actions="props">
+                  <q-td :props="props" class="text-center">
+                    <q-btn
+                      v-if="props.row.status === 'PENDENTE'"
+                      outline
+                      dense
+                      no-caps
+                      color="primary"
+                      icon="gavel"
+                      label="Justificar e lançar"
+                      size="sm"
+                      @click="openJustifyDialog(props.row)"
+                    />
+                    <span v-else class="text-caption text-positive">
+                      <q-icon name="check_circle" size="14px" class="q-mr-xs" />Lançada
+                    </span>
+                  </q-td>
+                </template>
+              </q-table>
+            </q-tab-panel>
+
+            <!-- ── TAB 4: PAINEL DE TESOURARIA (por operador) ── -->
+            <q-tab-panel name="tesouraria" class="q-pa-none">
+              <q-card-section class="row items-center q-py-sm">
+                <div class="col text-subtitle2 text-weight-bold">
+                  Painel de Tesouraria — excedentes do limite e diferenças pendentes por operador
+                </div>
+                <q-btn outline color="primary" no-caps icon="sync" label="Actualizar" size="sm" @click="fetchTreasuryPanel" />
+              </q-card-section>
+
+              <!-- Cards de resumo -->
+              <q-card-section class="q-pt-none">
+                <div class="row q-col-gutter-md">
+                  <div class="col-12 col-sm-3">
+                    <q-card flat bordered style="border-radius: 12px">
+                      <q-card-section class="q-pa-sm">
+                        <div class="text-caption text-grey-6" style="font-size: 10px">Limite de numerário em caixa</div>
+                        <div class="text-weight-bold" style="font-size: 15px">{{ formatMZN(treasuryPanel.limite?.cash_limit_mzn) }}</div>
+                        <div class="text-caption text-grey-6" style="font-size: 10px">parametrizável (CASH_LIMIT_MZN)</div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+                  <div class="col-12 col-sm-3">
+                    <q-card flat bordered style="border-radius: 12px">
+                      <q-card-section class="q-pa-sm">
+                        <div class="text-caption text-grey-6" style="font-size: 10px">Excedentes do limite</div>
+                        <div class="text-weight-bold text-negative" style="font-size: 15px">{{ treasuryPanel.summary?.total_excedentes || 0 }}</div>
+                        <div class="text-caption text-negative" style="font-size: 10px">{{ formatMZN(treasuryPanel.summary?.valor_excedentes) }} acima do limite</div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+                  <div class="col-12 col-sm-3">
+                    <q-card flat bordered style="border-radius: 12px">
+                      <q-card-section class="q-pa-sm">
+                        <div class="text-caption text-grey-6" style="font-size: 10px">Diferenças pendentes</div>
+                        <div class="text-weight-bold text-negative" style="font-size: 15px">{{ treasuryPanel.summary?.total_diferencas_pendentes || 0 }}</div>
+                        <div class="text-caption text-grey-6" style="font-size: 10px">{{ formatMZN(treasuryPanel.summary?.valor_diferencas_pendentes) }} por justificar</div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+                  <div class="col-12 col-sm-3">
+                    <q-card flat bordered style="border-radius: 12px">
+                      <q-card-section class="q-pa-sm">
+                        <div class="text-caption text-grey-6" style="font-size: 10px">Conta de lançamento</div>
+                        <div class="text-weight-bold text-primary" style="font-size: 14px">{{ treasuryPanel.summary?.conta_contabilistica || '58 — Quebras de Caixa' }}</div>
+                      </q-card-section>
+                    </q-card>
+                  </div>
+                </div>
+              </q-card-section>
+
+              <!-- Excedentes do limite de numerário (por operador) -->
+              <q-card-section class="q-pb-none">
+                <div class="text-subtitle2 text-weight-bold q-mb-sm">
+                  <q-icon name="warning" color="negative" class="q-mr-xs" />Excedentes do limite de numerário em caixa
+                </div>
+                <q-table
+                  :rows="treasuryPanel.excedentes || []"
+                  :columns="excessColumns"
+                  row-key="registerId"
+                  flat
+                  bordered
+                  dense
+                  separator="horizontal"
+                  hide-bottom
+                  no-data-label="Nenhum caixa acima do limite de numerário."
+                >
+                  <template v-slot:body-cell-dinheiro="props">
+                    <q-td :props="props" class="text-right">{{ formatMZN(props.row.dinheiro_em_caixa) }}</q-td>
+                  </template>
+                  <template v-slot:body-cell-limite="props">
+                    <q-td :props="props" class="text-right">{{ formatMZN(props.row.cash_limit_mzn) }}</q-td>
+                  </template>
+                  <template v-slot:body-cell-excedente="props">
+                    <q-td :props="props" class="text-right text-negative text-weight-bold">{{ formatMZN(props.row.excedente) }}</q-td>
+                  </template>
+                </q-table>
+              </q-card-section>
+
+              <!-- Diferenças de caixa pendentes por operador -->
+              <q-card-section>
+                <div class="text-subtitle2 text-weight-bold q-mb-sm">
+                  <q-icon name="report_problem" color="amber-9" class="q-mr-xs" />Diferenças de caixa pendentes por operador
+                </div>
+                <q-table
+                  :rows="treasuryPanel.diferencas_por_operador || []"
+                  :columns="treasuryDiffColumns"
+                  row-key="userId"
+                  flat
+                  bordered
+                  dense
+                  separator="horizontal"
+                  hide-bottom
+                  no-data-label="Sem diferenças de caixa pendentes."
+                >
+                  <template v-slot:body-cell-valor="props">
+                    <q-td :props="props" class="text-right text-weight-bold">{{ formatMZN(props.row.valor_pendente) }}</q-td>
+                  </template>
+                </q-table>
+                <div class="text-caption text-grey-7 q-mt-sm">
+                  <q-icon name="info" size="13px" class="q-mr-xs" />
+                  As diferenças pendentes são justificadas e lançadas no separador
+                  <strong>Diferenças de Caixa</strong> (conta 58 — Quebras de Caixa).
+                </div>
+              </q-card-section>
+            </q-tab-panel>
           </q-tab-panels>
         </q-card>
+
+        <!-- ═══════════ RODAPÉ: OPERAÇÕES OFICIAIS DE TESOURARIA (terminologia BM) ═══════════ -->
+        <div v-if="isOpen" class="q-mt-md q-pa-sm rounded-borders bg-grey-1 row q-gutter-sm items-center">
+          <div class="text-caption text-grey-7 q-mr-sm">
+            <q-icon name="savings" size="14px" class="q-mr-xs" />Operações de tesouraria:
+          </div>
+          <q-btn
+            v-for="op in TREASURY_OPERATIONS"
+            :key="op.category"
+            no-caps
+            :color="categoryColor(op.category)"
+            :icon="op.icon"
+            :label="op.label"
+            @click="openTreasuryDialog(op)"
+          >
+            <q-tooltip>{{ op.hint }}</q-tooltip>
+          </q-btn>
+        </div>
       </template>
     </template>
 
     <!-- ═══════════ DIALOG: ABRIR CAIXA ═══════════ -->
     <q-dialog v-model="openDialog" persistent>
       <q-card style="min-width: 380px; border-radius: 12px">
-        <q-card-section class="text-h6">Abrir Caixa do Dia</q-card-section>
+        <q-card-section class="text-h6">Abertura de Caixa - Fundo de Maneio</q-card-section>
         <q-card-section class="q-pt-none">
-          <q-input
-            v-model.number="openForm.opening_balance"
-            type="number"
-            outlined
-            dense
-            label="Saldo inicial cash (fundo de troco) *"
-            prefix="MZN"
-            :rules="[v => (v !== null && v !== '' && v >= 0) || 'Informe um saldo inicial >= 0']"
-            autofocus
+          <!-- Folha de Contagem de Caixa (MT): Denominação | Quantidade | Subtotal -->
+          <FolhaContagem
+            v-model="openForm.denominations"
+            title="Folha de Contagem de Caixa"
+            total-label="Total calculado automaticamente"
+            hint="Conte o fundo de maneio nota a nota e moeda a moeda — o total é calculado automaticamente."
           />
-          <div v-if="suggestionLabel" class="text-caption text-primary q-mt-xs">
-            <q-icon name="lightbulb" size="13px" class="q-mr-xs" />{{ suggestionLabel }}
+          <div class="text-caption text-grey-6 q-mt-xs">
+            <q-icon name="info" size="13px" class="q-mr-xs" />O caixa abre sempre com saldo ZERO disponível — o valor contado é apenas o fundo de maneio (memorando da gaveta, não é saldo nem arrasta para o dia seguinte).
           </div>
           <div class="text-caption text-grey-6">
             O saldo bancário consolidado não precisa de ser aberto — é reflectido automaticamente
@@ -365,7 +729,7 @@
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
-          <q-btn unelevated no-caps color="primary" label="Abrir Caixa" :loading="saving" @click="submitOpen" />
+          <q-btn unelevated no-caps color="primary" label="Confirmar Abertura" :loading="saving" @click="submitOpen" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -558,53 +922,101 @@
       </q-card>
     </q-dialog>
 
-    <!-- ═══════════ DIALOG: FECHAR CAIXA (divergência em tempo real) ═══════════ -->
+    <!-- ═══════════ DIALOG: JUSTIFICAR DIFERENÇA DE CAIXA (ADMIN) ═══════════ -->
+    <q-dialog v-model="justifyDialog" persistent>
+      <q-card style="min-width: 460px; border-radius: 12px">
+        <q-card-section class="text-h6">Justificar diferença de caixa</q-card-section>
+        <q-card-section class="q-pt-none">
+          <div v-if="justifyTarget" class="q-pa-sm rounded-borders bg-grey-2 q-mb-md">
+            <div class="text-body2">
+              <strong>{{ justifyTarget.tipo_label || justifyTarget.tipo }}</strong> de
+              <strong>{{ formatMZN(justifyTarget.valor) }}</strong> no caixa #{{ justifyTarget.cashRegisterId }}
+              ({{ justifyTarget.data_caixa ? formatDay(justifyTarget.data_caixa) : '—' }})
+            </div>
+            <div class="text-caption text-grey-7">
+              Operador: {{ justifyTarget.userName }} ·
+              numerário contado: {{ formatMZN(justifyTarget.valor_contado) }} ·
+              saldo apurado: {{ formatMZN(justifyTarget.valor_apurado) }}
+            </div>
+          </div>
+
+          <div class="text-caption text-grey-7 q-mb-sm">
+            A justificação documenta o <strong>auto de ocorrência</strong> e o valor passa a constar do
+            Livro Caixa na conta <strong>58 — Quebras de Caixa</strong>.
+          </div>
+
+          <q-input
+            v-model="justifyForm.justificacao"
+            outlined
+            dense
+            type="textarea"
+            rows="3"
+            label="Justificação (auto de ocorrência) *"
+            hint="Descreva o que aconteceu com o numerário — mínimo 10 caracteres."
+            :rules="[v => !!(v && v.trim().length >= 10) || 'Mínimo 10 caracteres']"
+            autofocus
+          />
+          <q-input
+            v-model="justifyForm.conta_contabilistica"
+            outlined
+            dense
+            label="Conta contabilística"
+            hint="Por omissão 58 — Quebras de Caixa"
+            class="q-mt-sm"
+          />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            icon="gavel"
+            label="Justificar e lançar"
+            :loading="saving"
+            :disable="!justifyForm.justificacao || justifyForm.justificacao.trim().length < 10"
+            @click="submitJustification"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- ═══════════ DIALOG: FECHAR CAIXA (CONFERÊNCIA CEGA por denominação) ═══════════ -->
     <q-dialog v-model="closeDialog" persistent>
       <q-card style="min-width: 420px; border-radius: 12px">
-        <q-card-section class="text-h6">Fechar Caixa</q-card-section>
+        <q-card-section class="text-h6">Folha de Contagem de Fecho - Conferência Cega</q-card-section>
         <q-card-section class="q-pt-none">
           <div class="q-pa-sm rounded-borders bg-blue-1 q-mb-sm">
             <div class="text-caption text-grey-8">
               <q-icon name="info" size="14px" class="q-mr-xs" />
-              Conte apenas o <strong>dinheiro físico na gaveta</strong> — os pagamentos electrónicos (M-Pesa, transferências) ficam nas contas bancárias e não afectam a contagem.
-            </div>
-            <div class="row q-mt-xs q-gutter-md">
-              <div>
-                <div class="text-caption text-grey-6" style="font-size: 10px">Calculado (cash)</div>
-                <div class="text-weight-bold text-primary">{{ formatMZN(cashBalance) }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-grey-6" style="font-size: 10px">Movimento electrónico</div>
-                <div class="text-weight-bold text-grey-8">{{ formatMZN(electronicBalance) }}</div>
-              </div>
-              <div>
-                <div class="text-caption text-grey-6" style="font-size: 10px">Saldo consolidado</div>
-                <div class="text-weight-bold text-grey-8">{{ formatMZN(consolidatedBalance) }}</div>
-              </div>
+              Conte apenas o <strong>dinheiro físico na gaveta</strong>, nota a nota e moeda a
+              moeda — os pagamentos electrónicos (M-Pesa, transferências) ficam nas contas
+              bancárias e não afectam a contagem. Só vê o <strong>total contado</strong> por si;
+              a diferença é apurada no backend.
             </div>
           </div>
-          <q-input
-            v-model.number="closeForm.closing_balance_informed"
-            type="number"
+
+          <!-- Folha de Contagem de Fecho (MT): Denominação | Quantidade | Subtotal.
+               Só o TOTAL contado é mostrado — nunca a diferença nem o saldo. -->
+          <FolhaContagem
+            v-model="closeForm.denominations"
+            title="Folha de Contagem de Fecho"
+            total-label="Total contado"
+            hint="Conferência cega: conte apenas o dinheiro físico da gaveta, nota a nota e moeda a moeda."
+          />
+
+          <q-select
+            v-model="closeForm.tipo_fechamento"
+            :options="closingTypeOptions"
             outlined
             dense
-            prefix="MZN"
-            label="Valor contado em caixa (dinheiro físico) *"
-            :rules="[v => (v !== null && v !== '' && v >= 0) || 'Informe o valor contado >= 0']"
-            autofocus
+            emit-value
+            map-options
+            label="Tipo de fecho"
+            class="q-mt-md"
           />
-          <q-input v-model="closeForm.notes" outlined dense type="textarea" rows="2" label="Observações (opcional)" class="q-mt-sm" />
 
-          <!-- Divergência calculada em tempo real -->
-          <div
-            v-if="closeForm.closing_balance_informed !== null && closeForm.closing_balance_informed !== ''"
-            class="q-mt-md q-pa-sm rounded-borders"
-            :class="liveDifferenceClass"
-          >
-            <div class="text-caption">Divergência (contado − calculado):</div>
-            <div class="text-h6 text-weight-bold">{{ formatMZN(liveDifference) }}</div>
-            <div class="text-caption">{{ liveDifferenceLabel }}</div>
-          </div>
+          <q-input v-model="closeForm.notes" outlined dense type="textarea" rows="2" label="Observações (opcional)" class="q-mt-sm" />
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
@@ -613,11 +1025,87 @@
             no-caps
             color="negative"
             icon="lock"
-            label="Fechar Caixa"
+            label="Confirmar Fecho"
             :loading="saving"
-            :disable="closeForm.closing_balance_informed === null || closeForm.closing_balance_informed === ''"
             @click="submitClose"
           />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- ═══════════ DIALOG: CAIXA CERTO (diferença = 0) ═══════════ -->
+    <q-dialog v-model="closeResultDialog" persistent>
+      <q-card style="min-width: 380px; border-radius: 12px">
+        <q-card-section class="text-h6">Caixa Certo - Gerar Mapa Diário</q-card-section>
+        <q-card-section class="q-pt-none">
+          <div class="text-body2">
+            <q-icon name="check_circle" color="positive" size="20px" class="q-mr-xs" />
+            A contagem confirma o valor do caixa — sem quebra nem sobra.
+          </div>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn flat no-caps label="Concluir" v-close-popup />
+          <q-btn
+            unelevated
+            no-caps
+            color="primary"
+            icon="print"
+            label="Imprimir Mapa Diário de Caixa - Modelo BM"
+            @click="printFromDialog"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- ═══════════ DIALOG: AUTO DE OCORRÊNCIA - DIFERENÇA DE CAIXA ═══════════ -->
+    <q-dialog v-model="autoDialog" persistent>
+      <q-card style="min-width: 420px; border-radius: 12px">
+        <q-card-section class="text-h6">Auto de Ocorrência - Diferença de Caixa</q-card-section>
+        <q-card-section class="q-gutter-y-md q-pt-none">
+          <div class="q-pa-sm rounded-borders" :class="autoForm.quebra ? 'bg-red-2' : 'bg-amber-2'">
+            <div class="text-body2">
+              <strong>{{ autoForm.quebra ? 'Valor da Quebra (falta)' : 'Valor da Sobra (excesso)' }}:</strong>
+              {{ formatMZN(autoForm.valor) }}
+            </div>
+            <div class="text-caption text-grey-8 q-mt-xs">
+              Fica gerado o movimento <strong>DIFERENCA_CAIXA</strong> — pendente de validação
+              pelo Administrador e de lançamento no Livro Caixa (conta 58 — Quebras de Caixa).
+            </div>
+          </div>
+          <q-input
+            v-model="autoForm.observacao"
+            outlined
+            dense
+            type="textarea"
+            rows="3"
+            label="Observação / Justificação *"
+            hint="Obrigatória — descreva o que aconteceu na gaveta (mín. 10 caracteres)"
+            :rules="[v => !!(v && v.trim().length >= 10) || 'A Observação / Justificação é obrigatória (mín. 10 caracteres)']"
+            :disable="autoRegistered"
+          />
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn
+            v-if="!autoRegistered"
+            unelevated
+            no-caps
+            color="negative"
+            icon="assignment"
+            label="Registar Auto de Ocorrência"
+            :loading="saving"
+            @click="submitAutoObservacao"
+          />
+          <template v-else>
+            <q-btn flat no-caps label="Concluir" v-close-popup />
+            <q-btn
+              unelevated
+              no-caps
+              color="primary"
+              icon="print"
+              label="Imprimir Mapa Diário de Caixa - Modelo BM"
+              @click="printFromDialog"
+            />
+          </template>
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -631,6 +1119,10 @@ import { api } from '@/boot/axios'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { format, parseISO } from 'date-fns'
+// Folha de Contagem de Caixa (MT) — componente oficial de contagem por
+// denominação (Denominação | Quantidade | Subtotal), partilhado com o Caixa do operador.
+import FolhaContagem from '@/components/caixa/FolhaContagem.vue'
+import { emptyDenominationCount, sumDenominations, isEmptyDenominations } from '@/utils/mznDenominations'
 
 /**
  * CAIXA CENTRAL DO DIA — página principal da tesouraria.
@@ -677,11 +1169,27 @@ function formatTime(value) {
   } catch { return '—' }
 }
 
+function formatDateTime(value) {
+  if (!value) return '—'
+  try {
+    return format(new Date(value), 'dd/MM/yyyy HH:mm')
+  } catch { return '—' }
+}
+
 // ─── Cards de resumo (6) ───
+// FUNDO DE MANEIO contado na abertura (memorando físico — não é saldo).
+// O saldo DISPONÍVEL do caixa (`opening_balance`) é sempre 0 na abertura.
+const fundoMemo = computed(() => {
+  const r = register.value
+  if (!r) return 0
+  const counted = r.counted_open
+  return round2(Number(counted != null ? counted : r.opening_balance) || 0)
+})
+
 const cashBalance = computed(() => {
   if (!register.value) return 0
   const r = register.value
-  return round2((Number(r.opening_balance) || 0) + (Number(r.total_cash_in) || 0) - (Number(r.total_cash_out) || 0))
+  return round2(fundoMemo.value + (Number(r.total_cash_in) || 0) - (Number(r.total_cash_out) || 0))
 })
 
 const consolidatedBalance = computed(() => {
@@ -701,7 +1209,7 @@ const electronicBalance = computed(() => {
 const summaryCards = computed(() => {
   const r = register.value || {}
   return [
-    { label: 'Saldo Inicial (fundo de troco)', value: r.opening_balance || 0, class: 'text-grey-9' },
+    { label: 'Saldo Inicial (Fundo de Maneio)', value: fundoMemo.value, class: 'text-grey-9' },
     { label: 'Entradas Cash (gaveta)', value: r.total_cash_in || 0, class: 'text-positive' },
     { label: 'Saídas Cash (gaveta)', value: r.total_cash_out || 0, class: 'text-negative' },
     { label: 'Entradas Banco/Móvel', value: r.total_bank_in || 0, class: 'text-positive' },
@@ -730,11 +1238,18 @@ const paymentMethodOptions = [
 ]
 
 // ─── Categorias ───
+// Tipos OFICIAIS de tesouraria (contabilidade moçambicana — não usar
+// "sangria"/"suprimento"): entrega ao cofre, reforço de caixa, depósito
+// bancário do excedente e diferença de caixa (auto de ocorrência do fecho).
 const categoryMeta = {
   DESEMBOLSO:        { label: 'Desembolso',        color: 'deep-orange' },
   REEMBOLSO:         { label: 'Reembolso',         color: 'green' },
   JUROS_MORA:        { label: 'Juros Mora',        color: 'amber-8' },
   TAXA_ADMIN:        { label: 'Taxa Admin',        color: 'blue-grey' },
+  ENTREGA_COFRE:     { label: 'Entrega ao Cofre',  color: 'indigo' },
+  REFORCO_CAIXA:     { label: 'Reforço de caixa',  color: 'teal' },
+  DEPOSITO_BANCARIO: { label: 'Depósito bancário', color: 'blue' },
+  DIFERENCA_CAIXA:   { label: 'Diferença de caixa', color: 'red-7' },
   DEPOSITO_BANCO:    { label: 'Depósito Banco',    color: 'indigo' },
   LEVANTAMENTO_BANCO:{ label: 'Levantamento',      color: 'purple' },
   TRANSFERENCIA:     { label: 'Transferência',     color: 'cyan-8' },
@@ -754,8 +1269,11 @@ const categoryLabel = (c) => categoryMeta[c]?.label || c
 const categoryColor = (c) => categoryMeta[c]?.color || 'grey'
 
 const AUTOMATIC_CATEGORIES = ['DESEMBOLSO', 'REEMBOLSO', 'JUROS_MORA', 'TAXA_ADMIN']
+// A diferença de caixa é um AUTO DE OCORRÊNCIA: nasce no fecho do caixa e é
+// justificada pelo Admin (conta 58x) — nunca lançada à mão no formulário.
+const NON_MANUAL_CATEGORIES = [...AUTOMATIC_CATEGORIES, 'DIFERENCA_CAIXA']
 const manualCategoryOptions = Object.entries(categoryMeta)
-  .filter(([key]) => !AUTOMATIC_CATEGORIES.includes(key))
+  .filter(([key]) => !NON_MANUAL_CATEGORIES.includes(key))
   .map(([value, meta]) => ({ label: meta.label, value }))
 
 // ─── Contas bancárias ───
@@ -804,14 +1322,29 @@ const columns = [
   { name: 'description', label: 'Descrição', field: 'description', align: 'left' },
   { name: 'account', label: 'Conta Bancária', field: 'bankAccountId', align: 'center' },
   { name: 'amount', label: 'Valor', field: 'amount', align: 'right', sortable: true },
-  { name: 'user', label: 'Utilizador', field: 'createdByName', align: 'center' }
+  { name: 'user', label: 'Utilizador', field: 'createdByName', align: 'center' },
+  { name: 'comprovativo', label: 'Comprovativo', field: () => '', align: 'center' }
 ]
 
 const accountColumns = [
-  { name: 'bank', label: 'Bank / Número', field: 'bank_name', align: 'left' },
+  { name: 'bank', label: 'Banco / Número', field: 'bank_name', align: 'left' },
   { name: 'purpose', label: 'Finalidade', field: 'purpose', align: 'center' },
-  { name: 'balance', label: 'Saldo Atual', field: 'balance', align: 'right' },
+  { name: 'balance', label: 'Saldo', field: 'balance', align: 'right' },
   { name: 'active', label: 'Estado', field: 'is_active', align: 'center' }
+]
+
+// ─── Tabela de diferenças de caixa (quebras / sobras) ───
+const differenceColumns = [
+  { name: 'dia', label: 'Dia', field: 'data_caixa', align: 'center' },
+  { name: 'operador', label: 'Operador', field: 'userName', align: 'left' },
+  { name: 'tipo', label: 'Tipo', field: 'tipo', align: 'center' },
+  { name: 'valor', label: 'Valor', field: 'valor', align: 'right', sortable: true },
+  { name: 'contado', label: 'Contado', field: 'valor_contado', align: 'right' },
+  { name: 'apurado', label: 'Apurado', field: 'valor_apurado', align: 'right' },
+  { name: 'conta', label: 'Conta', field: 'conta_label', align: 'center' },
+  { name: 'estado', label: 'Estado', field: 'status', align: 'center' },
+  { name: 'justificacao', label: 'Auto de ocorrência', field: 'justificacao', align: 'left' },
+  { name: 'actions', label: 'Acções', field: 'actions', align: 'center' }
 ]
 
 // ─── API: caixa de hoje ───
@@ -842,61 +1375,160 @@ async function fetchSystemRegister() {
   }
 }
 
-// ─── Dialog: abrir caixa ───
-const openDialog = ref(false)
-const openForm = ref({ opening_balance: null })
-// Sugestão de saldo inicial (valor contado no último fecho do utilizador)
-const openingSuggestion = ref({ suggested: 0, source: '', previousDate: null })
-
-// Texto amigável da origem da sugestão (auditoria transparente)
-const suggestionLabel = computed(() => {
-  const s = openingSuggestion.value
-  if (!s || !s.source || s.source === 'primeiro-dia') return ''
-  const day = s.previousDate ? formatDay(s.previousDate) : ''
-  switch (s.source) {
-    case 'contado-anterior':
-      return `Sugerido: valor contado no fecho de ${day}`
-    case 'contado-outro-operador':
-      return `Sugerido: contado no fecho de ${day} (outro operador)`
-    case 'calculado-anterior':
-      return `Sugerido: saldo calculado do fecho de ${day}`
-    case 'calculado-outro-operador':
-      return `Sugerido: saldo do fecho de ${day} (outro operador)`
-    default:
-      return ''
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// DIFERENÇAS DE CAIXA (QUEBRAS / SOBRAS) — CONTROLO DO ADMIN
+// ─────────────────────────────────────────────────────────────────────────────
+const differences = ref([])
+const loadingDifferences = ref(false)
+const differenceFilter = ref('PENDENTE')
+const differenceFilterOptions = [
+  { label: 'Pendentes', value: 'PENDENTE' },
+  { label: 'Justificadas e lançadas', value: 'JUSTIFICADA' },
+  { label: 'Todas', value: null }
+]
+const differenceSummary = ref({
+  total: 0,
+  pendentes: 0,
+  valor_pendente: 0,
+  conta_contabilistica: '58 — Quebras de Caixa'
 })
 
-/** Busca a sugestão (chamada ao abrir o dialog). Nunca bloqueia a abertura. */
-async function fetchOpeningSuggestion() {
+// Número de diferenças pendentes — alimenta o badge do separador.
+const pendingDifferencesCount = computed(() => Number(differenceSummary.value.pendentes) || 0)
+
+// ─── Painel de tesouraria (Admin): excedentes do limite + diferenças por operador ───
+const treasuryPanel = ref({ limite: null, summary: null, excedentes: [], diferencas_por_operador: [] })
+
+const excessColumns = [
+  { name: 'operador', label: 'Operador', field: 'userName', align: 'left' },
+  { name: 'data', label: 'Dia', field: 'opening_date', align: 'center' },
+  { name: 'dinheiro', label: 'Dinheiro em gaveta', field: 'dinheiro_em_caixa', align: 'right' },
+  { name: 'limite', label: 'Limite', field: 'cash_limit_mzn', align: 'right' },
+  { name: 'excedente', label: 'Excedente', field: 'excedente', align: 'right', sortable: true }
+]
+
+const treasuryDiffColumns = [
+  { name: 'operador', label: 'Operador', field: 'userName', align: 'left' },
+  { name: 'pendentes', label: 'Nº pendentes', field: 'total_pendentes', align: 'center', sortable: true },
+  { name: 'quebras', label: 'Quebras', field: 'quebras', align: 'center' },
+  { name: 'sobras', label: 'Sobras', field: 'sobras', align: 'center' },
+  { name: 'valor', label: 'Valor pendente', field: 'valor_pendente', align: 'right', sortable: true },
+  { name: 'ultima', label: 'Última ocorrência', field: 'ultima_data', align: 'center' }
+]
+
+async function fetchTreasuryPanel() {
   try {
-    const { data } = await api.get('/api/cash-registers/opening-balance-suggestion')
-    if (data?.success && data.result) {
-      openingSuggestion.value = data.result
-      // Pré-preenche com o valor contado no fecho anterior (0 no primeiro dia).
-      openForm.value.opening_balance = Number(data.result.suggested) || 0
-    }
-  } catch {
-    // silencioso — dialog abre com campo vazio e o operador preenche à mão
+    const { data } = await api.get('/api/cash-registers/treasury-panel')
+    if (data.success) treasuryPanel.value = data.result
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || 'Erro ao carregar o painel de tesouraria',
+      position: 'top'
+    })
   }
 }
 
+/**
+ * Carrega as diferenças de caixa. O contador de PENDENTES é sempre buscado
+ * (mesmo com o filtro "Justificadas"), para o badge não mentir.
+ */
+async function fetchDifferences() {
+  loadingDifferences.value = true
+  try {
+    const filtered = await api.get('/api/cash-registers/differences', {
+      params: differenceFilter.value ? { status: differenceFilter.value } : {}
+    })
+    if (filtered.data?.success) {
+      differences.value = filtered.data.result || []
+      differenceSummary.value = filtered.data.summary || differenceSummary.value
+    }
+
+    if (differenceFilter.value !== 'PENDENTE') {
+      const pendentes = await api.get('/api/cash-registers/differences', {
+        params: { status: 'PENDENTE' }
+      })
+      if (pendentes.data?.success) {
+        differenceSummary.value = pendentes.data.summary || differenceSummary.value
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao carregar diferenças de caixa:', error)
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || 'Erro ao carregar as diferenças de caixa',
+      position: 'top'
+    })
+  } finally {
+    loadingDifferences.value = false
+  }
+}
+
+// ─── Dialog: justificar e lançar a diferença no Livro Caixa (conta 58x) ───
+const justifyDialog = ref(false)
+const justifyTarget = ref(null)
+const justifyForm = ref({ justificacao: '', conta_contabilistica: '58' })
+
+function openJustifyDialog(row) {
+  justifyTarget.value = row
+  justifyForm.value = { justificacao: '', conta_contabilistica: '58' }
+  justifyDialog.value = true
+}
+
+async function submitJustification() {
+  const target = justifyTarget.value
+  const justificacao = (justifyForm.value.justificacao || '').trim()
+  if (!target || justificacao.length < 10) {
+    $q.notify({ type: 'warning', message: 'A justificação é obrigatória (mínimo 10 caracteres)', position: 'top' })
+    return
+  }
+  saving.value = true
+  try {
+    const { data } = await api.post(`/api/cash-registers/differences/${target.id}/justify`, {
+      justificacao,
+      conta_contabilistica: justifyForm.value.conta_contabilistica || undefined
+    })
+    if (data.success) {
+      $q.notify({
+        type: 'positive',
+        message: data.message || 'Diferença justificada e lançada na conta 58 — Quebras de Caixa.',
+        position: 'top'
+      })
+      justifyDialog.value = false
+      justifyTarget.value = null
+      await fetchDifferences()
+    }
+  } catch (error) {
+    const status = error.response?.status
+    const message = status === 403
+      ? 'Apenas o Administrador da empresa pode justificar e lançar diferenças de caixa.'
+      : (error.response?.data?.message || 'Erro ao justificar a diferença de caixa')
+    $q.notify({ type: 'negative', message, position: 'top' })
+  } finally {
+    saving.value = false
+  }
+}
+
+// ─── Dialog: abrir caixa ───
+// O caixa abre sempre com SALDO ZERO DISPONÍVEL — sem sugestão de saldo
+// inicial (o valor do fecho anterior não é arrastado).
+const openDialog = ref(false)
+const openForm = ref({ denominations: emptyDenominationCount() })
+
 function openOpenDialog() {
-  openForm.value = { opening_balance: null }
-  openingSuggestion.value = { suggested: 0, source: '', previousDate: null }
+  openForm.value = { denominations: emptyDenominationCount() }
   openDialog.value = true
-  fetchOpeningSuggestion()
 }
 
 async function submitOpen() {
-  if (openForm.value.opening_balance === null || openForm.value.opening_balance === '') {
-    $q.notify({ type: 'warning', message: 'Informe o saldo inicial', position: 'top' })
+  if (isEmptyDenominations(openForm.value.denominations)) {
+    $q.notify({ type: 'warning', message: 'Conte o fundo de maneio por denominação (notas e moedas)', position: 'top' })
     return
   }
   saving.value = true
   try {
     const { data } = await api.post('/api/cash-registers/open', {
-      opening_balance: openForm.value.opening_balance
+      denominations: openForm.value.denominations
     })
     if (data.success) {
       $q.notify({ type: 'positive', message: 'Caixa aberto com sucesso!', position: 'top' })
@@ -918,6 +1550,47 @@ const needsBankAccount = computed(() => movementForm.value.payment_method && mov
 
 function openMovementDialog(type) {
   movementForm.value = { type, category: null, amount: null, description: '', payment_method: 'CASH', bank_account_id: null }
+  movementDialog.value = true
+}
+
+// OPERAÇÕES OFICIAIS DE TESOURARIA (terminologia BM) — 3 botões do rodapé.
+const TREASURY_OPERATIONS = [
+  {
+    category: 'ENTREGA_COFRE',
+    type: 'SAIDA',
+    icon: 'savings',
+    label: 'Entrega de Valores ao Cofre Central',
+    hint: 'Entrega do excedente ao Tesoureiro/Cofre Central — comprovativo assinado'
+  },
+  {
+    category: 'REFORCO_CAIXA',
+    type: 'ENTRADA',
+    icon: 'request_quote',
+    label: 'Requisição de Reforço de Caixa',
+    hint: 'Pedido de fundo de maneio do Cofre para o guichê'
+  },
+  {
+    category: 'DEPOSITO_BANCARIO',
+    type: 'SAIDA',
+    icon: 'account_balance',
+    label: 'Guia de Depósito Bancário',
+    hint: 'Registo de depósito do excedente no banco/M-Pesa (guia de depósito)'
+  }
+]
+
+// Busca de uma operação oficial por categoria (botões do rodapé e do limite).
+const treasuryOp = (category) => TREASURY_OPERATIONS.find((op) => op.category === category)
+
+// Dialog de movimento com a categoria oficial pré-seleccionada.
+function openTreasuryDialog(operation) {
+  movementForm.value = {
+    type: operation.type,
+    category: operation.category,
+    amount: null,
+    description: '',
+    payment_method: 'CASH',
+    bank_account_id: null
+  }
   movementDialog.value = true
 }
 
@@ -950,6 +1623,29 @@ async function submitMovement() {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao registar movimento', position: 'top' })
   } finally {
     saving.value = false
+  }
+}
+
+// Comprovativo de Entrega de Valores ao Cofre Central — documento PDF próprio
+// (A4) com selo electrónico (hash SHA-256) e QR de validação pública.
+async function downloadComprovativo(movement) {
+  try {
+    const response = await api.get(`/api/cash-movements/${movement.id}/comprovativo`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `comprovativo-entrega-cofre-${movement.id}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    setTimeout(() => window.URL.revokeObjectURL(url), 30000)
+    $q.notify({ type: 'positive', message: 'Comprovativo de entrega gerado (PDF + QR)', position: 'top' })
+  } catch (error) {
+    $q.notify({
+      type: 'negative',
+      message: error.response?.data?.message || 'Erro ao gerar o comprovativo de entrega',
+      position: 'top'
+    })
   }
 }
 
@@ -1014,63 +1710,108 @@ async function submitWithdraw() {
   }
 }
 
-// ─── Dialog: fechar caixa (divergência em tempo real) ───
+// ─── Dialog: fechar caixa (CONFERÊNCIA CEGA por denominação) ───
+// O operador conta fisicamente; só vê o TOTAL contado — a diferença é apurada
+// no backend e nunca é mostrada durante a contagem.
 const closeDialog = ref(false)
-const closeForm = ref({ closing_balance_informed: null, notes: '' })
+const closeForm = ref({ denominations: emptyDenominationCount(), tipo_fechamento: 'NORMAL', notes: '' })
+const closingTypeOptions = [
+  { value: 'NORMAL', label: 'Fecho normal (sem divergência)' },
+  { value: 'ENTREGA_COFRE', label: 'Fecho com entrega do excedente ao Cofre' },
+  { value: 'DEPOSITO_BANCARIO', label: 'Fecho com depósito do excedente no banco' }
+]
+
+// ─── Pós-fecho (conferência cega): resultado apresentado ao operador ───
+const closeResultDialog = ref(false)   // "Caixa Certo - Gerar Mapa Diário"
+const autoDialog = ref(false)          // "Auto de Ocorrência - Diferença de Caixa"
+const autoRegistered = ref(false)      // observação do operador já submetida
+const autoForm = ref({ quebra: true, valor: 0, observacao: '' })
+// Auto de ocorrência criado no fecho (diferenca_pendente da resposta).
+const pendingDifference = ref(null)
 
 function openCloseDialog() {
-  closeForm.value = { closing_balance_informed: null, notes: '' }
+  closeForm.value = { denominations: emptyDenominationCount(), tipo_fechamento: 'NORMAL', notes: '' }
   closeDialog.value = true
 }
 
-const liveDifference = computed(() => {
-  const informed = Number(closeForm.value.closing_balance_informed)
-  if (!Number.isFinite(informed)) return 0
-  return round2(informed - cashBalance.value)
-})
-
-const liveDifferenceClass = computed(() =>
-  Math.abs(liveDifference.value) < 0.01 ? 'bg-green-1 text-green-9' : 'bg-amber-2 text-amber-10'
-)
-
-const liveDifferenceLabel = computed(() => {
-  const diff = liveDifference.value
-  if (Math.abs(diff) < 0.01) return 'Caixa fechado sem divergência.'
-  return diff > 0
-    ? `Excedente de ${formatMZN(diff)} — verifique se algum movimento falta registar.`
-    : `Faltam ${formatMZN(Math.abs(diff))} em caixa — confirme o valor contado.`
-})
-
 async function submitClose() {
-  const informed = Number(closeForm.value.closing_balance_informed)
-  if (!Number.isFinite(informed) || informed < 0) {
-    $q.notify({ type: 'warning', message: 'Informe o valor contado em caixa', position: 'top' })
+  if (isEmptyDenominations(closeForm.value.denominations)) {
+    // Gaveta vazia: confirmar antes de enviar a contagem a zero.
+    $q.dialog({
+      title: 'Confirmar contagem a zero',
+      message: 'Não contou nenhuma nota nem moeda. Confirma que a gaveta está vazia?',
+      cancel: true,
+      persistent: true
+    }).onOk(() => postClose())
     return
   }
+  await postClose()
+}
+
+async function postClose() {
   saving.value = true
   try {
     const { data } = await api.post(`/api/cash-registers/${register.value.id}/close`, {
-      closing_balance_informed: informed,
+      denominations: closeForm.value.denominations,
+      tipo_fechamento: closeForm.value.tipo_fechamento,
       notes: closeForm.value.notes || undefined
     })
     if (data.success) {
       const diff = Number(data.result?.difference) || 0
-      $q.notify({
-        type: Math.abs(diff) < 0.01 ? 'positive' : 'warning',
-        message: Math.abs(diff) < 0.01
-          ? 'Caixa fechado sem divergência!'
-          : `Caixa fechado. Divergência: ${formatMZN(diff)}`,
-        position: 'top',
-        timeout: 5000
-      })
+      pendingDifference.value = data.result?.diferenca_pendente || null
       closeDialog.value = false
-      await fetchToday()
+      await Promise.all([fetchToday(), fetchDifferences()])
+      if (Math.abs(diff) < 0.01) {
+        // CAIXA CERTO — a contagem confirma o valor do caixa.
+        $q.notify({ type: 'positive', message: 'Caixa Certo - Gerar Mapa Diário', position: 'top' })
+        closeResultDialog.value = true
+      } else {
+        // AUTO DE OCORRÊNCIA — a Observação / Justificação do operador é OBRIGATÓRIA.
+        autoForm.value = { quebra: diff < 0, valor: Math.abs(diff), observacao: '' }
+        autoRegistered.value = false
+        autoDialog.value = true
+      }
     }
   } catch (error) {
     $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao fechar caixa', position: 'top' })
   } finally {
     saving.value = false
   }
+}
+
+// Auto de Ocorrência: observação/justificação OBRIGATÓRIA do operador — vai para
+// o auto (cash_differences), que fica PENDENTE até o Admin justificar e lançar
+// no Livro Caixa (conta 58 — Quebras de Caixa).
+async function submitAutoObservacao() {
+  const obs = (autoForm.value.observacao || '').trim()
+  if (obs.length < 10) {
+    $q.notify({ type: 'warning', message: 'A Observação / Justificação é obrigatória (mín. 10 caracteres)', position: 'top' })
+    return
+  }
+  const id = pendingDifference.value?.id
+  if (!id) {
+    $q.notify({ type: 'negative', message: 'Auto de ocorrência não identificado', position: 'top' })
+    return
+  }
+  saving.value = true
+  try {
+    const { data } = await api.post(`/api/cash-registers/differences/${id}/observacao`, { observacao: obs })
+    if (data.success) {
+      autoRegistered.value = true
+      $q.notify({ type: 'positive', message: 'Auto de ocorrência registado — pendente de validação pelo Administrador.', position: 'top' })
+    }
+  } catch (error) {
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao registar o auto de ocorrência', position: 'top' })
+  } finally {
+    saving.value = false
+  }
+}
+
+// Imprime o Mapa Diário a partir dos diálogos de resultado do fecho.
+async function printFromDialog() {
+  closeResultDialog.value = false
+  autoDialog.value = false
+  await exportPDF()
 }
 
 // ==================== EXPORTAÇÃO PDF ====================
@@ -1087,25 +1828,9 @@ async function exportPDF() {
   if (movements.value.length === 0) return
   try {
     const { downloadTablePdf, tablePdfError } = await import('@/utils/tablePdf')
+    const { buildMapaDiarioPayload } = await import('@/utils/mapaDiarioBM')
     const reg = register.value
     const dayLabel = formatDay(reg.opening_date)
-
-    const summaryRows = [
-      ['Estado do caixa', reg.status === 'ABERTO' ? 'ABERTO' : 'FECHADO'],
-      ['Saldo inicial (cash)', moneyRaw(reg.opening_balance) + ' MZN'],
-      ['Entradas cash', moneyRaw(reg.total_cash_in) + ' MZN'],
-      ['Saídas cash', moneyRaw(reg.total_cash_out) + ' MZN'],
-      ['Entradas banco', moneyRaw(reg.total_bank_in) + ' MZN'],
-      ['Saídas banco', moneyRaw(reg.total_bank_out) + ' MZN'],
-      ['Saldo consolidado', moneyRaw(consolidatedBalance.value) + ' MZN']
-    ]
-    if (reg.status === 'FECHADO') {
-      summaryRows.push(
-        ['Valor contado (cash)', moneyRaw(reg.closing_balance_informed) + ' MZN'],
-        ['Divergência', moneyRaw(reg.difference) + ' MZN' +
-          (Math.abs(Number(reg.difference)) < 0.01 ? '  ✓' : '  ⚠ ATENÇÃO')]
-      )
-    }
 
     // Origem por movimento: Portal (Caixa do Sistema / etiqueta fora de expediente)
     // vs Balcão (cobranças presenciais dos operadores)
@@ -1124,18 +1849,26 @@ async function exportPDF() {
       ['TOTAL', moneyRaw(totalIn) + ' MZN', '100%']
     ]
 
-    await downloadTablePdf({
-      title: `Caixa Central — ${dayLabel}`,
-      meta: [`${movements.value.length} movimento(s) · ${reg.status}`],
-      filename: `caixa-central-${reg.opening_date}-resumo`,
-      columns: [{ label: 'Resumo do caixa', width: 250 }, { label: 'Valor', align: 'right' }],
-      rows: [...summaryRows.map(([l, v]) => [String(l), String(v)]), [], ['PAGAMENTOS — PORTAL vs BALCÃO (entradas)', '', ''], ['Canal', 'Entradas', '% do total'], ...channelRows]
-    }, `caixa-central-${reg.opening_date}-resumo.pdf`)
+    // ── MAPA DIÁRIO DE CAIXA — MODELO BM (A4, util partilhado) ──
+    const mapaPayload = buildMapaDiarioPayload({
+      register: reg,
+      movements: movements.value,
+      userName: authStore.userName || '—',
+      dayLabel,
+      denominations: reg.denominations_close || reg.denominations_open || null,
+      extraRows: [
+        ['', ''],
+        ['PAGAMENTOS — PORTAL vs BALCÃO (entradas)', ''],
+        ['Canal | Entradas | % do total', ''],
+        ...channelRows.map(([canal, valor, pct]) => [String(canal), `${String(valor)} | ${String(pct)}`])
+      ]
+    })
+    await downloadTablePdf(mapaPayload, `${mapaPayload.filename}.pdf`)
 
     await downloadTablePdf({
-      title: `Caixa Central — Movimentos (${dayLabel})`,
-      meta: [`cash +${moneyRaw(reg.total_cash_in)}/−${moneyRaw(reg.total_cash_out)} · bank +${moneyRaw(reg.total_bank_in)}/−${moneyRaw(reg.total_bank_out)} MZN`],
-      filename: `caixa-central-${reg.opening_date}-movimentos`,
+      title: `Mapa Diário de Caixa - Modelo BM — Movimentos (${dayLabel})`,
+      meta: [`numerário +${moneyRaw(reg.total_cash_in)}/−${moneyRaw(reg.total_cash_out)} · electrónico +${moneyRaw(reg.total_bank_in)}/−${moneyRaw(reg.total_bank_out)} MZN`],
+      filename: `mapa-caixa-${reg.opening_date}-central-movimentos`,
       columns: [
         { label: 'Hora', width: 50 },
         { label: 'Método', width: 65 },
@@ -1156,7 +1889,7 @@ async function exportPDF() {
       ])
     }, `caixa-central-${reg.opening_date}-movimentos.pdf`)
 
-    $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
+    $q.notify({ type: 'positive', message: 'Mapa Diário de Caixa gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF do caixa:', e)
     const { tablePdfError } = await import('@/utils/tablePdf')
@@ -1211,7 +1944,7 @@ async function submitSystemClose() {
 
 // ─── Mount ───
 onMounted(async () => {
-  await Promise.all([fetchToday(), fetchAccounts(), fetchSystemRegister()])
+  await Promise.all([fetchToday(), fetchAccounts(), fetchSystemRegister(), fetchDifferences(), fetchTreasuryPanel()])
 })
 </script>
 

@@ -7,6 +7,7 @@ import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { CustomerModel } from "../database/models/CustomerModel";
 import { CompanyModel } from "../database/models/CompanyModel";
 import { installmentPanification } from "../utils/calculateLateAmount";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 import { getWalletWithAnalytics, WalletWithAnalytics } from "./financingWalletService";
 
 /**
@@ -68,8 +69,8 @@ const loadMoraByLoan = async (scope: PartnerScope) => {
   })) as any[];
   if (loans.length === 0) return { byLoan: new Map<number, any>(), byInstallment: new Map<number, number>() };
 
-  const forfeitRow: any = (await CompanyModel.findByPk(scope.companyId, { attributes: ["forfeit"], raw: true })) as any;
-  const forfeit = num(forfeitRow?.forfeit);
+  // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+  const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(scope.companyId);
 
   const installments: any[] = (await AmorizationLoanModel.findAll({
     where: { loanId: { [Op.in]: loans.map((loan) => Number(loan.id)) } },
@@ -87,7 +88,7 @@ const loadMoraByLoan = async (scope: PartnerScope) => {
   });
 
   grouped.forEach((list, loanId) => {
-    const calculated = installmentPanification(list, forfeit);
+    const calculated = installmentPanification(list, forfeit, undefined, { maxLateDays, capPercent });
     let generated = 0;
     let overdueCount = 0;
     let maxDays = 0;

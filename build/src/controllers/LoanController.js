@@ -32,18 +32,20 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.simulateLoan = exports.updateLoanInstallmentDates = exports.invalidateDisbursedLoan = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.loanDetail = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
+exports.prepareLoanDisbursement = exports.rejectLoan = exports.approveLoan = exports.submitLoanForApproval = exports.loanApprovalTimeline = exports.loanApprovalRules = exports.getLoanGuaranteeCoverage = exports.simulateLoan = exports.updateLoanInstallmentDates = exports.invalidateDisbursedLoan = exports.destroyLoan = exports.updateLoan = exports.createLoan = exports.loanDetail = exports.getLoanAmortization = exports.findLoanByCustomer = exports.findAllLoansOverview = exports.findAllLoans = void 0;
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const LoanModel_1 = require("../database/models/LoanModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
-const CompanyModel_1 = require("../database/models/CompanyModel");
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const NotificationModel_1 = require("../database/models/NotificationModel");
 const UserModel_1 = require("../database/models/UserModel");
 const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const sequelize_1 = require("sequelize");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
-const loanAmortization_1 = require("../utils/loanAmortization");
+const lateInterestService_1 = require("../services/lateInterestService");
+const capacityRule_1 = require("../utils/capacityRule");
+const requestActor_1 = require("../utils/requestActor");
+const loanApprovalService_1 = require("../services/loanApprovalService");
 const db_1 = require("../database/db");
 const DebtModel_1 = require("../database/models/DebtModel");
 const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
@@ -51,7 +53,8 @@ const FinancingWalletModel_1 = require("../database/models/FinancingWalletModel"
 const ReciboModel_1 = require("../database/models/ReciboModel");
 const reciboService_1 = require("../services/reciboService");
 const kycDocuments_1 = require("../utils/kycDocuments");
-const loanAmortization_2 = require("../utils/loanAmortization");
+const guaranteeCoverageService_1 = require("../services/guaranteeCoverageService");
+const loanAmortization_1 = require("../utils/loanAmortization");
 const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -69,60 +72,8 @@ const subtractMonths = (dateStr, months) => {
     const dd = String(date.getDate()).padStart(2, "0");
     return `${date.getFullYear()}-${mm}-${dd}`;
 };
-const calculateInstallmentValue = (amount, interestRate, numberOfInstallments) => {
-    const principal = toNumber(amount);
-    const rate = toNumber(interestRate);
-    const installments = Math.max(1, parseInt(String(numberOfInstallments || 1), 10));
-    if (principal <= 0)
-        return 0;
-    if (rate <= 0)
-        return principal / installments;
-    return (0, loanAmortization_1.calculateFrenchAmortizationInstallment)(principal, rate, installments);
-};
-const normalizeCapacityObservation = (value) => {
-    if (typeof value !== "string")
-        return "";
-    return value.trim();
-};
-const validateCapacityRule = (params) => __awaiter(void 0, void 0, void 0, function* () {
-    const customer = yield CustomerModel_1.CustomerModel.findOne({
-        where: {
-            accountNumber: params.accountNumber,
-            companyId: params.companyId,
-        },
-        attributes: ["accountNumber", "customerMonthlySalary"],
-    });
-    if (!customer) {
-        return {
-            valid: false,
-            statusCode: 404,
-            message: "Mutuário não encontrado para validar capacidade de pagamento.",
-        };
-    }
-    const monthlySalary = toNumber(customer.customerMonthlySalary);
-    const maxCapacity = monthlySalary / 3;
-    const estimatedInstallment = calculateInstallmentValue(params.amount, params.interestRate, params.numberOfInstallments);
-    const isExceeded = estimatedInstallment > maxCapacity;
-    const observation = normalizeCapacityObservation(params.capacityExcessObservation);
-    if (isExceeded && observation.length < 10) {
-        return {
-            valid: false,
-            statusCode: 400,
-            message: "A prestação excede 1/3 do rendimento mensal. Informe um parecer/observação com no mínimo 10 caracteres.",
-            details: {
-                maxCapacity,
-                estimatedInstallment,
-            },
-        };
-    }
-    return {
-        valid: true,
-        maxCapacity,
-        estimatedInstallment,
-        isExceeded,
-        normalizedObservation: observation || null,
-    };
-});
+// Regra de capacidade de pagamento (1/3 do rendimento) — extraída para
+// src/utils/capacityRule.ts e partilhada com o motor de alçadas (SPRINT 5).
 /**
  * Verifica a checklist KYC do mutuário antes de criar/desembolsar crédito.
  * Regra: nenhum crédito avança sem os 3 documentos base (BI, NUIT,
@@ -163,7 +114,7 @@ const simulateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* (
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
             return res.status(400).json({ success: false, message: "Data inválida (formato YYYY-MM-DD)." });
         }
-        const plan = (0, loanAmortization_2.simulator)({
+        const plan = (0, loanAmortization_1.simulator)({
             amount: String(principal),
             numberOfInstallments: String(periods),
             interestRate: String(rate),
@@ -214,7 +165,8 @@ const findLoanByCustomer = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.findLoanByCustomer = findLoanByCustomer;
 const findAllLoans = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { id, companyId } = req.params;
-    const whereClause = { companyId };
+    // SPRINT 6: o Gestor só vê a SUA carteira (creditManager); o Admin vê tudo.
+    const whereClause = Object.assign({ companyId }, (0, requestActor_1.gestorScopeWhere)(yield (0, requestActor_1.actorFromRequest)(req)));
     // Compatibilidade com o contrato existente:
     // `id` pode vir como data (YYYY-MM-DD). Se vier "all", não filtra por data.
     if (id && id !== "all") {
@@ -242,10 +194,9 @@ const getLoanAmortization = (req, res) => __awaiter(void 0, void 0, void 0, func
     if (!loan) {
         return res.status(404).json({ success: false, message: "Crédito não encontrado." });
     }
-    const company = yield CompanyModel_1.CompanyModel.findByPk(loan.getDataValue("companyId"), {
-        attributes: ["forfeit"],
-    });
-    const installments = (0, calculateLateAmount_1.installmentPanification)(loans, Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0));
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(Number(loan.getDataValue("companyId")));
+    const installments = (0, calculateLateAmount_1.installmentPanification)(loans, forfeit, undefined, { maxLateDays, capPercent });
     const installmentIds = loans.map((item) => item.id);
     const paidLateInterest = installmentIds.length > 0
         ? yield TranzactionModel_1.TranzactionModel.findAll({
@@ -317,8 +268,8 @@ const getLoanAmortization = (req, res) => __awaiter(void 0, void 0, void 0, func
 });
 exports.getLoanAmortization = getLoanAmortization;
 const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    let { accountNumber, companyId, amount, numberOfInstallments, interestRate, administrativeFee, creditManager, loanDescription, capacityExcessObservation, dateCreated, status, } = req.body;
+    var _a, _b, _c;
+    let { accountNumber, companyId, amount, numberOfInstallments, interestRate, administrativeFee, creditManager, loanDescription, capacityExcessObservation, dateCreated, } = req.body;
     // ── Validações de entrada (sem Joi — inline) ──
     if (!loanDescription || !String(loanDescription).trim()) {
         return res.status(400).json({ success: false, message: "A finalidade/descrição do crédito é obrigatória." });
@@ -329,7 +280,7 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     if (!creditManager) {
         return res.status(400).json({ success: false, message: "O gestor de crédito é obrigatório." });
     }
-    const capacityValidation = yield validateCapacityRule({
+    const capacityValidation = yield (0, capacityRule_1.validateCapacityRule)({
         accountNumber,
         companyId,
         amount,
@@ -388,9 +339,25 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         loanDescription,
         capacityExcessObservation: capacityValidation.normalizedObservation,
         dateCreated,
-        status,
+        // ── SPRINT 5: um crédito nasce sempre por aprovar — o `status` do corpo
+        // nunca activa um crédito (aprovar é decisão; desembolso é outra acção).
+        status: 0,
         walletId,
     });
+    // ── SPRINT 5: linha do tempo — rascunho ou submissão imediata ──
+    if (loan) {
+        try {
+            yield (0, loanApprovalService_1.recordLoanCreation)({
+                loanId: Number(loan.id),
+                actor: yield (0, requestActor_1.actorFromRequest)(req),
+                asDraft: !!((_b = req.body) === null || _b === void 0 ? void 0 : _b.asDraft),
+                notes: ((_c = req.body) === null || _c === void 0 ? void 0 : _c.notes) || null,
+            });
+        }
+        catch (creationError) {
+            console.error("[Alçadas] Falha ao registar criação na linha do tempo:", (creationError === null || creationError === void 0 ? void 0 : creationError.message) || creationError);
+        }
+    }
     // Criar notificação para admin/gestor sobre nova solicitação
     if (loan) {
         try {
@@ -430,8 +397,10 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
 });
 exports.createLoan = createLoan;
 const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _b, _c, _d, _e;
+    var _d, _e, _f, _g, _h, _j, _k;
     const { id } = req.params;
+    // ── SPRINT 5 (alçadas): o estado de workflow nunca vem do cliente ──
+    delete req.body.approvalState;
     // Buscar o empréstimo antes de atualizar para verificar mudança de status
     const previousLoan = yield LoanModel_1.LoanModel.findByPk(id);
     if (previousLoan && Number(previousLoan.status) === 1 && Number(req.body.status) === 0) {
@@ -446,14 +415,80 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     const reopeningRejected = !!previousLoan &&
         Number(req.body.status) === 0 &&
         [2, -1].includes(Number(previousLoan.status));
+    // ── SPRINT 5 (ALÇADAS): qualquer transição de estado passa pelo motor de
+    // aprovação — APROVAR é decisão (não mexe no caixa); DESEMBOLSAR é outra
+    // acção. O caminho legado (status → 1) respeita as mesmas alçadas do
+    // POST /api/loan/:id/approve: Gestor ≤ 25.000 · Admin ≤ 100.000 · acima,
+    // Comitê de Crédito (2 aprovações de Admins diferentes). Precedência dos
+    // erros: alçada → capacidade → garantias (tudo dentro do serviço).
+    const approvalActor = yield (0, requestActor_1.actorFromRequest)(req);
+    const isLegacyActivation = !!previousLoan && Number(req.body.status) === 1 && Number(previousLoan.status) !== 1;
+    const isLegacyReject = !!previousLoan &&
+        [2, -1].includes(Number(req.body.status)) &&
+        ![2, -1].includes(Number(previousLoan.status));
+    const isLegacyReopen = !!previousLoan &&
+        Number(req.body.status) === 0 &&
+        [2, -1].includes(Number(previousLoan.status));
+    let approvalHandled = null;
+    try {
+        if (isLegacyActivation) {
+            approvalHandled = yield (0, loanApprovalService_1.approveLoan)({
+                loanId: Number(id),
+                actor: approvalActor,
+                notes: (_d = req.body.capacityExcessObservation) !== null && _d !== void 0 ? _d : null,
+            });
+            if (approvalHandled.state === "APROVADO_PARCIALMENTE") {
+                return res.status(200).json({
+                    success: true,
+                    message: `Aprovação ${approvalHandled.approvalsCount} de ${approvalHandled.requiredApprovals} registada — aguarda a segunda aprovação do Comitê de Crédito.`,
+                    approvalState: approvalHandled.state,
+                    approvalsCount: approvalHandled.approvalsCount,
+                    requiredApprovals: approvalHandled.requiredApprovals,
+                });
+            }
+            // Totalmente aprovado: só "activa" (status 1) se já existe plano de
+            // amortização (desembolso real). Caso contrário fica por desembolsar —
+            // aprovar não mexe no caixa.
+            const hasPlan = yield AmortizationLoanModel_1.AmorizationLoanModel.findOne({ where: { loanId: Number(id) } });
+            req.body.status = hasPlan ? 1 : 0;
+            if (hasPlan) {
+                yield (0, loanApprovalService_1.markLoanDisbursed)({
+                    loanId: Number(id),
+                    actor: approvalActor,
+                    notes: "Activação com plano de amortização existente",
+                });
+            }
+        }
+        else if (isLegacyReject) {
+            yield (0, loanApprovalService_1.rejectLoan)({
+                loanId: Number(id),
+                actor: approvalActor,
+                reason: (_e = req.body.capacityExcessObservation) !== null && _e !== void 0 ? _e : null,
+            });
+        }
+        else if (isLegacyReopen) {
+            yield (0, loanApprovalService_1.reopenLoanForApproval)({
+                loanId: Number(id),
+                actor: approvalActor,
+                notes: (_f = req.body.capacityExcessObservation) !== null && _f !== void 0 ? _f : null,
+            });
+        }
+    }
+    catch (approvalError) {
+        return res.status((approvalError === null || approvalError === void 0 ? void 0 : approvalError.http) || 500).json({
+            success: false,
+            error: (approvalError === null || approvalError === void 0 ? void 0 : approvalError.code) || "APPROVAL_ERROR",
+            message: (approvalError === null || approvalError === void 0 ? void 0 : approvalError.message) || "Não foi possível processar a decisão de aprovação.",
+        });
+    }
     if (previousLoan && (Number(req.body.status) === 1 || reopeningRejected)) {
-        const capacityValidation = yield validateCapacityRule({
+        const capacityValidation = yield (0, capacityRule_1.validateCapacityRule)({
             accountNumber: previousLoan.accountNumber,
             companyId: previousLoan.companyId,
-            amount: (_b = req.body.amount) !== null && _b !== void 0 ? _b : previousLoan.amount,
-            interestRate: (_c = req.body.interestRate) !== null && _c !== void 0 ? _c : previousLoan.interestRate,
-            numberOfInstallments: (_d = req.body.numberOfInstallments) !== null && _d !== void 0 ? _d : previousLoan.numberOfInstallments,
-            capacityExcessObservation: (_e = req.body.capacityExcessObservation) !== null && _e !== void 0 ? _e : previousLoan.capacityExcessObservation,
+            amount: (_g = req.body.amount) !== null && _g !== void 0 ? _g : previousLoan.amount,
+            interestRate: (_h = req.body.interestRate) !== null && _h !== void 0 ? _h : previousLoan.interestRate,
+            numberOfInstallments: (_j = req.body.numberOfInstallments) !== null && _j !== void 0 ? _j : previousLoan.numberOfInstallments,
+            capacityExcessObservation: (_k = req.body.capacityExcessObservation) !== null && _k !== void 0 ? _k : previousLoan.capacityExcessObservation,
         });
         if (!capacityValidation.valid) {
             return res.status(capacityValidation.statusCode || 400).json({
@@ -463,6 +498,31 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             });
         }
         req.body.capacityExcessObservation = capacityValidation.normalizedObservation;
+    }
+    // ── GARANTIAS: cobertura mínima para APROVAR (status → 1) ──
+    // Só aprova se o valor das garantias cobrir o total a pagar (capital + juros
+    // do plano). Aplica-se a qualquer caminho de aprovação via PUT /api/loan/:id
+    // (ex.: fallback quando o plano de amortização já existe).
+    if (previousLoan && Number(req.body.status) === 1 && Number(previousLoan.status) !== 1) {
+        try {
+            const coverage = yield (0, guaranteeCoverageService_1.getGuaranteeCoverage)({
+                loan: previousLoan,
+                amount: req.body.amount,
+                interestRate: req.body.interestRate,
+                numberOfInstallments: req.body.numberOfInstallments,
+                dueDate: req.body.disbursementDate,
+            });
+            if (!coverage.covered) {
+                return res.status(400).json((0, guaranteeCoverageService_1.guaranteeCoverageError)(coverage));
+            }
+        }
+        catch (coverageError) {
+            console.error("Erro ao verificar cobertura de garantias:", (coverageError === null || coverageError === void 0 ? void 0 : coverageError.message) || coverageError);
+            return res.status(500).json({
+                success: false,
+                message: "Não foi possível verificar as garantias do crédito.",
+            });
+        }
     }
     const loan = yield LoanModel_1.LoanModel.update(req.body, {
         where: {
@@ -483,14 +543,14 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                     let title = "";
                     let message = "";
                     let type = "";
-                    if (newStatus === 1) {
-                        // Aprovado
+                    if (newStatus === 1 && !approvalHandled) {
+                        // Aprovado (notificação gerida pelo motor de alçadas — SPRINT 5)
                         title = "Crédito aprovado";
                         message = `O seu crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi aprovado.`;
                         type = "loan_approved";
                     }
-                    else if (newStatus === 2) {
-                        // Rejeitado
+                    else if (newStatus === 2 && !isLegacyReject) {
+                        // Rejeitado (notificação gerida pelo motor de alçadas — SPRINT 5)
                         title = "Crédito rejeitado";
                         message = `O seu pedido de crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN não foi aprovado.`;
                         type = "loan_rejected";
@@ -682,8 +742,25 @@ const invalidateDisbursedLoan = (req, res) => __awaiter(void 0, void 0, void 0, 
         else {
             yield DebtModel_1.DebtModel.destroy({ where: { loanId: id }, transaction });
         }
-        yield LoanModel_1.LoanModel.update({ status: 0, disbursementDate: null }, { where: { id }, transaction });
+        yield LoanModel_1.LoanModel.update({
+            status: 0,
+            // ── SPRINT 5: as aprovações mantêm-se; o crédito volta à fila de
+            // desembolso (APROVAR ≠ DESEMBOLSAR) ──
+            approvalState: "AGUARDANDO_DESEMBOLSO",
+            disbursementDate: null,
+        }, { where: { id }, transaction });
         yield transaction.commit();
+        // ── SPRINT 5: linha do tempo — quem invalidou o desembolso e quando ──
+        try {
+            yield (0, loanApprovalService_1.invalidateLoanDisbursement)({
+                loanId: Number(id),
+                actor: yield (0, requestActor_1.actorFromRequest)(req),
+                notes: "Desembolso invalidado — removido o plano de prestações",
+            });
+        }
+        catch (timelineError) {
+            console.error("[Alçadas] Falha ao registar invalidação na linha do tempo:", (timelineError === null || timelineError === void 0 ? void 0 : timelineError.message) || timelineError);
+        }
         return res.status(200).json({
             success: true,
             message: "Desembolso invalidado. O crédito voltou a Pendentes e o plano de prestações foi removido.",
@@ -717,8 +794,9 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         if (Number.isNaN(companyIdNum) || companyIdNum <= 0) {
             return res.status(400).json({ success: false, message: "companyId inválido." });
         }
+        // SPRINT 6: o Gestor só vê a SUA carteira (creditManager); o Admin vê tudo.
         const loans = (yield LoanModel_1.LoanModel.findAll({
-            where: { companyId: companyIdNum },
+            where: Object.assign({ companyId: companyIdNum }, (0, requestActor_1.gestorScopeWhere)(yield (0, requestActor_1.actorFromRequest)(req))),
             order: [["id", "DESC"]],
         }));
         if (loans.length === 0) {
@@ -795,8 +873,8 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         amortizations.forEach((a) => {
             (amortByLoan[Number(a.loanId)] = amortByLoan[Number(a.loanId)] || []).push(a);
         });
-        const company = yield CompanyModel_1.CompanyModel.findByPk(companyId, { attributes: ["forfeit"] });
-        const forfeit = Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0);
+        // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
         const todayStr = new Date().toISOString().slice(0, 10);
         const result = loans.map((loan) => {
             var _a, _b;
@@ -804,7 +882,7 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             const customer = customerMap[String(loan.accountNumber)] || null;
             const txs = txByLoan[Number(loan.id)] || [];
             const amorts = amortByLoan[Number(loan.id)] || [];
-            const calculatedAmorts = (0, calculateLateAmount_1.installmentPanification)(amorts, forfeit);
+            const calculatedAmorts = (0, calculateLateAmount_1.installmentPanification)(amorts, forfeit, undefined, { maxLateDays, capPercent });
             const sum = (rows, field) => rows.reduce((acc, r) => acc + (Number(r[field]) || 0), 0);
             const totalPaid = Math.round(sum(txs, "amount") * 100) / 100;
             const totalInterestPaid = Math.round(sum(txs, "interestRateAmount") * 100) / 100;
@@ -1156,3 +1234,189 @@ const loanDetail = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     }
 });
 exports.loanDetail = loanDetail;
+/**
+ * GET /api/loan/:id/guarantee-coverage — cobertura das garantias vs total a
+ * pagar (capital + juros). Parâmetros opcionais (?amount=&interestRate=&
+ * numberOfInstallments=&dueDate=) simulam o plano que será gerado na
+ * aprovação; sem plano gravado, usa os valores do próprio crédito.
+ * A UI usa este endpoint para avisar/bloquear a aprovação ANTES de submeter.
+ */
+const getLoanGuaranteeCoverage = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const loan = yield LoanModel_1.LoanModel.findByPk(id);
+        if (!loan) {
+            return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+        }
+        const query = req.query;
+        const coverage = yield (0, guaranteeCoverageService_1.getGuaranteeCoverage)({
+            loan,
+            amount: query.amount,
+            interestRate: query.interestRate,
+            numberOfInstallments: query.numberOfInstallments,
+            dueDate: query.dueDate,
+        });
+        return res.status(200).json({
+            success: true,
+            result: Object.assign(Object.assign({}, coverage), { message: coverage.covered ? null : (0, guaranteeCoverageService_1.guaranteeCoverageMessage)(coverage) }),
+        });
+    }
+    catch (error) {
+        console.error("Erro ao calcular cobertura de garantias:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({
+            success: false,
+            message: "Não foi possível calcular a cobertura de garantias.",
+        });
+    }
+});
+exports.getLoanGuaranteeCoverage = getLoanGuaranteeCoverage;
+// ═════════════════════════════════════════════════════════════════════════
+// SPRINT 5 — ALÇADAS DE APROVAÇÃO (aprovar ≠ desembolsar)
+// ═════════════════════════════════════════════════════════════════════════
+const approvalErrorResponse = (res, error) => res.status((error === null || error === void 0 ? void 0 : error.http) || 500).json({
+    success: false,
+    error: (error === null || error === void 0 ? void 0 : error.code) || "APPROVAL_ERROR",
+    message: (error === null || error === void 0 ? void 0 : error.message) || "Não foi possível processar a decisão de aprovação.",
+});
+/**
+ * GET /api/loan/approval-rules — tabela de alçadas + resumo da autoridade do
+ * utilizador autenticado para um dado valor (?amount=). A UI mostra isto antes
+ * da decisão (quem aprova o quê e quantas aprovações são necessárias).
+ */
+const loanApprovalRules = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const actor = yield (0, requestActor_1.actorFromRequest)(req);
+        const query = req.query;
+        const summary = yield (0, loanApprovalService_1.describeAuthority)({
+            companyId: actor.companyId,
+            userRole: actor.role,
+            amount: query.amount,
+        });
+        return res.status(200).json({ success: true, result: summary });
+    }
+    catch (error) {
+        return approvalErrorResponse(res, error);
+    }
+});
+exports.loanApprovalRules = loanApprovalRules;
+/**
+ * GET /api/loan/:id/approval-timeline — linha do tempo: quem aprovou, quando e
+ * com que parecer (criação, submissão, aprovações, reprovação, desembolso).
+ */
+const loanApprovalTimeline = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const actor = yield (0, requestActor_1.actorFromRequest)(req);
+        const loan = yield LoanModel_1.LoanModel.findByPk(req.params.id);
+        if (!loan || (actor.companyId && Number(loan.getDataValue("companyId")) !== Number(actor.companyId))) {
+            return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+        }
+        const timeline = yield (0, loanApprovalService_1.getApprovalTimeline)(Number(req.params.id));
+        const state = (0, loanApprovalService_1.normalizeApprovalState)(loan);
+        return res.status(200).json({
+            success: true,
+            result: timeline,
+            approvalState: state,
+            approvalStateLabel: (0, loanApprovalService_1.approvalStateLabel)(state),
+        });
+    }
+    catch (error) {
+        return approvalErrorResponse(res, error);
+    }
+});
+exports.loanApprovalTimeline = loanApprovalTimeline;
+/** POST /api/loan/:id/submit — RASCUNHO → AGUARDANDO_APROVACAO. */
+const submitLoanForApproval = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _l, _m, _o, _p;
+    try {
+        const actor = yield (0, requestActor_1.actorFromRequest)(req);
+        const result = yield (0, loanApprovalService_1.submitLoanForApproval)({
+            loanId: Number(req.params.id),
+            actor,
+            notes: (_p = (_m = (_l = req.body) === null || _l === void 0 ? void 0 : _l.notes) !== null && _m !== void 0 ? _m : (_o = req.body) === null || _o === void 0 ? void 0 : _o.parecer) !== null && _p !== void 0 ? _p : null,
+        });
+        return res.status(200).json({
+            success: true,
+            approvalState: result.state,
+            message: "Pedido submetido para aprovação.",
+        });
+    }
+    catch (error) {
+        return approvalErrorResponse(res, error);
+    }
+});
+exports.submitLoanForApproval = submitLoanForApproval;
+/**
+ * POST /api/loan/:id/approve — APROVAR (decisão com alçada). NÃO mexe no caixa.
+ * Alçada insuficiente → 403 INSUFFICIENT_AUTHORITY ("Alçada insuficiente: ...").
+ * Comitê de Crédito (> 100.000): 2 aprovações de Admins diferentes.
+ */
+const approveLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _q, _r, _s, _t;
+    try {
+        const actor = yield (0, requestActor_1.actorFromRequest)(req);
+        const result = yield (0, loanApprovalService_1.approveLoan)({
+            loanId: Number(req.params.id),
+            actor,
+            notes: (_t = (_r = (_q = req.body) === null || _q === void 0 ? void 0 : _q.notes) !== null && _r !== void 0 ? _r : (_s = req.body) === null || _s === void 0 ? void 0 : _s.parecer) !== null && _t !== void 0 ? _t : null,
+        });
+        return res.status(200).json({
+            success: true,
+            approvalState: result.state,
+            approvalsCount: result.approvalsCount,
+            requiredApprovals: result.requiredApprovals,
+            isCommittee: result.isCommittee,
+            message: result.state === "APROVADO_PARCIALMENTE"
+                ? `Aprovação ${result.approvalsCount} de ${result.requiredApprovals} registada — o Comitê de Crédito exige ${result.requiredApprovals} aprovações de Admins diferentes.`
+                : "Crédito aprovado. Pode seguir para desembolso.",
+        });
+    }
+    catch (error) {
+        return approvalErrorResponse(res, error);
+    }
+});
+exports.approveLoan = approveLoan;
+/** POST /api/loan/:id/reject — REPROVAR (com parecer). NÃO mexe no caixa. */
+const rejectLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _u, _v, _w, _x, _y, _z;
+    try {
+        const actor = yield (0, requestActor_1.actorFromRequest)(req);
+        const result = yield (0, loanApprovalService_1.rejectLoan)({
+            loanId: Number(req.params.id),
+            actor,
+            reason: (_z = (_x = (_v = (_u = req.body) === null || _u === void 0 ? void 0 : _u.reason) !== null && _v !== void 0 ? _v : (_w = req.body) === null || _w === void 0 ? void 0 : _w.notes) !== null && _x !== void 0 ? _x : (_y = req.body) === null || _y === void 0 ? void 0 : _y.parecer) !== null && _z !== void 0 ? _z : null,
+        });
+        return res.status(200).json({
+            success: true,
+            approvalState: result.state,
+            message: "Crédito reprovado.",
+        });
+    }
+    catch (error) {
+        return approvalErrorResponse(res, error);
+    }
+});
+exports.rejectLoan = rejectLoan;
+/**
+ * POST /api/loan/:id/prepare-disbursement — APROVADO → AGUARDANDO_DESEMBOLSO.
+ * Marca o crédito como pronto para desembolso. NÃO mexe no caixa.
+ */
+const prepareLoanDisbursement = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _0, _1;
+    try {
+        const actor = yield (0, requestActor_1.actorFromRequest)(req);
+        const result = yield (0, loanApprovalService_1.prepareLoanDisbursement)({
+            loanId: Number(req.params.id),
+            actor,
+            notes: (_1 = (_0 = req.body) === null || _0 === void 0 ? void 0 : _0.notes) !== null && _1 !== void 0 ? _1 : null,
+        });
+        return res.status(200).json({
+            success: true,
+            approvalState: result.state,
+            message: "Crédito colocado na fila de desembolso.",
+        });
+    }
+    catch (error) {
+        return approvalErrorResponse(res, error);
+    }
+});
+exports.prepareLoanDisbursement = prepareLoanDisbursement;

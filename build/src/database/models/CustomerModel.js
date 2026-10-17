@@ -18,6 +18,11 @@ exports.CustomerModel = db_1.db.define("customers", {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
     },
+    creditManager: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: true,
+        comment: "Gestor de Crédito dono da carteira deste cliente (SPRINT 6)",
+    },
     password: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,

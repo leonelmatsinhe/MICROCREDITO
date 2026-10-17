@@ -1,7 +1,7 @@
 <template>
   <q-page class="dashboard-page q-pa-md">
     <!-- ═══════ FILTROS ═══════ -->
-    <div class="glass-wrap q-mb-md">
+    <div class="glass-wrap q-mb-md" data-tour="dash-filters">
       <FiltersBar @filter="onFilter" @clear="onClear" @sync="onSync" />
     </div>
 
@@ -13,7 +13,7 @@
 
     <template v-else>
       <!-- ═══════ SECÇÃO 0: RESUMO GERAL DAS CARTEIRAS ═══════ -->
-      <div class="row q-col-gutter-md q-mb-md">
+      <div class="row q-col-gutter-md q-mb-md" data-tour="dash-kpis">
         <div v-for="kpi in generalKpis" :key="kpi.label" class="col-12 col-sm-6 col-lg-3">
           <q-card flat rounded-borders-xl class="kpi-card kpi-hover" :class="`kpi-${kpi.tone}`">
             <q-card-section class="q-pa-md q-pb-sm">

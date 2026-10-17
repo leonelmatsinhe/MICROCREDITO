@@ -7,9 +7,10 @@
     :mini="miniMode"
     :breakpoint="1024"
     class="sidebar-drawer"
+    data-tour="sidebar"
   >
     <!-- ═══════ MARCA ═══════ -->
-    <div class="brand" :class="{ 'brand-mini': miniMode }">
+    <div class="brand" :class="{ 'brand-mini': miniMode }" data-tour="brand">
       <div class="logo-box" :class="{ 'logo-box-mini': miniMode }">
         <img :src="logoSrc" alt="Logo" class="logo-img" @error="handleLogoError" />
         <q-icon v-if="logoError" name="business" size="20px" color="green-8" class="logo-fallback" />
@@ -36,7 +37,7 @@
     </div>
 
     <!-- ═══════ BUSCA ═══════ -->
-    <div v-if="!miniMode" class="search-wrap">
+    <div v-if="!miniMode" class="search-wrap" data-tour="menu-search">
       <q-input
         v-model="search"
         dense
@@ -54,12 +55,13 @@
     </div>
 
     <!-- ═══════ MENU ═══════ -->
-    <q-scroll-area class="menu-scroll">
+    <q-scroll-area class="menu-scroll" data-tour="menu-groups">
       <q-list v-if="miniMode" class="q-py-sm">
         <q-item
           v-for="item in flatItems"
           :key="item.to + item.label"
           :to="item.to"
+          :data-tour="`nav:${item.to}`"
           clickable v-ripple
           class="nav-item nav-item-mini"
           active-class="nav-item-active"
@@ -80,6 +82,7 @@
             v-for="item in favoriteItems"
             :key="`fav-${item.to}`"
             :to="item.to"
+            :data-tour="`nav:${item.to}`"
             clickable v-ripple
             class="nav-item"
             active-class="nav-item-active"
@@ -97,6 +100,7 @@
           <q-separator v-if="gi > 0" class="group-sep" />
           <q-expansion-item
             v-model="expanded[group.id]"
+            :data-tour="`group:${group.id}`"
             class="nav-group"
             header-class="nav-group-header"
             expand-icon-class="nav-group-caret"
@@ -115,6 +119,7 @@
               v-for="item in group.items"
               :key="item.to + item.label"
               :to="item.to"
+              :data-tour="`nav:${item.to}`"
               clickable v-ripple
               class="nav-item nav-item-sub"
               active-class="nav-item-active"
@@ -144,7 +149,7 @@
     </q-scroll-area>
 
     <!-- ═══════ RODAPÉ ═══════ -->
-    <div class="drawer-footer">
+    <div class="drawer-footer" data-tour="menu-footer">
       <q-separator class="footer-sep" />
       <div v-if="!miniMode" class="version-line">Mais Mola v2026.9 • UUIDv7 Secure</div>
     </div>
@@ -157,6 +162,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useUiStore } from '@/stores/ui'
+import { useAppTour } from '@/composables/useAppTour'
 
 /**
  * SIDEMENU — navegação agrupada com busca, favoritos e modo ícone.
@@ -179,7 +185,7 @@ const router = useRouter()
 
 const logoError = ref(false)
 const search = ref('')
-const expanded = ref({ geral: true,    credito: true, microcredito: true, financeiro: false, financiamento: false, relatorios: false, sistema: false })
+const expanded = ref({ geral: true,    credito: true, financeiro: false, financiamento: false, relatorios: false, sistema: false })
 
 const FAVORITES_KEY = 'mbr_sidebar_favorites'
 const favorites = ref([])
@@ -232,12 +238,6 @@ const groups = computed(() => {
         ]
       },
       {
-        id: 'microcredito',
-        label: 'Microcrédito',
-        icon: 'savings',
-        items: [{ to: '/admin/microcredito/dashboard', icon: 'space_dashboard', label: 'Microcrédito BM' }]
-      },
-      {
         id: 'sistema',
         label: 'Sistema',
         icon: 'settings',
@@ -252,12 +252,7 @@ const groups = computed(() => {
       label: 'Geral',
       icon: 'space_dashboard',
       items: [{ to: '/dashboard', icon: 'space_dashboard', label: 'Painel' }]
-    },      {
-        id: 'microcredito',
-        label: 'Microcrédito',
-        icon: 'savings',
-        items: [{ to: '/admin/microcredito/dashboard', icon: 'space_dashboard', label: 'Painel Microcrédito BM' }]
-      },
+    },
       {
         id: 'credito',
         label: 'Gestão de Crédito',
@@ -265,6 +260,8 @@ const groups = computed(() => {
       items: [
         { to: '/mutuarios', icon: 'groups', label: 'Mutuários' },
         { to: '/loans', icon: 'request_quote', label: 'Créditos' },
+        { to: '/cobranca', icon: 'call_missed', label: 'Cobrança' },
+        ...(role !== 2 ? [{ to: '/carteira', icon: 'leaderboard', label: 'Carteira do Gestor' }] : []),
         { to: '/admin/installments', icon: 'event_repeat', label: 'Controle Prestações' }
       ]
     },
@@ -305,23 +302,54 @@ const groups = computed(() => {
         { to: '/settings', icon: 'settings', label: 'Configurações' },
         // Legados movidos do rodapé para SISTEMA (sem duplicação)
         ...(canSeeSms.value ? [{ to: '/sms/pendentes', icon: 'forum', label: 'Mensagens' }] : []),
+        ...(role === 1 ? [{ to: '/onboarding', icon: 'checklist', label: 'Onboarding da Equipa' }] : []),
         ...(role === 1 ? [{ to: '/logs', icon: 'history', label: 'Histórico' }] : [])
       ]
     }
   ]
 
   if (role === 1) return all
-  if ([2, 3].includes(role)) return all.filter((group) => group.id === 'geral' || group.id === 'credito' || group.id === 'microcredito')
 
-  // Gestor: painel + mutuários + créditos; Operador: painel + mutuários.
+  // Gestor de Crédito (role 3):
+  // 1. Painel aponta directamente para /gestor (elimina redirect loop para /dashboard)
+  // 2. Acesso à Gestão de Crédito (Mutuários, Créditos, Controle Prestações)
+  // 3. SEM acesso ao Financeiro (Caixa, Caixa Central, Histórico de Caixa) —
+  //    funcionalidades financeiras são do Admin
+  // 4. SEM secção Microcrédito (removida dos menus; os ficheiros mantêm-se)
   if (role === 3) {
-    return all
-      .map((group) =>
-        ['geral', 'credito'].includes(group.id)
-          ? group
-          : { ...group, items: group.items.filter((item) => ['/painel'].includes(item.to)) }
-      )
-      .filter((group) => group.items.length > 0)
+    return [
+      {
+        id: 'geral',
+        label: 'Geral',
+        icon: 'space_dashboard',
+        items: [{ to: '/gestor', icon: 'space_dashboard', label: 'Painel' }]
+      },
+      {
+        id: 'credito',
+        label: 'Gestão de Crédito',
+        icon: 'account_balance_wallet',
+        items: [
+          { to: '/mutuarios', icon: 'groups', label: 'Mutuários' },
+          { to: '/loans', icon: 'request_quote', label: 'Créditos' },
+          { to: '/cobranca', icon: 'call_missed', label: 'Cobrança' },
+          { to: '/carteira', icon: 'leaderboard', label: 'A Minha Carteira' },
+          { to: '/admin/installments', icon: 'event_repeat', label: 'Controle Prestações' }
+        ]
+      },
+      {
+        id: 'sistema',
+        label: 'Sistema',
+        icon: 'settings',
+        items: [
+          ...(canSeeSms.value ? [{ to: '/sms/pendentes', icon: 'forum', label: 'Mensagens' }] : [])
+        ]
+      }
+    ]
+  }
+
+  // Operador (role 2):
+  if (role === 2) {
+    return all.filter((group) => group.id === 'geral' || group.id === 'credito')
   }
 
   return [
@@ -330,15 +358,10 @@ const groups = computed(() => {
       label: 'Geral',
       icon: 'space_dashboard',
       items: [{ to: '/dashboard', icon: 'space_dashboard', label: 'Painel' }]
-    },      {
-        id: 'microcredito',
-        label: 'Microcrédito',
-        icon: 'savings',
-        items: [{ to: '/admin/microcredito/dashboard', icon: 'space_dashboard', label: 'Painel Microcrédito BM' }]
-      },
-      {
-        id: 'credito',
-        label: 'Gestão de Crédito',
+    },
+    {
+      id: 'credito',
+      label: 'Gestão de Crédito',
       icon: 'account_balance_wallet',
       items: [{ to: '/mutuarios', icon: 'groups', label: 'Mutuários' }]
     }
@@ -392,6 +415,14 @@ function openGroupOfCurrentRoute() {
 }
 
 watch(() => route.path, openGroupOfCurrentRoute)
+
+// Durante o tour guiado o menu abre por completo: os passos apontam para itens
+// reais (que só existem no DOM quando o grupo está aberto).
+const { menuExpanded: tourMenuExpanded } = useAppTour()
+watch(tourMenuExpanded, (expandedByTour) => {
+  if (!expandedByTour) return
+  groups.value.forEach((group) => { expanded.value[group.id] = true })
+})
 
 // Atalho de pesquisa: Ctrl/Cmd+K abre a busca do menu.
 function onKeydown(event) {

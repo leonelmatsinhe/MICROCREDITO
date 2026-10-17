@@ -4,11 +4,11 @@ import { db } from "../database/db";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { LoanModel } from "../database/models/LoanModel";
-import { CompanyModel } from "../database/models/CompanyModel";
 import { Op } from "sequelize";
 import { installmentPanification } from "../utils/calculateLateAmount";
 import { methodToTreasury } from "../utils/paymentMethodMap";
 import { round2, num } from "../utils/money";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
 
 /**
  * POST /api/tranzaction/bulk — Liquidação Total ATÓMICA.
@@ -105,8 +105,11 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
       return res.status(409).send({ success: false, message: "Este crédito já está totalmente liquidado." });
     }
 
-    const company = await CompanyModel.findByPk(loan.getDataValue("companyId"), { attributes: ["forfeit"] });
-    const forfeit = Number(company?.getDataValue("forfeit") || 0);
+    // Motor V2 (company_penalty_rules) com fallback companies.forfeit:
+    // propaga invalidação/limitação da mora (dias máximos + cap).
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(
+      Number(loan.getDataValue("companyId"))
+    );
 
     // Planeamento idêntico ao addTranzaction individual: mora do dia menos a
     // mora já cobrada em transacções anteriores da mesma prestação.
@@ -116,7 +119,8 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
       const calculatedInstallment = installmentPanification(
         [installment],
         forfeit,
-        payDate
+        payDate,
+        { maxLateDays, capPercent }
       )[0];
       const previousLateInterest = await TranzactionModel.findAll({
         where: { amortizationLoanId },

@@ -1,5 +1,5 @@
 <template>
-  <div class="sa-settings-page">
+  <div class="sa-settings-page" data-tour="superadmin-body">
     <!-- HEADER verde escuro -->
     <div class="page-header">
       <div class="row items-center no-wrap">

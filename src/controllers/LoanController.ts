@@ -9,7 +9,23 @@ import { UserModel } from "../database/models/UserModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { Op } from "sequelize";
 import { installmentPanification, totalsOfInstallments } from "../utils/calculateLateAmount";
-import { calculateFrenchAmortizationInstallment } from "../utils/loanAmortization";
+import { getLegacyPenaltyParams } from "../services/lateInterestService";
+import { validateCapacityRule } from "../utils/capacityRule";
+import { actorFromRequest, gestorScopeWhere } from "../utils/requestActor";
+import {
+  approveLoan as approveLoanService,
+  rejectLoan as rejectLoanService,
+  reopenLoanForApproval as reopenLoanService,
+  prepareLoanDisbursement as prepareLoanDisbursementService,
+  submitLoanForApproval as submitLoanForApprovalService,
+  markLoanDisbursed as markLoanDisbursedService,
+  invalidateLoanDisbursement as invalidateLoanDisbursementService,
+  recordLoanCreation,
+  getApprovalTimeline,
+  describeAuthority,
+  normalizeApprovalState,
+  approvalStateLabel,
+} from "../services/loanApprovalService";
 import { db } from "../database/db";
 import { DebtModel } from "../database/models/DebtModel";
 import { GuarateeAssessmentModel } from "../database/models/GuarateeAssessmentModel";
@@ -17,6 +33,11 @@ import { FinancingWalletModel } from "../database/models/FinancingWalletModel";
 import { ReciboModel } from "../database/models/ReciboModel";
 import { resolvePaymentMethod } from "../services/reciboService";
 import { evaluateKyc } from "../utils/kycDocuments";
+import {
+  getGuaranteeCoverage,
+  guaranteeCoverageError,
+  guaranteeCoverageMessage,
+} from "../services/guaranteeCoverageService";
 import { simulator } from "../utils/loanAmortization";
 
 const toNumber = (value: any) => {
@@ -37,81 +58,8 @@ const subtractMonths = (dateStr: string, months: number): string | null => {
   return `${date.getFullYear()}-${mm}-${dd}`;
 };
 
-const calculateInstallmentValue = (
-  amount: any,
-  interestRate: any,
-  numberOfInstallments: any
-) => {
-  const principal = toNumber(amount);
-  const rate = toNumber(interestRate);
-  const installments = Math.max(1, parseInt(String(numberOfInstallments || 1), 10));
-
-  if (principal <= 0) return 0;
-  if (rate <= 0) return principal / installments;
-
-  return calculateFrenchAmortizationInstallment(principal, rate, installments);
-};
-
-const normalizeCapacityObservation = (value: any) => {
-  if (typeof value !== "string") return "";
-  return value.trim();
-};
-
-const validateCapacityRule = async (params: {
-  accountNumber: any;
-  companyId: any;
-  amount: any;
-  interestRate: any;
-  numberOfInstallments: any;
-  capacityExcessObservation?: any;
-}) => {
-  const customer: any = await CustomerModel.findOne({
-    where: {
-      accountNumber: params.accountNumber,
-      companyId: params.companyId,
-    },
-    attributes: ["accountNumber", "customerMonthlySalary"],
-  });
-
-  if (!customer) {
-    return {
-      valid: false,
-      statusCode: 404,
-      message: "Mutuário não encontrado para validar capacidade de pagamento.",
-    };
-  }
-
-  const monthlySalary = toNumber(customer.customerMonthlySalary);
-  const maxCapacity = monthlySalary / 3;
-  const estimatedInstallment = calculateInstallmentValue(
-    params.amount,
-    params.interestRate,
-    params.numberOfInstallments
-  );
-  const isExceeded = estimatedInstallment > maxCapacity;
-  const observation = normalizeCapacityObservation(params.capacityExcessObservation);
-
-  if (isExceeded && observation.length < 10) {
-    return {
-      valid: false,
-      statusCode: 400,
-      message:
-        "A prestação excede 1/3 do rendimento mensal. Informe um parecer/observação com no mínimo 10 caracteres.",
-      details: {
-        maxCapacity,
-        estimatedInstallment,
-      },
-    };
-  }
-
-  return {
-    valid: true,
-    maxCapacity,
-    estimatedInstallment,
-    isExceeded,
-    normalizedObservation: observation || null,
-  };
-};
+// Regra de capacidade de pagamento (1/3 do rendimento) — extraída para
+// src/utils/capacityRule.ts e partilhada com o motor de alçadas (SPRINT 5).
 
 /**
  * Verifica a checklist KYC do mutuário antes de criar/desembolsar crédito.
@@ -211,7 +159,8 @@ const findLoanByCustomer = async (req: Request, res: Response) => {
 
 const findAllLoans = async (req: Request, res: Response) => {
   const { id, companyId } = req.params;
-  const whereClause: any = { companyId };
+  // SPRINT 6: o Gestor só vê a SUA carteira (creditManager); o Admin vê tudo.
+  const whereClause: any = { companyId, ...gestorScopeWhere(await actorFromRequest(req)) };
 
   // Compatibilidade com o contrato existente:
   // `id` pode vir como data (YYYY-MM-DD). Se vier "all", não filtra por data.
@@ -243,12 +192,15 @@ const getLoanAmortization = async (req: Request, res: Response) => {
   if (!loan) {
     return res.status(404).json({ success: false, message: "Crédito não encontrado." });
   }
-  const company = await CompanyModel.findByPk(loan.getDataValue("companyId"), {
-    attributes: ["forfeit"],
-  });
+  // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+  const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(
+    Number(loan.getDataValue("companyId"))
+  );
   const installments = installmentPanification(
     loans,
-    Number(company?.getDataValue("forfeit") || 0)
+    forfeit,
+    undefined,
+    { maxLateDays, capPercent }
   );
   const installmentIds = loans.map((item: any) => item.id);
   const paidLateInterest: any[] = installmentIds.length > 0
@@ -335,7 +287,6 @@ const createLoan = async (req: Request, res: Response) => {
     loanDescription,
     capacityExcessObservation,
     dateCreated,
-    status,
   } = req.body;
 
   // ── Validações de entrada (sem Joi — inline) ──
@@ -411,9 +362,25 @@ const createLoan = async (req: Request, res: Response) => {
     loanDescription,
     capacityExcessObservation: capacityValidation.normalizedObservation,
     dateCreated,
-    status,
+    // ── SPRINT 5: um crédito nasce sempre por aprovar — o `status` do corpo
+    // nunca activa um crédito (aprovar é decisão; desembolso é outra acção).
+    status: 0,
     walletId,
   });
+
+  // ── SPRINT 5: linha do tempo — rascunho ou submissão imediata ──
+  if (loan) {
+    try {
+      await recordLoanCreation({
+        loanId: Number((loan as any).id),
+        actor: await actorFromRequest(req),
+        asDraft: !!(req.body as any)?.asDraft,
+        notes: (req.body as any)?.notes || null,
+      });
+    } catch (creationError: any) {
+      console.error("[Alçadas] Falha ao registar criação na linha do tempo:", creationError?.message || creationError);
+    }
+  }
 
   // Criar notificação para admin/gestor sobre nova solicitação
   if (loan) {
@@ -456,6 +423,9 @@ const createLoan = async (req: Request, res: Response) => {
 const updateLoan = async (req: Request, res: Response) => {
   const { id } = req.params;
 
+  // ── SPRINT 5 (alçadas): o estado de workflow nunca vem do cliente ──
+  delete (req.body as any).approvalState;
+
   // Buscar o empréstimo antes de atualizar para verificar mudança de status
   const previousLoan: any = await LoanModel.findByPk(id);
   if (previousLoan && Number(previousLoan.status) === 1 && Number(req.body.status) === 0) {
@@ -472,6 +442,76 @@ const updateLoan = async (req: Request, res: Response) => {
     !!previousLoan &&
     Number(req.body.status) === 0 &&
     [2, -1].includes(Number(previousLoan.status));
+
+  // ── SPRINT 5 (ALÇADAS): qualquer transição de estado passa pelo motor de
+  // aprovação — APROVAR é decisão (não mexe no caixa); DESEMBOLSAR é outra
+  // acção. O caminho legado (status → 1) respeita as mesmas alçadas do
+  // POST /api/loan/:id/approve: Gestor ≤ 25.000 · Admin ≤ 100.000 · acima,
+  // Comitê de Crédito (2 aprovações de Admins diferentes). Precedência dos
+  // erros: alçada → capacidade → garantias (tudo dentro do serviço).
+  const approvalActor = await actorFromRequest(req);
+  const isLegacyActivation =
+    !!previousLoan && Number(req.body.status) === 1 && Number(previousLoan.status) !== 1;
+  const isLegacyReject =
+    !!previousLoan &&
+    [2, -1].includes(Number(req.body.status)) &&
+    ![2, -1].includes(Number(previousLoan.status));
+  const isLegacyReopen =
+    !!previousLoan &&
+    Number(req.body.status) === 0 &&
+    [2, -1].includes(Number(previousLoan.status));
+
+  let approvalHandled: any = null;
+
+  try {
+    if (isLegacyActivation) {
+      approvalHandled = await approveLoanService({
+        loanId: Number(id),
+        actor: approvalActor,
+        notes: req.body.capacityExcessObservation ?? null,
+      });
+      if (approvalHandled.state === "APROVADO_PARCIALMENTE") {
+        return res.status(200).json({
+          success: true,
+          message: `Aprovação ${approvalHandled.approvalsCount} de ${approvalHandled.requiredApprovals} registada — aguarda a segunda aprovação do Comitê de Crédito.`,
+          approvalState: approvalHandled.state,
+          approvalsCount: approvalHandled.approvalsCount,
+          requiredApprovals: approvalHandled.requiredApprovals,
+        });
+      }
+      // Totalmente aprovado: só "activa" (status 1) se já existe plano de
+      // amortização (desembolso real). Caso contrário fica por desembolsar —
+      // aprovar não mexe no caixa.
+      const hasPlan = await AmorizationLoanModel.findOne({ where: { loanId: Number(id) } });
+      req.body.status = hasPlan ? 1 : 0;
+      if (hasPlan) {
+        await markLoanDisbursedService({
+          loanId: Number(id),
+          actor: approvalActor,
+          notes: "Activação com plano de amortização existente",
+        });
+      }
+    } else if (isLegacyReject) {
+      await rejectLoanService({
+        loanId: Number(id),
+        actor: approvalActor,
+        reason: req.body.capacityExcessObservation ?? null,
+      });
+    } else if (isLegacyReopen) {
+      await reopenLoanService({
+        loanId: Number(id),
+        actor: approvalActor,
+        notes: req.body.capacityExcessObservation ?? null,
+      });
+    }
+  } catch (approvalError: any) {
+    return res.status(approvalError?.http || 500).json({
+      success: false,
+      error: approvalError?.code || "APPROVAL_ERROR",
+      message: approvalError?.message || "Não foi possível processar a decisão de aprovação.",
+    });
+  }
+
   if (previousLoan && (Number(req.body.status) === 1 || reopeningRejected)) {
     const capacityValidation = await validateCapacityRule({
       accountNumber: previousLoan.accountNumber,
@@ -494,6 +534,31 @@ const updateLoan = async (req: Request, res: Response) => {
     }
 
     req.body.capacityExcessObservation = capacityValidation.normalizedObservation;
+  }
+
+  // ── GARANTIAS: cobertura mínima para APROVAR (status → 1) ──
+  // Só aprova se o valor das garantias cobrir o total a pagar (capital + juros
+  // do plano). Aplica-se a qualquer caminho de aprovação via PUT /api/loan/:id
+  // (ex.: fallback quando o plano de amortização já existe).
+  if (previousLoan && Number(req.body.status) === 1 && Number(previousLoan.status) !== 1) {
+    try {
+      const coverage = await getGuaranteeCoverage({
+        loan: previousLoan,
+        amount: req.body.amount,
+        interestRate: req.body.interestRate,
+        numberOfInstallments: req.body.numberOfInstallments,
+        dueDate: req.body.disbursementDate,
+      });
+      if (!coverage.covered) {
+        return res.status(400).json(guaranteeCoverageError(coverage));
+      }
+    } catch (coverageError: any) {
+      console.error("Erro ao verificar cobertura de garantias:", coverageError?.message || coverageError);
+      return res.status(500).json({
+        success: false,
+        message: "Não foi possível verificar as garantias do crédito.",
+      });
+    }
   }
 
   const loan = await LoanModel.update(req.body, {
@@ -519,13 +584,13 @@ const updateLoan = async (req: Request, res: Response) => {
           let message = "";
           let type = "";
 
-          if (newStatus === 1) {
-            // Aprovado
+          if (newStatus === 1 && !approvalHandled) {
+            // Aprovado (notificação gerida pelo motor de alçadas — SPRINT 5)
             title = "Crédito aprovado";
             message = `O seu crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN foi aprovado.`;
             type = "loan_approved";
-          } else if (newStatus === 2) {
-            // Rejeitado
+          } else if (newStatus === 2 && !isLegacyReject) {
+            // Rejeitado (notificação gerida pelo motor de alçadas — SPRINT 5)
             title = "Crédito rejeitado";
             message = `O seu pedido de crédito de ${Number(previousLoan.amount).toLocaleString("pt-MZ")} MZN não foi aprovado.`;
             type = "loan_rejected";
@@ -731,10 +796,27 @@ const invalidateDisbursedLoan = async (req: Request, res: Response) => {
     }
 
     await LoanModel.update(
-      { status: 0, disbursementDate: null },
+      {
+        status: 0,
+        // ── SPRINT 5: as aprovações mantêm-se; o crédito volta à fila de
+        // desembolso (APROVAR ≠ DESEMBOLSAR) ──
+        approvalState: "AGUARDANDO_DESEMBOLSO",
+        disbursementDate: null,
+      },
       { where: { id }, transaction }
     );
     await transaction.commit();
+
+    // ── SPRINT 5: linha do tempo — quem invalidou o desembolso e quando ──
+    try {
+      await invalidateLoanDisbursementService({
+        loanId: Number(id),
+        actor: await actorFromRequest(req),
+        notes: "Desembolso invalidado — removido o plano de prestações",
+      });
+    } catch (timelineError: any) {
+      console.error("[Alçadas] Falha ao registar invalidação na linha do tempo:", timelineError?.message || timelineError);
+    }
 
     return res.status(200).json({
       success: true,
@@ -769,8 +851,9 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "companyId inválido." });
     }
 
+    // SPRINT 6: o Gestor só vê a SUA carteira (creditManager); o Admin vê tudo.
     const loans: any[] = (await LoanModel.findAll({
-      where: { companyId: companyIdNum },
+      where: { companyId: companyIdNum, ...gestorScopeWhere(await actorFromRequest(req)) },
       order: [["id", "DESC"]],
     })) as any[];
 
@@ -854,8 +937,8 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       (amortByLoan[Number(a.loanId)] = amortByLoan[Number(a.loanId)] || []).push(a);
     });
 
-    const company = await CompanyModel.findByPk(companyId, { attributes: ["forfeit"] });
-    const forfeit = Number(company?.getDataValue("forfeit") || 0);
+    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyIdNum);
 
     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -864,7 +947,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
       const customer = customerMap[String(loan.accountNumber)] || null;
       const txs = txByLoan[Number(loan.id)] || [];
       const amorts = amortByLoan[Number(loan.id)] || [];
-      const calculatedAmorts = installmentPanification(amorts, forfeit);
+      const calculatedAmorts = installmentPanification(amorts, forfeit, undefined, { maxLateDays, capPercent });
 
       const sum = (rows: any[], field: string) =>
         rows.reduce((acc: number, r: any) => acc + (Number(r[field]) || 0), 0);
@@ -1261,6 +1344,190 @@ const loanDetail = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * GET /api/loan/:id/guarantee-coverage — cobertura das garantias vs total a
+ * pagar (capital + juros). Parâmetros opcionais (?amount=&interestRate=&
+ * numberOfInstallments=&dueDate=) simulam o plano que será gerado na
+ * aprovação; sem plano gravado, usa os valores do próprio crédito.
+ * A UI usa este endpoint para avisar/bloquear a aprovação ANTES de submeter.
+ */
+const getLoanGuaranteeCoverage = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const loan: any = await LoanModel.findByPk(id);
+    if (!loan) {
+      return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+    }
+
+    const query = req.query as any;
+    const coverage = await getGuaranteeCoverage({
+      loan,
+      amount: query.amount,
+      interestRate: query.interestRate,
+      numberOfInstallments: query.numberOfInstallments,
+      dueDate: query.dueDate,
+    });
+
+    return res.status(200).json({
+      success: true,
+      result: {
+        ...coverage,
+        message: coverage.covered ? null : guaranteeCoverageMessage(coverage),
+      },
+    });
+  } catch (error: any) {
+    console.error("Erro ao calcular cobertura de garantias:", error?.message || error);
+    return res.status(500).json({
+      success: false,
+      message: "Não foi possível calcular a cobertura de garantias.",
+    });
+  }
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// SPRINT 5 — ALÇADAS DE APROVAÇÃO (aprovar ≠ desembolsar)
+// ═════════════════════════════════════════════════════════════════════════
+
+const approvalErrorResponse = (res: Response, error: any) =>
+  res.status(error?.http || 500).json({
+    success: false,
+    error: error?.code || "APPROVAL_ERROR",
+    message: error?.message || "Não foi possível processar a decisão de aprovação.",
+  });
+
+/**
+ * GET /api/loan/approval-rules — tabela de alçadas + resumo da autoridade do
+ * utilizador autenticado para um dado valor (?amount=). A UI mostra isto antes
+ * da decisão (quem aprova o quê e quantas aprovações são necessárias).
+ */
+const loanApprovalRules = async (req: Request, res: Response) => {
+  try {
+    const actor = await actorFromRequest(req);
+    const query = req.query as any;
+    const summary = await describeAuthority({
+      companyId: actor.companyId,
+      userRole: actor.role,
+      amount: query.amount,
+    });
+    return res.status(200).json({ success: true, result: summary });
+  } catch (error: any) {
+    return approvalErrorResponse(res, error);
+  }
+};
+
+/**
+ * GET /api/loan/:id/approval-timeline — linha do tempo: quem aprovou, quando e
+ * com que parecer (criação, submissão, aprovações, reprovação, desembolso).
+ */
+const loanApprovalTimeline = async (req: Request, res: Response) => {
+  try {
+    const actor = await actorFromRequest(req);
+    const loan: any = await LoanModel.findByPk(req.params.id);
+    if (!loan || (actor.companyId && Number(loan.getDataValue("companyId")) !== Number(actor.companyId))) {
+      return res.status(404).json({ success: false, message: "Crédito não encontrado." });
+    }
+    const timeline = await getApprovalTimeline(Number(req.params.id));
+    const state = normalizeApprovalState(loan);
+    return res.status(200).json({
+      success: true,
+      result: timeline,
+      approvalState: state,
+      approvalStateLabel: approvalStateLabel(state),
+    });
+  } catch (error: any) {
+    return approvalErrorResponse(res, error);
+  }
+};
+
+/** POST /api/loan/:id/submit — RASCUNHO → AGUARDANDO_APROVACAO. */
+const submitLoanForApproval = async (req: Request, res: Response) => {
+  try {
+    const actor = await actorFromRequest(req);
+    const result = await submitLoanForApprovalService({
+      loanId: Number(req.params.id),
+      actor,
+      notes: (req.body as any)?.notes ?? (req.body as any)?.parecer ?? null,
+    });
+    return res.status(200).json({
+      success: true,
+      approvalState: result.state,
+      message: "Pedido submetido para aprovação.",
+    });
+  } catch (error: any) {
+    return approvalErrorResponse(res, error);
+  }
+};
+
+/**
+ * POST /api/loan/:id/approve — APROVAR (decisão com alçada). NÃO mexe no caixa.
+ * Alçada insuficiente → 403 INSUFFICIENT_AUTHORITY ("Alçada insuficiente: ...").
+ * Comitê de Crédito (> 100.000): 2 aprovações de Admins diferentes.
+ */
+const approveLoan = async (req: Request, res: Response) => {
+  try {
+    const actor = await actorFromRequest(req);
+    const result = await approveLoanService({
+      loanId: Number(req.params.id),
+      actor,
+      notes: (req.body as any)?.notes ?? (req.body as any)?.parecer ?? null,
+    });
+    return res.status(200).json({
+      success: true,
+      approvalState: result.state,
+      approvalsCount: result.approvalsCount,
+      requiredApprovals: result.requiredApprovals,
+      isCommittee: result.isCommittee,
+      message:
+        result.state === "APROVADO_PARCIALMENTE"
+          ? `Aprovação ${result.approvalsCount} de ${result.requiredApprovals} registada — o Comitê de Crédito exige ${result.requiredApprovals} aprovações de Admins diferentes.`
+          : "Crédito aprovado. Pode seguir para desembolso.",
+    });
+  } catch (error: any) {
+    return approvalErrorResponse(res, error);
+  }
+};
+
+/** POST /api/loan/:id/reject — REPROVAR (com parecer). NÃO mexe no caixa. */
+const rejectLoan = async (req: Request, res: Response) => {
+  try {
+    const actor = await actorFromRequest(req);
+    const result = await rejectLoanService({
+      loanId: Number(req.params.id),
+      actor,
+      reason: (req.body as any)?.reason ?? (req.body as any)?.notes ?? (req.body as any)?.parecer ?? null,
+    });
+    return res.status(200).json({
+      success: true,
+      approvalState: result.state,
+      message: "Crédito reprovado.",
+    });
+  } catch (error: any) {
+    return approvalErrorResponse(res, error);
+  }
+};
+
+/**
+ * POST /api/loan/:id/prepare-disbursement — APROVADO → AGUARDANDO_DESEMBOLSO.
+ * Marca o crédito como pronto para desembolso. NÃO mexe no caixa.
+ */
+const prepareLoanDisbursement = async (req: Request, res: Response) => {
+  try {
+    const actor = await actorFromRequest(req);
+    const result = await prepareLoanDisbursementService({
+      loanId: Number(req.params.id),
+      actor,
+      notes: (req.body as any)?.notes ?? null,
+    });
+    return res.status(200).json({
+      success: true,
+      approvalState: result.state,
+      message: "Crédito colocado na fila de desembolso.",
+    });
+  } catch (error: any) {
+    return approvalErrorResponse(res, error);
+  }
+};
+
 export {
   findAllLoans,
   findAllLoansOverview,
@@ -1273,4 +1540,11 @@ export {
   invalidateDisbursedLoan,
   updateLoanInstallmentDates,
   simulateLoan,
+  getLoanGuaranteeCoverage,
+  loanApprovalRules,
+  loanApprovalTimeline,
+  submitLoanForApproval,
+  approveLoan,
+  rejectLoan,
+  prepareLoanDisbursement,
 };

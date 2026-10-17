@@ -47,19 +47,36 @@ function before(fn: TestFn) {
 function after(fn: TestFn) {
   suiteHooks.push({ suite: currentSuite?.name || "", after: fn });
 }
+// Mini-expect: `to.be.true` / `to.not.be.undefined` usam GETTERS para
+// executarem no simples ACESSO à propriedade (sem parênteses). Antes eram
+// métodos nunca invocados — asserções silenciosas que deixavam passar falhas
+// reais (uma coluna em falta rebentava depois como TypeError noutro sítio).
 const expect = (actual: any) => ({
   to: {
     equal: (expected: any) => {
       if (actual !== expected) throw new Error(`esperado ${JSON.stringify(expected)}, obtido ${JSON.stringify(actual)}`);
     },
-    be: {
-      true: () => { if (actual !== true) throw new Error(`esperado true, obtido ${JSON.stringify(actual)}`); },
-      undefined: () => { if (actual !== undefined) throw new Error(`esperado undefined, obtido ${JSON.stringify(actual)}`); },
+    get be() {
+      return {
+        get true() {
+          if (actual !== true) throw new Error(`esperado true, obtido ${JSON.stringify(actual)}`);
+          return true;
+        },
+        get undefined() {
+          if (actual !== undefined) throw new Error(`esperado undefined, obtido ${JSON.stringify(actual)}`);
+          return true;
+        },
+      };
     },
-    not: {
-      be: {
-        undefined: () => { if (actual === undefined) throw new Error("esperado valor, obtido undefined"); },
-      },
+    get not() {
+      return {
+        be: {
+          get undefined() {
+            if (actual === undefined) throw new Error("esperado valor, obtido undefined");
+            return true;
+          },
+        },
+      };
     },
   },
 });
@@ -157,13 +174,35 @@ const callReverse = async (tranzactionId: number, token: string, reason = "Motiv
 const insertIdOf = (raw: any): number =>
   Number(raw?.[0]?.insertId ?? raw?.[0] ?? raw?.insertId) || 0;
 
+/**
+ * Crédito (customer_loans) NOVO para cada cenário.
+ *
+ * IMPORTANTE: o excesso de um pagamento (acceptOverpay) é automaticamente
+ * abatido nas prestações PENDENTES do MESMO crédito antes de virar crédito a
+ * favor (customer_credits). Se os cenários partilhassem um único loan, as
+ * prestações nunca pagas dos cenários anteriores absorveriam o excesso do
+ * cenário de overpay e o crédito nunca seria criado — cada cenário tem de ter
+ * o seu próprio crédito para ser independente.
+ */
+const createLoan = async (): Promise<number> => {
+  const loanRaw: any = await db.query(
+    `INSERT INTO customer_loans
+       (companyId, creditManager, accountNumber, customerId, amount, numberOfInstallments, interestRate, loanDescription, administrativeFee, rate_type, status, dateCreated, createdAt, updatedAt)
+     VALUES (?, 329, ?, ?, 30000, 3, 0.12, 'Teste V2', 0, 'MENSAL', 1, CURDATE(), NOW(), NOW())`,
+    { replacements: [companyId, accountNumber, customerId] }
+  );
+  return insertIdOf(loanRaw);
+};
+
 const createInstallment = async (params: {
   value: number;
   daysAgoDue?: number; // negativo = vence no futuro
+  loanId?: number;     // opcional: reutilizar um crédito (cenários de 2+ prestações)
 }): Promise<number> => {
   const dueDate = daysFromToday(-(params.daysAgoDue ?? 0));
   // daysAgoDue: positivo = venceu há N dias (passado); negativo = vence no futuro
   // (daysFromToday soma; subtrair daysAgoDue dá a data correcta)
+  const scenarioLoanId = params.loanId ?? (await createLoan());
   const raw: any = await db.query(
     `INSERT INTO amortization_loans
        (companyId, loanId, installmentOrder, accountNumber, customerId,
@@ -171,7 +210,7 @@ const createInstallment = async (params: {
      VALUES (?, ?, '1ª', ?, ?, ?, 0, ?, 0, ?, 0, 0, 0, 0, NOW(), NOW())`,
     // 7 placeholders: company, loan, accN, cust, amortization, installment, dueDate
     // (rateAmount e remainingBalance ficam a 0 literais no SQL)
-    { replacements: [companyId, loanId, accountNumber, customerId, round2(params.value), params.value, dueDate] }
+    { replacements: [companyId, scenarioLoanId, accountNumber, customerId, round2(params.value), params.value, dueDate] }
   );
   return insertIdOf(raw);
 };
@@ -316,6 +355,10 @@ describe("EXCESSO (overpay)", () => {
     expect(res.statusCode).to.equal(201);
     expect(Number(res.body.allocation.applied)).to.equal(5000);
     expect(Number(res.body.allocation.overpay)).to.equal(2000);
+    // Sem prestações seguintes pendentes, o excesso integral vira crédito a
+    // favor (customer_credits) — nunca é absorvido silenciosamente.
+    expect((res.body.allocation.overpayAppliedToNextInstallments || []).length).to.equal(0);
+    expect(Number(res.body.allocation.overpayAsCredit)).to.equal(2000);
 
     const [creditRows]: any = await db.query(
       "SELECT amount, remaining_amount, status FROM customer_credits WHERE source_payment_id = ?",
@@ -324,6 +367,7 @@ describe("EXCESSO (overpay)", () => {
     const credit = (creditRows as any[])[0];
     expect(credit).to.not.be.undefined;
     expect(Number(credit.amount)).to.equal(2000);
+    expect(Number(credit.remaining_amount)).to.equal(2000);
     expect(String(credit.status)).to.equal("ACTIVE");
 
     // Prestação paga exactamente 5000

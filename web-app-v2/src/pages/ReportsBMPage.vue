@@ -2,7 +2,7 @@
   <div class="reports-bm-page">
     <div class="reports-body q-pa-md">
       <!-- FORMULÁRIO -->
-      <div class="form-card q-mb-md">
+      <div class="form-card q-mb-md" data-tour="bm-form">
         <div class="row q-col-gutter-md items-end">
           <div class="col-12 col-sm-2">
             <q-input v-model="filters.from" dense outlined label="Data Início" type="date" input-style="font-size: 13px" />

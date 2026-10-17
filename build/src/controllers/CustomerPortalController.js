@@ -53,7 +53,7 @@ const NotificationModel_1 = require("../database/models/NotificationModel");
 const TranzactionController_1 = require("./TranzactionController");
 const mpesa_node_api_1 = __importDefault(require("mpesa-node-api"));
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
-const CompanyModel_1 = require("../database/models/CompanyModel");
+const lateInterestService_1 = require("../services/lateInterestService");
 const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -75,10 +75,9 @@ const getCustomerDashboard = (req, res) => __awaiter(void 0, void 0, void 0, fun
             return res.status(404).json({ success: false, message: "Cliente não encontrado." });
         }
         const customerData = customer.toJSON();
-        // Taxa diária de mora da empresa (percentagem, ex.: 0.1 = 0,1%/dia) — mesma
-        // fonte usada pelo Admin/Gestor em /api/loan/amortization (installmentPanification)
-        const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum);
-        const forfeit = toNumber(company === null || company === void 0 ? void 0 : company.forfeit);
+        // Taxa diária de mora + limites de invalidação/limitação — MESMA FONTE
+        // (motor V2 company_penalty_rules com fallback companies.forfeit)
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
         // Buscar créditos do cliente
         const loans = yield LoanModel_1.LoanModel.findAll({
             where: { companyId: companyIdNum, customerId: customerIdNum },
@@ -100,7 +99,7 @@ const getCustomerDashboard = (req, res) => __awaiter(void 0, void 0, void 0, fun
             // MESMA FONTE DE VERDADE do Admin/Gestor (/api/loan/amortization): enriquece
             // cada prestação com paidAmount, remainingBalance, lateDays e latePaymentInterest
             // (mora = prestação × (forfeit/100) × dias em atraso).
-            const installmentList = (0, calculateLateAmount_1.installmentPanification)(installments, forfeit);
+            const installmentList = (0, calculateLateAmount_1.installmentPanification)(installments, forfeit, undefined, { maxLateDays, capPercent });
             const installmentIds = installments.map((item) => item.id);
             const paidTransactions = installmentIds.length > 0
                 ? yield TranzactionModel_1.TranzactionModel.findAll({
@@ -409,9 +408,9 @@ const registerPortalPayment = (req, res) => __awaiter(void 0, void 0, void 0, fu
         if (remaining <= 0) {
             return res.status(400).json({ success: false, message: "Não existe saldo em falta nesta prestação." });
         }
-        const company = yield CompanyModel_1.CompanyModel.findByPk(companyIdNum, { attributes: ["forfeit"] });
-        const forfeit = Number((company === null || company === void 0 ? void 0 : company.getDataValue("forfeit")) || 0);
-        const calculatedInstallment = (0, calculateLateAmount_1.installmentPanification)([Object.assign(Object.assign({}, installmentData), { paidAmount: alreadyPaid })], forfeit)[0];
+        // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
+        const calculatedInstallment = (0, calculateLateAmount_1.installmentPanification)([Object.assign(Object.assign({}, installmentData), { paidAmount: alreadyPaid })], forfeit, undefined, { maxLateDays, capPercent })[0];
         const currentLateInterest = round2(Number((calculatedInstallment === null || calculatedInstallment === void 0 ? void 0 : calculatedInstallment.latePaymentInterest) || 0));
         const currentTotalDue = round2(remaining + currentLateInterest);
         const nextInstallment = yield AmortizationLoanModel_1.AmorizationLoanModel.findOne({

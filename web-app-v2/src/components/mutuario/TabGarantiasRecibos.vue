@@ -32,6 +32,17 @@
             </div>
 
             <template v-else>
+              <!-- Cobertura: garantias vs total a pagar (capital + juros) -->
+              <q-banner v-if="coverage" dense rounded class="q-mb-sm" :class="coverage.covered ? 'bg-green-1 text-green-9' : 'bg-red-1 text-red-9'">
+                <template v-slot:avatar>
+                  <q-icon :name="coverage.covered ? 'verified' : 'warning'" :color="coverage.covered ? 'positive' : 'negative'" />
+                </template>
+                <div class="text-caption">
+                  Garantias: <strong>{{ formatMoney(coverage.guaranteesTotal) }}</strong> de {{ formatMoney(coverage.requiredTotal) }} MZN (crédito + juros)
+                  <strong v-if="!coverage.covered">— faltam {{ formatMoney(coverage.shortfall) }} MZN para poder aprovar este crédito.</strong>
+                  <strong v-else>— cobertura suficiente ({{ coverage.coveragePct }}%).</strong>
+                </div>
+              </q-banner>
               <q-skeleton v-if="guaranteesLoading" type="rect" height="120px" />
               <div v-else-if="guarantees.length === 0" class="text-center q-pa-lg text-grey-5">
                 <q-icon name="shield" size="36px" />
@@ -129,6 +140,7 @@ const guaranteesLoading = ref(false)
 const recibos = ref([])
 const recibosLoading = ref(false)
 const selectedLoanId = ref(null)
+const coverage = ref(null)
 
 const customerId = computed(() => store.customer?.id)
 
@@ -136,8 +148,13 @@ const customerId = computed(() => store.customer?.id)
 // créditos com histórico (activos e terminados). Recibos são do mutuário.
 const loanOptions = computed(() =>
   store.loans
-    .filter(l => [1, 3].includes(Number(l.status)))
-    .map(l => ({ label: `#${l.id} — ${formatMoney(l.amount)} (${Number(l.status) === 1 ? 'Activo' : 'Terminado'})`, value: l.id }))
+    // 0=Pendente: garantias podem (e DEVEM) ser registadas ANTES da aprovação —
+    // a aprovação só passa quando cobrem o total a pagar (capital + juros).
+    .filter(l => [0, 1, 3].includes(Number(l.status)))
+    .map(l => ({
+      label: `#${l.id} — ${formatMoney(l.amount)} (${({ 0: 'Pendente', 1: 'Activo', 3: 'Terminado' })[Number(l.status)] || l.status})`,
+      value: l.id
+    }))
 )
 
 async function fetchGuarantees() {
@@ -153,6 +170,19 @@ async function fetchGuarantees() {
     guarantees.value = []
   } finally {
     guaranteesLoading.value = false
+  }
+}
+
+async function fetchCoverage() {
+  if (!selectedLoanId.value) {
+    coverage.value = null
+    return
+  }
+  try {
+    const { data } = await api.get(`/api/loan/${selectedLoanId.value}/guarantee-coverage`)
+    coverage.value = data.success ? data.result : null
+  } catch {
+    coverage.value = null
   }
 }
 
@@ -208,14 +238,19 @@ async function openReciboPdf(r) {
 }
 function formatDate(dateStr) { return dateStr ? new Date(dateStr).toLocaleDateString('pt-MZ') : '—' }
 
-watch(selectedLoanId, () => fetchGuarantees())
+watch(selectedLoanId, () => {
+  fetchGuarantees()
+  fetchCoverage()
+})
 
 onMounted(() => {
   // Pré-selecciona o crédito activo mais recente, se existir
   if (store.activeLoan?.id) selectedLoanId.value = store.activeLoan.id
+  else if (loanOptions.value.length) selectedLoanId.value = loanOptions.value[0].value
   fetchGuarantees()
+  fetchCoverage()
   fetchRecibos()
 })
 
-defineExpose({ fetchGuarantees, fetchRecibos })
+defineExpose({ fetchGuarantees, fetchCoverage, fetchRecibos })
 </script>
