@@ -764,12 +764,13 @@ export const managerRanking = async (actor: RequestActor) => {
               WHERE l.companyId = u.companyId AND l.creditManager = u.id AND l.status = 1) AS carteira,
             (SELECT IFNULL(SUM(GREATEST(a2.installment - IFNULL(a2.paidAmount, 0), 0)), 0)
                FROM customer_loans l2
-               JOIN (SELECT DISTINCT a.loanId FROM amortization_loans a
-                      WHERE a.companyId = u.companyId
-                        AND a.dueDate < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-                        AND IFNULL(a.paidAmount, 0) < a.installment) AS risco ON risco.loanId = l2.id
                JOIN amortization_loans a2 ON a2.loanId = l2.id
-              WHERE l2.companyId = u.companyId AND l2.creditManager = u.id AND l2.status = 1) AS par30,
+              WHERE l2.companyId = u.companyId AND l2.creditManager = u.id AND l2.status = 1
+                AND EXISTS (SELECT 1 FROM amortization_loans a
+                             WHERE a.loanId = l2.id
+                               AND a.companyId = u.companyId
+                               AND a.dueDate < DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                               AND IFNULL(a.paidAmount, 0) < a.installment)) AS par30,
             (SELECT COUNT(*) FROM collection_activities ca
               WHERE ca.companyId = u.companyId AND ca.createdBy = u.id
                 AND ca.activityType = 'VISITA_DOMICILIAR'
