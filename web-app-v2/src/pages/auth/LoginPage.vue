@@ -54,7 +54,22 @@
                   </q-avatar>
                   <div class="q-ml-md">
                     <div class="feature-title">Acesso por perfis</div>
-                    <div class="feature-desc">Administrador, Gestor de Crédito e Operador com permissões próprias.</div>
+                    <div class="feature-desc">Administrador, Gestor de Crédito, Operador e Parceiro Financiador com permissões próprias.</div>
+                  </div>
+                </div>
+
+                <!-- Destaque: tour guiado incluído (visível antes do login) -->
+                <div class="feature-item tour-highlight">
+                  <q-avatar color="green-9" text-color="white" size="42px">
+                    <q-icon name="map" size="22px" />
+                  </q-avatar>
+                  <div class="q-ml-md">
+                    <div class="feature-title">Tour Guiado Incluso</div>
+                    <div class="feature-desc">
+                      Ao entrar no sistema, clique no botão <strong>«?»</strong> no canto inferior direito e faça um
+                      tour completo pelas funcionalidades do seu perfil. Aprenda em 2 minutos como criar clientes,
+                      lançar créditos, fazer cobrança e fechar caixa. Disponível para Gestor, Admin e Parceiro.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -172,6 +187,23 @@
                     <span class="text-underline">Criar conta de mutuário</span>
                   </q-btn>
                 </div>
+
+                <!-- Atalho discreto para a explicação do tour guiado -->
+                <div class="text-center tour-hint">
+                  <q-btn
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    color="green-10"
+                    class="tour-hint-link"
+                    :disable="loading"
+                    @click="showTourGuide = true"
+                  >
+                    <q-icon name="help_outline" size="14px" class="q-mr-xs" />
+                    <span>Novo no sistema? Veja como funciona o tour guiado →</span>
+                  </q-btn>
+                </div>
               </q-form>
 
               <q-separator class="q-my-md" style="opacity: 0.4" />
@@ -188,6 +220,50 @@
         </div>
       </div>
     </div>
+
+    <!-- Como funciona o tour guiado (3 passos) -->
+    <q-dialog v-model="showTourGuide">
+      <q-card class="tour-guide-card" style="width: 420px; max-width: 92vw; border-radius: 18px">
+        <q-card-section class="row items-center q-pb-none">
+          <q-avatar color="green-9" text-color="white" icon="map" size="36px" />
+          <div class="q-ml-sm">
+            <div class="text-subtitle1 text-weight-bold">Como usar o tour guiado</div>
+            <div class="text-caption text-grey-6">Três passos, sem sair do sistema</div>
+          </div>
+          <q-space />
+          <q-btn flat round dense icon="close" v-close-popup />
+        </q-card-section>
+
+        <q-card-section class="q-gutter-md q-pt-md">
+          <div class="tour-step">
+            <div class="tour-step-num">1</div>
+            <div>
+              <div class="tour-step-title">Faça login com o seu perfil</div>
+              <div class="tour-step-desc">Administrador, Gestor de Crédito ou Parceiro Financiador — o guia adapta-se ao que o seu perfil pode fazer.</div>
+            </div>
+          </div>
+          <div class="tour-step">
+            <div class="tour-step-num">2</div>
+            <div>
+              <div class="tour-step-title">Clique no «?» no canto da tela</div>
+              <div class="tour-step-desc">O botão verde de ajuda fica no canto inferior direito de todas as páginas.</div>
+            </div>
+          </div>
+          <div class="tour-step">
+            <div class="tour-step-num">3</div>
+            <div>
+              <div class="tour-step-title">Siga o guia interactivo</div>
+              <div class="tour-step-desc">Escolha «Tour completo» ou «Tour rápido». Pode refazer sempre que quiser.</div>
+            </div>
+          </div>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-pb-md q-pr-md">
+          <q-btn flat no-caps label="Fechar" color="grey-8" v-close-popup />
+          <q-btn unelevated rounded no-caps label="Entendi" color="green-10" v-close-popup />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <!-- Customer Login Dialog -->
     <q-dialog v-model="showCustomerLogin" persistent>
@@ -586,6 +662,9 @@ const showPassword = ref(false)
 const loading = ref(false)
 const error = ref(null)
 
+// Explicação do tour guiado (atalho «Novo no sistema?»)
+const showTourGuide = ref(false)
+
 const showCustomerLogin = ref(false)
 const customerForm = ref({ phone: '', password: '' })
 const showCustomerPassword = ref(false)
@@ -928,6 +1007,72 @@ body.body--dark .hero-sub { color: rgba(255, 255, 255, 0.72); }
 
 body.body--dark .feature-title { color: #ffffff; }
 body.body--dark .feature-desc { color: rgba(255, 255, 255, 0.68); }
+
+/* Destaque do tour guiado — sobressai sem poluir o resto da lista */
+.tour-highlight {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(46, 125, 50, 0.07);
+  border: 1px solid rgba(46, 125, 50, 0.18);
+}
+
+.tour-highlight .feature-desc {
+  max-width: 440px;
+}
+
+body.body--dark .tour-highlight {
+  background: rgba(191, 255, 0, 0.06);
+  border-color: rgba(191, 255, 0, 0.18);
+}
+
+/* Atalho «Novo no sistema?» dentro do cartão de login */
+.tour-hint-link {
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Diálogo dos 3 passos do tour */
+.tour-guide-card {
+  box-shadow: 0 24px 60px rgba(11, 61, 46, 0.22) !important;
+}
+
+.tour-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tour-step-num {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #1b5e20;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tour-step-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0b3d2e;
+  line-height: 1.3;
+}
+
+.tour-step-desc {
+  font-size: 12.5px;
+  color: #5b6b78;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+body.body--dark .tour-step-title { color: #ffffff; }
+body.body--dark .tour-step-desc { color: rgba(255, 255, 255, 0.68); }
 
 /* ============ Cartão de login (direita) ============ */
 .login-glass-card {
