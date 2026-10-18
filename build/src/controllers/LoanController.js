@@ -55,6 +55,7 @@ const reciboService_1 = require("../services/reciboService");
 const kycDocuments_1 = require("../utils/kycDocuments");
 const guaranteeCoverageService_1 = require("../services/guaranteeCoverageService");
 const loanAmortization_1 = require("../utils/loanAmortization");
+const adminFee_1 = require("../utils/adminFee");
 const toNumber = (value) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -269,7 +270,7 @@ const getLoanAmortization = (req, res) => __awaiter(void 0, void 0, void 0, func
 exports.getLoanAmortization = getLoanAmortization;
 const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b, _c;
-    let { accountNumber, companyId, amount, numberOfInstallments, interestRate, administrativeFee, creditManager, loanDescription, capacityExcessObservation, dateCreated, } = req.body;
+    let { accountNumber, companyId, amount, numberOfInstallments, interestRate, creditManager, loanDescription, capacityExcessObservation, dateCreated, } = req.body;
     // ── Validações de entrada (sem Joi — inline) ──
     if (!loanDescription || !String(loanDescription).trim()) {
         return res.status(400).json({ success: false, message: "A finalidade/descrição do crédito é obrigatória." });
@@ -327,6 +328,13 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             console.error("[Carteiras] Falha ao derivar a carteira da taxa:", (deriveError === null || deriveError === void 0 ? void 0 : deriveError.message) || deriveError);
         }
     }
+    // TAXA ADMINISTRATIVA — fracção com 6 decimais (0.0001 = 0,01%). Aceita
+    // também a percentagem explícita (adminFeePercent = 0,01) e rejeita uma
+    // percentagem pequena que seria arredondada a zero.
+    const adminFee = (0, adminFee_1.parseAdminFeePayload)(req.body);
+    if (!adminFee.ok) {
+        return res.status(400).json({ success: false, message: adminFee.message });
+    }
     const loan = yield LoanModel_1.LoanModel.create({
         accountNumber,
         customerId: customer.getDataValue("id"),
@@ -334,7 +342,7 @@ const createLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         amount,
         numberOfInstallments,
         interestRate,
-        administrativeFee: administrativeFee !== undefined ? Number(administrativeFee) || 0 : 0,
+        administrativeFee: adminFee.fraction,
         creditManager,
         loanDescription,
         capacityExcessObservation: capacityValidation.normalizedObservation,
@@ -523,6 +531,22 @@ const updateLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
                 message: "Não foi possível verificar as garantias do crédito.",
             });
         }
+    }
+    // TAXA ADMINISTRATIVA — normalizada antes de gravar. `LoanModel.update`
+    // recebe o corpo inteiro, por isso um cliente antigo (ou um valor em
+    // percentagem) só pode entrar aqui já convertido para fracção; caso
+    // contrário o 0,01% voltava a zero.
+    const touchesAdminFee = req.body.administrativeFee !== undefined ||
+        req.body.administrativeFeePercent !== undefined ||
+        req.body.adminFeePercent !== undefined;
+    if (touchesAdminFee) {
+        const adminFee = (0, adminFee_1.parseAdminFeePayload)(req.body);
+        if (!adminFee.ok) {
+            return res.status(400).json({ success: false, message: adminFee.message });
+        }
+        req.body.administrativeFee = adminFee.fraction;
+        delete req.body.administrativeFeePercent;
+        delete req.body.adminFeePercent;
     }
     const loan = yield LoanModel_1.LoanModel.update(req.body, {
         where: {

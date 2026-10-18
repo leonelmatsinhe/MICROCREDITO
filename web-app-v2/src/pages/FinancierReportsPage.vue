@@ -1,7 +1,7 @@
 <template>
   <q-page class="financier-reports-page q-pa-md">
     <!-- ═══════ FILTROS ═══════ -->
-    <q-card flat class="glass-card q-mb-md">
+    <q-card flat class="glass-card q-mb-md" data-tour="fin-rep-filtros">
       <q-card-section class="row q-col-gutter-sm items-center q-py-sm">
         <div class="col-12 col-lg-4">
           <q-select
@@ -66,7 +66,7 @@
 
       <q-separator />
 
-      <q-card-section class="row q-col-gutter-sm items-center q-py-sm">
+      <q-card-section class="row q-col-gutter-sm items-center q-py-sm" data-tour="fin-rep-acoes">
         <div class="col-12 col-lg-5">
           <q-select
             v-model="emails"
@@ -115,7 +115,7 @@
       </q-card>
 
       <!-- ═══════ KPIs ═══════ -->
-      <div class="row q-col-gutter-md q-mb-md">
+      <div class="row q-col-gutter-md q-mb-md" data-tour="fin-rep-kpis">
         <div v-for="item in resumoItems" :key="item.label" class="col-6 col-md-4 col-lg-3">
           <q-card flat class="glass-tile q-pa-md">
             <div class="row items-center no-wrap">
@@ -155,7 +155,7 @@
       </div>
 
       <!-- ═══════ DESEMBOLSOS ═══════ -->
-      <q-card flat class="glass-card q-mb-md">
+      <q-card flat class="glass-card q-mb-md" data-tour="fin-rep-desembolsos">
         <q-card-section class="row items-center q-py-sm">
           <q-icon name="request_quote" size="20px" color="primary" class="q-mr-sm" />
           <div class="col">

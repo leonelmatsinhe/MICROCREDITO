@@ -15,7 +15,7 @@
       </div>
       <div class="col-12 col-md-auto q-gutter-xs no-wrap">
         <q-btn color="primary" unelevated no-caps rounded icon="add" label="Nova Conta" @click="openFormDialog()" />
-        <q-btn outline color="primary" no-caps rounded icon="swap_horiz" label="Transferir" @click="openTransferDialog()" />
+        <q-btn outline color="primary" no-caps rounded icon="swap_horiz" label="Transferir" data-tour="bank-transferir" @click="openTransferDialog()" />
         <q-btn flat round icon="refresh" color="primary" :loading="loading" @click="fetchAccounts">
           <q-tooltip>Actualizar</q-tooltip>
         </q-btn>
@@ -23,7 +23,7 @@
     </div>
 
     <!-- ═══════ KPIs ═══════ -->
-    <div class="row q-col-gutter-md q-mb-md">
+    <div class="row q-col-gutter-md q-mb-md" data-tour="bank-kpis">
       <div v-for="tile in kpis" :key="tile.label" class="col-6 col-lg-3">
         <q-card flat class="glass-tile q-pa-md">
           <div class="row items-center no-wrap">
@@ -67,7 +67,7 @@
     </q-card>
 
     <!-- ═══════ CARTOES ═══════ -->
-    <div v-else class="row q-col-gutter-md">
+    <div v-else class="row q-col-gutter-md" data-tour="bank-list">
       <div v-for="account in filteredAccounts" :key="account.id" class="col-12 col-md-6 col-xl-4">
         <q-card flat class="account-card" :class="{ 'account-inactive': Number(account.is_active) !== 1 }">
           <div class="account-head" :class="`head-${purposeTone(account.purpose)}`">

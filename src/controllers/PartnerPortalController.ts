@@ -57,6 +57,8 @@ const profile = async (req: Request, res: Response) => {
             phone: company.companyPhone || "",
             email: company.companyEmail || "",
             address: company.companyAddress || "",
+            // Branding do cabeçalho do portal (companies.companyLogo → uploads/…).
+            companyLogo: company.companyLogo || "",
           }
         : null,
     },

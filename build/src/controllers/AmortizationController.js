@@ -53,6 +53,7 @@ const kycDocuments_1 = require("../utils/kycDocuments");
 const guaranteeCoverageService_1 = require("../services/guaranteeCoverageService");
 const CustomerDocumentsModel_1 = require("../database/models/CustomerDocumentsModel");
 const concessionPackageService_1 = require("../services/concessionPackageService");
+const adminFee_1 = require("../utils/adminFee");
 const getUpcomingAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
@@ -292,7 +293,19 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         // ── TAXA ADMINISTRATIVA: entrada obrigatória numa conta ──
         // Se o crédito cobra taxa administrativa, o valor TEM de entrar numa
         // conta (banco / mobile money) — é dinheiro real da empresa.
-        const adminFeeValue = Number((bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.admin_fee_value) || 0);
+        // O valor é derivado do CRÉDITO (fonte de verdade), não do cliente: o
+        // crédito guarda a fracção (0.0001 = 0,01%) e o capital; se o cliente (ou
+        // um bundle antigo em cache) enviar `admin_fee_value: 0`, a taxa continua
+        // a ser cobrada e registada na tesouraria.
+        const loanAdminFeeFraction = (0, adminFee_1.normalizeStoredAdminFee)(loan.getDataValue("administrativeFee"));
+        const loanAdminFeeValue = (0, adminFee_1.adminFeeAmountOnPrincipal)(loanAmount, loanAdminFeeFraction);
+        const requestedAdminFeeValue = Math.max(0, Number((bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.admin_fee_value) || 0));
+        const adminFeeValue = loanAdminFeeValue > 0 ? loanAdminFeeValue : requestedAdminFeeValue;
+        if (loanAdminFeeValue > 0 &&
+            requestedAdminFeeValue > 0 &&
+            Math.abs(requestedAdminFeeValue - loanAdminFeeValue) > 0.01) {
+            console.warn(`[TaxaAdmin] Crédito #${loanId}: valor enviado ${requestedAdminFeeValue.toFixed(2)} difere do apurado ${loanAdminFeeValue.toFixed(2)} — prevalece o crédito.`);
+        }
         const adminFeeAccountId = (bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.admin_fee_account_id) ? Number(bodyAny.admin_fee_account_id) : null;
         if (adminFeeValue > 0) {
             if (!adminFeeAccountId) {
@@ -600,7 +613,9 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
                     daysOverdue,
                     daysUntilDue,
                     lateFee,
-                    totalToPay: Math.round(((Number(a.installment) || 0) + lateFee) * 100) / 100,
+                    // Total a pagar = SALDO DEVEDOR + mora (nunca a prestação integral
+                    // quando já houve pagamento parcial).
+                    totalToPay: Math.round((Math.max(0, (Number(a.installment) || 0) - (Number(a.paidAmount) || 0)) + lateFee) * 100) / 100,
                     amortization: Number(a.amortization) || 0,
                     rateAmount: Number(a.rateAmount) || 0,
                 });

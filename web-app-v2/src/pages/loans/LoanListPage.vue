@@ -43,7 +43,7 @@
     </div>
 
     <!-- ============ FILTROS ============ -->
-    <q-card flat bordered class="q-mb-md filters-card" style="border-radius: 12px">
+    <q-card flat bordered class="q-mb-md filters-card" style="border-radius: 12px" data-tour="loans-filtros">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
           <div class="col-12 col-md-4">
@@ -94,6 +94,7 @@
       <!-- Segmentos -->
       <q-tabs
         v-model="tab"
+        data-tour="loans-tabs"
         class="q-px-sm"
         align="left"
         dense
@@ -138,7 +139,7 @@
       <div class="text-caption text-grey-5 q-mt-sm">A carregar créditos...</div>
     </div>
 
-    <q-card v-else flat bordered class="table-card" style="border-radius: 12px; overflow: hidden">
+    <q-card v-else flat bordered class="table-card" style="border-radius: 12px; overflow: hidden" data-tour="loans-table">
       <q-card-section v-if="filteredRows.length === 0" class="text-center q-pa-xl">
         <q-icon name="account_balance_wallet" size="64px" color="grey-4" />
         <div class="text-h6 text-grey-6 q-mt-md">Nenhum crédito {{ segment.single.toLowerCase() }}</div>

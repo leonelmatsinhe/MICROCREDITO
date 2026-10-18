@@ -5,7 +5,7 @@
       <q-toolbar>
         <q-btn flat round dense icon="menu" @click="drawer = !drawer" class="gt-sm" />
         <q-avatar square size="28px" class="bg-white q-mr-sm" style="border-radius: 6px; padding: 2px">
-          <img src="/favicon.ico" alt="Logo" />
+          <img :src="logoSrc" alt="Logo" @error="onLogoError" />
         </q-avatar>
         <q-toolbar-title class="partner-title">
           <div class="text-subtitle2 text-weight-bold">Portal do Financiador</div>
@@ -119,6 +119,21 @@ const isDark = computed(() => uiStore.isDark)
 const wallet = computed(() => walletsStore.partnerProfile?.carteira || null)
 const companyName = computed(() => walletsStore.partnerProfile?.empresa?.name || 'MBRM')
 
+// Branding: logotipo da empresa do parceiro (companies.companyLogo, exposto em
+// /api/partner/profile). Mesma resolução do store staff: filename → /documents/…,
+// caminho absoluto → como está; vazio/URL externa → logo local por omissão.
+const logoSrc = ref('/logo.png')
+
+function applyCompanyLogo() {
+  const logo = walletsStore.partnerProfile?.empresa?.companyLogo
+  if (!logo || typeof logo !== 'string' || logo.startsWith('http')) return
+  logoSrc.value = logo.startsWith('/') ? logo : `/documents/${logo}`
+}
+
+function onLogoError() {
+  if (logoSrc.value !== '/logo.png') logoSrc.value = '/logo.png'
+}
+
 const menuItems = [
   { to: '/parceiro/dashboard', icon: 'dashboard', label: 'Painel' },
   { to: '/parceiro/creditos', icon: 'account_balance_wallet', label: 'Créditos desembolsados' },
@@ -174,6 +189,7 @@ onMounted(async () => {
 
   try {
     await walletsStore.fetchPartnerProfile()
+    applyCompanyLogo()
   } catch (error) {
     $q.notify({
       type: 'negative',

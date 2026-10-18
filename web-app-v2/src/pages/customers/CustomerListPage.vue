@@ -158,7 +158,7 @@
     </q-card>
 
     <!-- Customers Table -->
-    <q-card v-else flat bordered style="border-radius: 12px; overflow: hidden">
+    <q-card v-else flat bordered style="border-radius: 12px; overflow: hidden" data-tour="customers-table">
       <q-table
         :rows="customers"
         :columns="columns"

@@ -152,7 +152,7 @@ export const getPartnerDashboard = async (scope: PartnerScope, period: { from?: 
     `SELECT DATE_FORMAT(paymentDate, '%Y-%m') AS mes, SUM(amount) AS total, COUNT(*) AS n
        FROM tranzactions
       WHERE companyId = ? AND walletId = ?
-        AND paymentDate IS NOT NULL AND paymentDate <> ''
+        AND paymentDate IS NOT NULL
       GROUP BY mes
       ORDER BY mes ASC`,
     { replacements: [scope.companyId, scope.walletId] }

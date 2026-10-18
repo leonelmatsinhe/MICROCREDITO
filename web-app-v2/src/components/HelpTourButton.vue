@@ -11,20 +11,20 @@
       :label="progress"
     />
 
-    <!-- Checklist do primeiro dia: fica à vista enquanto houver tarefas por fazer -->
+    <!-- Primeiro dia: páginas do menu cujo tour já foi visto -->
     <q-chip
-      v-else-if="hasChecklist && !isComplete"
+      v-else-if="pageTourTotal > 0 && completedPages < pageTourTotal"
       dense
       clickable
       color="teal-8"
       text-color="white"
       icon="checklist"
       class="tour-help-chip"
-      :label="`Primeiro dia ${doneCount}/${total}`"
-      @click="openChecklist"
+      :label="`Primeiro dia ${completedPages}/${pageTourTotal}`"
+      @click="openPageTourList"
     >
       <q-tooltip anchor="center left" self="center right" :offset="[10, 0]">
-        Checklist do primeiro dia — {{ percent }}% concluído
+        Tours das páginas — {{ pageTourProgress }}% concluído. Clica para ver a lista.
       </q-tooltip>
     </q-chip>
 
@@ -77,6 +77,35 @@
             </q-item-section>
           </q-item>
 
+          <q-item v-if="pageTourTotal > 0" clickable v-close-popup @click="openPageTourList">
+            <q-item-section avatar><q-icon name="map" color="blue-7" /></q-item-section>
+            <q-item-section>
+              <q-item-label>Tours de todas as páginas</q-item-label>
+              <q-item-label caption>{{ completedPages }}/{{ pageTourTotal }} páginas já vistas</q-item-label>
+            </q-item-section>
+          </q-item>
+
+          <!-- Lista dos passos desta página: o «?» mostra logo o que vai explicar -->
+          <template v-if="pageTourOnView">
+            <q-separator />
+            <q-item-label header class="tour-menu-header">
+              Nesta página · {{ pageTourOnView.label }}
+            </q-item-label>
+            <q-item
+              v-for="(step, index) in pageTourOnView.steps"
+              :key="`${pageTourOnView.id}-${index}`"
+              dense
+              class="tour-step-preview"
+            >
+              <q-item-section avatar>
+                <q-avatar size="22px" color="green-1" text-color="green-10" font-size="11px">{{ index + 1 }}</q-avatar>
+              </q-item-section>
+              <q-item-section>
+                <q-item-label class="tour-step-title">{{ step.title }}</q-item-label>
+              </q-item-section>
+            </q-item>
+          </template>
+
           <q-item v-if="hasChecklist" clickable v-close-popup @click="openChecklist">
             <q-item-section avatar><q-icon name="checklist" color="deep-purple" /></q-item-section>
             <q-item-section>
@@ -101,15 +130,19 @@
       </q-menu>
     </q-btn>
   </div>
+
+  <!-- Lista completa dos tours por página («Primeiro dia X/Y») -->
+  <PageToursDialog />
 </template>
 
 <script setup>
-import { onUnmounted, watchEffect } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, onUnmounted, watch, watchEffect } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useQuasar } from 'quasar'
 import { useAuthStore } from '@/stores/auth'
 import { useAppTour } from '@/composables/useAppTour'
 import { useOnboardingChecklist } from '@/composables/useOnboardingChecklist'
+import PageToursDialog from '@/components/onboarding/PageToursDialog.vue'
 
 /**
  * AJUDA / TOUR GUIADO
@@ -117,18 +150,27 @@ import { useOnboardingChecklist } from '@/composables/useOnboardingChecklist'
  * O percurso disponível depende do perfil — ver `useAppTour`.
  */
 const router = useRouter()
+const route = useRoute()
 const $q = useQuasar()
 const authStore = useAuthStore()
 const {
   isActive,
+  flow,
   progress,
   tourRoleLabel,
   fullStepCount,
   quickStepCount,
   pageStepCount,
+  pageTourOnView,
+  pageTourTotal,
+  completedPages,
+  pageTourProgress,
   startTour,
   startPageTour: startPageSteps,
   stopTour: endTour,
+  abandonTour,
+  maybeAutoStartPageTour,
+  openPageTours,
   resetSeen,
   setRole
 } = useAppTour({ router })
@@ -139,6 +181,7 @@ const {
   total,
   percent,
   isComplete,
+  panelOpen: checklistPanelOpen,
   openPanel: openOnboardingChecklist
 } = useOnboardingChecklist({ router })
 
@@ -164,6 +207,10 @@ function openChecklist() {
   openOnboardingChecklist()
 }
 
+function openPageTourList() {
+  openPageTours()
+}
+
 function stopTour() {
   endTour()
 }
@@ -177,8 +224,35 @@ function resetOnboarding() {
   })
 }
 
+/* ── Tour automático na primeira visita a cada página ────────────────────
+ * Uma vez por utilizador e página: se ainda não viu, o tour abre sozinho e o
+ * botão «Pular tour» fecha-o (e não volta a aparecer nessa página).         */
+const AUTO_START_DELAY = 900
+let autoTimer = null
+
+function scheduleAutoTour() {
+  window.clearTimeout(autoTimer)
+  autoTimer = window.setTimeout(() => {
+    maybeAutoStartPageTour(authStore.userRole, { blocked: checklistPanelOpen.value })
+  }, AUTO_START_DELAY)
+}
+
+watch(
+  () => route.path,
+  () => {
+    // Mudar de página a meio de um tour de página não conta como «já visto».
+    if (isActive.value && flow.value === 'page') abandonTour()
+    scheduleAutoTour()
+  }
+)
+
+onMounted(scheduleAutoTour)
+
 // Sair da sessão / fechar o layout termina o tour em curso.
-onUnmounted(() => endTour())
+onUnmounted(() => {
+  window.clearTimeout(autoTimer)
+  endTour()
+})
 </script>
 
 <style lang="scss">
@@ -202,6 +276,22 @@ onUnmounted(() => endTour())
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #64748b;
+}
+
+.tour-step-preview {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  min-height: 28px;
+}
+
+.tour-step-title {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #334155;
+}
+
+body.body--dark .tour-step-title {
+  color: #e2e8f0;
 }
 
 /* ── Popover do tour (driver.js) ── */

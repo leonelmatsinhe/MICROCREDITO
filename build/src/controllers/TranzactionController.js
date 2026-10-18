@@ -1062,6 +1062,9 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 latePaymentInterest: result.latePaymentInterest,
                 paymentDate: payDate,
                 reference: String(tranzactionReference),
+                // Recibo emitido no passo 15 (ou regenerado acima) — vai no SMS com o
+                // número e o link de validação (envio automático do recibo por SMS).
+                reciboNumeros: (recibo === null || recibo === void 0 ? void 0 : recibo.numero) ? [String(recibo.numero)] : null,
             });
         }
         catch (smsError) {

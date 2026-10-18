@@ -37,7 +37,7 @@
     </q-card>
 
     <!-- KPIs -->
-    <div class="row q-col-gutter-md q-mb-md">
+    <div class="row q-col-gutter-md q-mb-md" data-tour="installments-kpis">
       <div class="col-12 col-sm-3">
         <q-card flat bordered class="kpi-card">
           <q-card-section class="row items-center">
@@ -114,6 +114,7 @@
       </q-card-section>
 
       <q-table
+        data-tour="installments-table"
         :rows="filteredInstallments"
         :columns="columns"
         row-key="id"
@@ -178,7 +179,7 @@
         </template>
 
         <template v-slot:body-cell-actions="props">
-          <q-td :props="props">
+          <q-td :props="props" data-tour="installments-actions">
             <div class="row no-wrap q-gutter-xs">
               <q-btn flat round dense icon="sms" size="sm" color="blue" @click="sendSMS(props.row)">
                 <q-tooltip>Enviar SMS</q-tooltip>

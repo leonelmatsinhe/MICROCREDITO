@@ -82,9 +82,22 @@ exports.findAll = findAll;
 const dashboard = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const companyId = Number(req.params.companyId);
+        // FILTRO DE DATAS DO PAINEL — o período só pode limitar o MOVIMENTO
+        // (desembolsos/recebimentos); capital alocado e saldo a receber são
+        // cumulativos. `from`/`to` chegam em ISO (YYYY-MM-DD).
+        const isIso = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").slice(0, 10));
+        const from = isIso(req.query.from) ? String(req.query.from).slice(0, 10) : null;
+        const to = isIso(req.query.to) ? String(req.query.to).slice(0, 10) : null;
+        if (from && to && from > to) {
+            return res.status(400).json({
+                success: false,
+                message: "Intervalo de datas inválido: a data inicial é posterior à data final.",
+            });
+        }
         const wallets = yield (0, financingWalletService_1.getWalletsWithAnalytics)(companyId, { onlyActive: true });
         const summary = yield (0, financingWalletService_1.getWalletTotalsSummary)(companyId);
         const real = yield (0, financingWalletService_1.getRealDisbursementBalance)(companyId);
+        const periodo = from && to ? yield (0, financingWalletService_1.getWalletPeriodMovement)(companyId, from, to) : null;
         // Séries mensais por carteira (gráficos do painel). Falha em silêncio: os
         // KPIs continuam a ser devolvidos mesmo que as séries não estejam disponíveis.
         let graficos = { meses: [], porCarteira: [] };
@@ -103,6 +116,8 @@ const dashboard = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             carteiras: wallets.map(serializeWallet),
             graficos,
             saldo_real: real,
+            // Movimento dentro do período escolhido (null quando não há filtro).
+            periodo,
         });
     }
     catch (error) {

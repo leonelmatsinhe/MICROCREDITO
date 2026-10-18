@@ -1,0 +1,107 @@
+# Multi-tenant (single-tenant por instalação) — PROD + DEMO na mesma VPS
+
+Mesmo código, duas pastas, duas bases de dados, duas portas. Cada tenant é
+uma **cópia clonada do repo** com `.env` próprio — arquitectura
+single-tenant: o `tenantGuard` (`TENANT_MODE=single`) força sempre o
+`companyId` do respectivo `.env`, independentemente do que o cliente mande.
+
+## Estrutura
+
+```
+/opt/microcredito/
+├── ecosystem.config.cjs      # espelho do da raiz do repo (sincronizado pelo deploy)
+├── tenant-a/                 # PROD   → PORT 4000 · BD microcredito_a
+│   ├── .env                  #   (não versionado, chmod 600)
+│   ├── uploads/              #   documentos PROD (nunca partilhados)
+│   └── …clone do repo…
+└── tenant-b/                 # DEMO   → PORT 4001 · BD microcredito_b
+    ├── .env
+    ├── uploads/
+    └── …clone do repo…
+```
+
+## Primeira instalação (uma vez)
+
+```bash
+cd /opt/microcredito/tenant-a   # ou de qualquer clone do repo
+./scripts/deploy.sh init-tenants        # cria tenant-a, tenant-b, .env de exemplo, BDs
+
+# 1) editar os .env (senhas! segredos gerados à parte):
+nano /opt/microcredito/tenant-a/.env    # PORT=4000 DATABASE_NAME=microcredito_a …
+nano /opt/microcredito/tenant-b/.env    # PORT=4001 DATABASE_NAME=microcredito_b …
+
+# 2) se o mysql local não criou as BDs e utilizadores, correr o SQL do init;
+# 3) primeiro deploy dos 2 tenants:
+./scripts/deploy.sh
+
+# 4) Nginx + SSL (blocos em docs/deploy/multi-tenant/nginx-*.conf):
+sudo ln -s /etc/nginx/sites-available/microcredito-a.conf      /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/microcredito-demo.conf  /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d a.tuaempresa.co.mz
+sudo certbot --nginx -d demo.tuaempresa.co.mz
+```
+
+## Regras single-tenant
+
+| Regra | Como funciona |
+|---|---|
+| **Uma BD por tenant** | `microcredito_a` (prod) e `microcredito_b` (demo). O `.env` de cada clone define `DATABASE_NAME`; o `ecosystem.config.cjs` reforça-o no `env` de cada app. |
+| **Migrações isoladas** | O deploy corre `npm run migrate` **dentro de cada tenant**, logo cada BD recebe as suas migrações, na sua ordem. Nunca correr migrate de um tenant dentro da pasta do outro. |
+| **Uploads isolados** | Cada tenant tem o seu `uploads/` (recibos, fotos, logotipos). O `gitignore` é garantido pelo deploy. |
+| **Logs separados** | `pm2 logs microcredito-a` · `pm2 logs microcredito-demo`. |
+| **Portas** | PROD 4000, DEMO 4001 — só o Nginx é exposto ao exterior. |
+| **Segredos** | `APP_SECRET` e `RECIBO_HASH_SECRET` **diferentes** por tenant (gere dois: `openssl rand -hex 32`). Tokens/URLs de recibos do demo não validam no prod. |
+| **Deploy atómico e isolado** | `deploy.sh` faz build+migrate e só depois `pm2 startOrReload … --only <app>`. Falha num tenant não toca ao outro; o prod é sempre processado primeiro. |
+
+## Ordem PM2 correta
+
+```bash
+pm2 startOrReload /opt/microcredito/ecosystem.config.cjs --update-env          # ambos
+pm2 startOrReload /opt/microcredito/ecosystem.config.cjs --only microcredito-a # só prod
+pm2 save                                                   # persiste no resurrect
+pm2 list                                                   # estado
+```
+
+O `ecosystem.config.cjs` é dinâmico: exporta um app por pasta existente
+(`tenant-a` → `microcredito-a`, `tenant-b` → `microcredito-demo`); se
+existirem ambos os tenants e nenhum outro caminho, o modo single (1 app)
+é o fallback para clones avulsos (dev Windows, VPS antiga).
+
+## Remover o DEMO sem afectar o PROD
+
+```bash
+# 1) parar e desregistrar só o demo
+pm2 delete microcredito-demo
+pm2 save
+
+# 2) remover a pasta do tenant demo
+rm -rf /opt/microcredito/tenant-b
+
+# 3) base de dados do demo (irreversível — certificar!)
+mysql -e "DROP DATABASE IF EXISTS microcredito_b;
+          DROP USER IF EXISTS 'microcredito_b'@'localhost';"
+
+# 4) Nginx + SSL do demo
+sudo rm -f /etc/nginx/sites-enabled/microcredito-demo.conf \
+           /etc/nginx/sites-available/microcredito-demo.conf
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot delete --cert-name demo.tuaempresa.co.mz
+
+# 5) sincronizar ecosystem (passa a exportar só o app prod)
+cp /opt/microcredito/tenant-a/ecosystem.config.cjs /opt/microcredito/ecosystem.config.cjs
+pm2 startOrReload /opt/microcredito/ecosystem.config.cjs --update-env && pm2 save
+```
+
+O prod não é reiniciado em nenhum passo acima além do `startOrReload` final
+do passo 5 (que só re-carrega `microcredito-a`; para zero toque, basta
+`pm2 save` — o resurrect de boot é que usará a lista nova).
+
+## Rollback de um tenant
+
+```bash
+git -C /opt/microcredito/tenant-a log --oneline -5     # escolher sha
+git -C /opt/microcredito/tenant-a reset --hard <sha>
+cd /opt/microcredito/tenant-a && npx tsc && (cd web-app-v2 && npx vite build)
+pm2 restart microcredito-a --update-env
+```

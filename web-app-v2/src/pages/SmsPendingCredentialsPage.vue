@@ -44,7 +44,7 @@
     </div>
 
     <!-- Empty state -->
-    <q-card v-if="!loading && pendingList.length === 0" flat bordered style="border-radius: 10px">
+    <q-card v-if="!loading && pendingList.length === 0" flat bordered style="border-radius: 10px" data-tour="sms-vazio">
       <q-card-section class="text-center q-pa-xl">
         <q-icon name="mark_email_read" size="56px" color="green-5" />
         <div class="text-h6 q-mt-sm">Nenhuma mensagem</div>
@@ -58,6 +58,7 @@
     <!-- Tabela -->
     <q-table
       v-else-if="!loading"
+      data-tour="sms-table"
       :rows="filteredRows"
       :columns="columns"
       row-key="id"
@@ -86,7 +87,7 @@
       </template>
 
       <template v-slot:body-cell-status="props">
-        <q-td :props="props">
+        <q-td :props="props" data-tour="sms-estado">
           <q-chip :color="statusColor(props.row.status)" text-color="white" size="xs" dense>
             {{ statusLabel(props.row.status) }}
           </q-chip>
@@ -118,7 +119,7 @@
       </template>
 
       <template v-slot:body-cell-actions="props">
-        <q-td :props="props">
+        <q-td :props="props" data-tour="sms-acoes">
           <div class="row items-center no-wrap">
             <q-btn flat round dense icon="visibility" size="xs" color="grey-7" @click="viewMessage(props.row)">
               <q-tooltip>Ver mensagem</q-tooltip>

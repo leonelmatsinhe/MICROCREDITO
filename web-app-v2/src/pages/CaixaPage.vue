@@ -27,6 +27,7 @@
             unelevated
             icon="point_of_sale"
             label="Abrir Caixa do Dia"
+            data-tour="caixa-abrir"
             :loading="saving"
             @click="openOpenDialog"
           />
@@ -99,6 +100,7 @@
                 no-caps
                 icon="lock"
                 label="Efectuar Fecho"
+                data-tour="caixa-fechar"
                 @click="openCloseDialog"
               />
             </div>
@@ -209,6 +211,7 @@
           rounded
           class="q-mb-md bg-grey-2"
           style="border-radius: 10px"
+          data-tour="caixa-fecho-resultado"
         >
           <template v-slot:avatar>
             <q-icon :name="Math.abs(Number(register.difference)) < 0.01 ? 'check_circle' : 'warning'" :color="Math.abs(Number(register.difference)) < 0.01 ? 'positive' : 'warning'" />
@@ -263,7 +266,7 @@
 
         <!-- ═══════════ AÇÕES + TABELA DE MOVIMENTOS ═══════════ -->
         <q-card flat bordered style="border-radius: 12px; overflow: hidden">
-          <q-card-section class="row items-center q-py-sm">
+          <q-card-section class="row items-center q-py-sm" data-tour="caixa-movimentos">
             <div class="col text-subtitle2 text-weight-bold">Movimentos do Dia</div>
             <template v-if="isOpen">
               <q-btn
@@ -361,7 +364,7 @@
         </q-card>
 
         <!-- ═══════════ RODAPÉ: OPERAÇÕES OFICIAIS DE TESOURARIA (terminologia BM) ═══════════ -->
-        <div v-if="isOpen" class="q-mt-md q-pa-sm rounded-borders bg-grey-1 row q-gutter-sm items-center">
+        <div v-if="isOpen" class="q-mt-md q-pa-sm rounded-borders bg-grey-1 row q-gutter-sm items-center" data-tour="caixa-tesouraria">
           <div class="text-caption text-grey-7 q-mr-sm">
             <q-icon name="savings" size="14px" class="q-mr-xs" />Operações de tesouraria:
           </div>

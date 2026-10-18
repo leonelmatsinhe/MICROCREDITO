@@ -63,6 +63,8 @@ const CustomerPortalController_1 = require("./controllers/CustomerPortalControll
 const PdfController_1 = require("./controllers/PdfController");
 const LegalDocsController_1 = require("./controllers/LegalDocsController");
 const OperatorLoanController_1 = require("./controllers/OperatorLoanController");
+// ADMINISTRAÇÃO DO SISTEMA — Zona de Perigo (Reset Geral de Dados Operacionais)
+const SystemResetController_1 = require("./controllers/SystemResetController");
 // FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
 const SuperAdminController_1 = require("./controllers/SuperAdminController");
 // CAIXA DIÁRIO — rotas do módulo isolado de fluxo de caixa
@@ -521,3 +523,9 @@ routes.get("/api/partner/statement/excel", PartnerPortalController_1.statementEx
 routes.get("/api/partner/statement", PartnerPortalController_1.statement);
 routes.get("/api/partner/recibos/:id/pdf", PartnerPortalController_1.reciboPdf);
 routes.get("/api/partner/recibos", PartnerPortalController_1.recibos);
+// ==================== ZONA DE PERIGO — RESET GERAL ====================
+// Configurações → Administração do Sistema → Zona de Perigo (só Admin, role 1).
+// Ambas as rotas validam internamente: modo single-tenant + role 1 + palavra
+// "RESETAR" + senha do Admin (bcrypt). O preview mostra o que será apagado.
+routes.get("/api/admin/system/reset-status", roles_1.isAdmin, SystemResetController_1.resetStatus);
+routes.post("/api/admin/system/reset-operational-data", roles_1.isAdmin, SystemResetController_1.resetOperationalData);

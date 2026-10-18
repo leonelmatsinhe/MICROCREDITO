@@ -716,6 +716,27 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       console.error("[Recibo] Falha ao emitir o recibo do pagamento do portal:", reciboError?.message || reciboError);
     }
 
+    // ── SMS DO RECIBO: envio automático ao mutuário (best-effort) ──
+    // Mesmo canal dos pagamentos internos: a mensagem leva o número do recibo
+    // e o link de validação. Falha de SMS nunca desfaz o pagamento.
+    try {
+      const { enqueuePaymentSms } = await import("../services/SmsGatewayService");
+      await enqueuePaymentSms({
+        companyId: companyIdNum,
+        transactionId: Number((tranzaction as any).id),
+        loanId: loanIdNum,
+        amortizationLoanId: installmentIdNum,
+        accountNumber: customerData.accountNumber,
+        paidAmount: paymentAmount,
+        latePaymentInterest: currentLateInterest,
+        paymentDate: todayStr,
+        reference: txReference,
+        reciboNumeros: recibo?.numero ? [String(recibo.numero)] : null,
+      });
+    } catch (smsError) {
+      console.error("Erro ao enfileirar SMS do pagamento do portal:", smsError);
+    }
+
     return res.status(201).json({
       success: true,
       message: isFullPayment

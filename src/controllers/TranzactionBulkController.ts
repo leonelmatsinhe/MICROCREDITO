@@ -357,6 +357,9 @@ const addTranzactionBulk = async (req: Request, res: Response) => {
           latePaymentInterest: Number(planned.reduce((sum: number, p: any) => sum + p.latePaymentInterest, 0).toFixed(2)),
           paymentDate: payDate,
           reference: tranzactionReference,
+          // Recibos emitidos acima (um por prestação) — o SMS leva o intervalo
+          // de números e o link de validação (envio automático por SMS).
+          reciboNumeros: recibos.map((r: any) => String(r?.numero || "")).filter(Boolean),
         });
       } catch (smsError) {
         console.error("Erro ao enfileirar SMS de liquidação:", smsError);

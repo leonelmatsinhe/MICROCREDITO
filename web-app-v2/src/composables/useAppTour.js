@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { driver } from 'driver.js'
 import 'driver.js/dist/driver.css'
+import { PAGE_TOURS, findPageTour, pageToursForRole } from '@/data/pageTours'
 
 /**
  * TOUR GUIADO / ONBOARDING
@@ -16,6 +17,15 @@ import 'driver.js/dist/driver.css'
 
 /** localStorage: { "<role>": <timestamp> } — um pedido de tour por perfil/dispositivo. */
 const SEEN_KEY = 'mbr_tour_seen_v1'
+
+/**
+ * localStorage dos tours de página já vistos:
+ *   { "u12": { "caixa": 1730000000000, "mutuarios": ... } }
+ * Indexado pelo utilizador (id da conta, com o perfil como fallback) para dois
+ * colegas no mesmo computador não partilharem o progresso, e pela página (id
+ * estável) para o alerta azul «ainda não tem passos» nunca voltar a aparecer.
+ */
+const PAGE_SEEN_KEY = 'mbr_page_tours_v1'
 
 /** Passos que se repetem em todos os perfis de staff (menu + navbar). */
 const LAYOUT_STEPS = {
@@ -53,7 +63,7 @@ const LAYOUT_STEPS = {
   navbarUser: {
     el: '[data-tour="navbar-user"]',
     title: 'Perfil, tema e saída',
-    text: 'Aqui muda o tema claro/escuro, o idioma, abre o seu perfil e termina a sessão. As notificações ficam no sino ao lado.',
+    text: 'Aqui muda o tema claro/escuro, abre o seu perfil e termina a sessão. As notificações ficam no sino ao lado.',
     side: 'bottom',
     align: 'end'
   },
@@ -439,6 +449,17 @@ const tourLabel = ref('')
 const stepIndex = ref(0)
 const stepCount = ref(0)
 
+/** Páginas já vistas: { "<utilizador>": { "<id-página>": ts } } (reactivo). */
+const pageSeenState = ref(readPageSeenState())
+/** Utilizador actual (muda no login/logout). */
+const userKey = ref(storageUserKey())
+/** Painel com a lista de tours de todas as páginas. */
+const pageToursOpen = ref(false)
+/** Até quando o tour automático está suspenso (aviso de onboarding do 1.º login). */
+let suppressAutoUntil = 0
+/** Página do tour em execução — marcada como vista no fecho do overlay. */
+let currentPageTour = null
+
 /** Enquanto o tour corre, a sidebar abre todos os grupos (os alvos têm de existir no DOM). */
 const menuExpanded = ref(false)
 
@@ -447,6 +468,8 @@ let driverObj = null
 let routerRef = null
 let keyHandler = null
 let navigating = false
+/** Uma transição de passo em curso (impede goTo concorrentes). */
+let transitioning = false
 // Sessão em curso: `sessionFinish` é chamado uma única vez, com o motivo do fim
 // ('done' quando o tour chegou ao último passo, 'close' em qualquer outro fecho).
 let sessionFinish = null
@@ -461,17 +484,117 @@ const activeTour = computed(() => TOURS[Number(role.value)] || null)
 const tourRoleLabel = computed(() => activeTour.value?.label || '')
 const fullStepCount = computed(() => activeTour.value?.full?.length || 0)
 const quickStepCount = computed(() => activeTour.value?.quick?.length || 0)
-/** O passo pertence à página indicada? (rota exacta ou padrão, p.ex. ficha de mutuário) */
-function stepMatchesPath(step, path) {
-  if (step.pagePath) return step.pagePath.test(path)
-  return !!step.route && step.route === path
+/* ───────────────── tours por página (estado persistido) ───────────────── */
+
+/** Chave do utilizador da sessão: `u12` (conta), `r3` (perfil) ou `anon`. */
+function storageUserKey() {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || 'null')
+    if (user && typeof user === 'object') {
+      const id = user.id ?? user.userId
+      if (id !== undefined && id !== null && id !== '') return `u${id}`
+      if (user.userRole !== undefined && user.userRole !== null) return `r${Number(user.userRole)}`
+    }
+  } catch {
+    /* sem sessão legível: cai no anónimo */
+  }
+  return 'anon'
 }
 
-/** Passos do percurso completo que vivem na página actualmente aberta. */
-const pageStepCount = computed(() => {
-  const path = currentPath()
-  return (activeTour.value?.full || []).filter((step) => stepMatchesPath(step, path)).length
+/** Recalcula a chave do utilizador (login/logout) antes de ler/escrever progresso. */
+function refreshUserKey() {
+  userKey.value = storageUserKey()
+}
+
+function readPageSeenState() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PAGE_SEEN_KEY) || '{}')
+    return raw && typeof raw === 'object' ? raw : {}
+  } catch {
+    return {}
+  }
+}
+
+function writePageSeenState(data) {
+  try {
+    localStorage.setItem(PAGE_SEEN_KEY, JSON.stringify(data))
+  } catch {
+    /* localStorage indisponível: o tour de página reaparece */
+  }
+}
+
+/** Páginas já vistas pelo utilizador actual. */
+const pageSeenForUser = computed(() => {
+  const entry = pageSeenState.value[userKey.value]
+  return entry && typeof entry === 'object' ? entry : {}
 })
+
+/** Tour da página actualmente aberta (null quando ainda não tem passos). */
+const pageTourOnView = computed(() => findPageTour(currentPath(), role.value))
+
+/** Passos do tour da página aberta (o botão «?» mostra este número). */
+const pageStepCount = computed(() => pageTourOnView.value?.steps.length || 0)
+
+/**
+ * Páginas com tour disponíveis para o perfil activo.
+ * As páginas contextuais (ficha de mutuário, por padrão de URL) não entram no
+ * contador porque não se navega para elas a partir da lista.
+ */
+const pagesForCurrentRole = computed(() =>
+  pageToursForRole(role.value).filter((page) => !!page.path)
+)
+
+/** Quantas dessas páginas o utilizador já concluiu («Primeiro dia X/Y»). */
+const completedPages = computed(() => {
+  const seen = pageSeenForUser.value
+  return pagesForCurrentRole.value.filter((page) => !!seen[page.id]).length
+})
+
+const pageTourTotal = computed(() => pagesForCurrentRole.value.length)
+const pageTourProgress = computed(() =>
+  pageTourTotal.value > 0 ? Math.round((completedPages.value / pageTourTotal.value) * 100) : 0
+)
+
+/** Lista agrupada por área do menu, com o estado de cada página (painel «?»). */
+const pageToursBySection = computed(() => {
+  const allowed = new Set(pagesForCurrentRole.value.map((page) => page.id))
+  const seen = pageSeenForUser.value
+  return PAGE_TOURS.map((section) => ({
+    ...section,
+    pages: section.pages
+      .filter((page) => allowed.has(page.id))
+      .map((page) => ({ ...page, seen: !!seen[page.id] }))
+  })).filter((section) => section.pages.length > 0)
+})
+
+/** A página indicada já tem o tour visto por este utilizador? */
+function pageTourSeen(pageOrPath) {
+  const page = typeof pageOrPath === 'string' ? findPageTour(pageOrPath, role.value) : pageOrPath
+  if (!page) return false
+  return !!pageSeenForUser.value[page.id]
+}
+
+/** Marca a página como vista (concluída ou saltada) para este utilizador. */
+function markPageTourSeen(page) {
+  if (!page?.id) return false
+  const key = userKey.value
+  const next = { ...pageSeenState.value }
+  const entry = { ...(next[key] || {}) }
+  entry[page.id] = Date.now()
+  next[key] = entry
+  pageSeenState.value = next
+  writePageSeenState(next)
+  return true
+}
+
+/** Repõe todos os tours de página deste utilizador (o aviso volta a aparecer). */
+function resetPageTours() {
+  const key = userKey.value
+  const next = { ...pageSeenState.value }
+  delete next[key]
+  pageSeenState.value = next
+  writePageSeenState(next)
+}
 
 function readSeen() {
   try {
@@ -541,6 +664,20 @@ function waitForElement(selector, timeout = 7000) {
   })
 }
 
+/**
+ * Texto do passo. Pode ser uma função: nesse caso é avaliada na altura em que o
+ * passo aparece, para citar os números reais que a página leu do servidor.
+ */
+function resolveStepText(step) {
+  try {
+    const value = typeof step.text === 'function' ? step.text() : step.text
+    return value == null ? '' : String(value)
+  } catch (error) {
+    console.warn('[tour] falha ao construir o texto do passo:', error)
+    return ''
+  }
+}
+
 function buildDriver() {
   return driver({
     animate: true,
@@ -559,15 +696,25 @@ function buildDriver() {
     nextBtnText: 'Seguinte',
     prevBtnText: 'Anterior',
     doneBtnText: 'Concluir',
-    closeBtnLabel: 'Fechar o tour',
+    // Num tour de página o utilizador pode sair sem cerimónia: «Pular tour».
+    closeBtnLabel: flow.value === 'page' ? 'Pular tour' : 'Fechar o tour',
     // Navegação entre páginas exige controlo manual das teclas.
     allowKeyboardControl: false,
     popoverClass: 'mbr-tour-popover',
+    // Passos com texto dinâmico (números reais do servidor) são reescritos aqui:
+    // o driver reescreve a descrição em cada render, por isso este gancho é o
+    // único ponto em que o texto sai já com as contagens actualizadas.
+    onPopoverRender: (popover, { index }) => {
+      const step = index === undefined ? null : steps[index]
+      if (step && typeof step.text === 'function') {
+        popover.description.innerHTML = resolveStepText(step)
+      }
+    },
     steps: steps.map((step, index) => ({
       element: step.el || undefined,
       popover: {
         title: step.title,
-        description: step.text,
+        description: resolveStepText(step),
         side: step.side || 'bottom',
         align: step.align || 'start',
         // o texto do botão é explícito passo a passo (o último conclui)
@@ -610,6 +757,9 @@ async function goTo(index) {
   // Chegar ao fim da lista = percurso concluído.
   if (index >= steps.length) return finish('done')
   if (index < 0) index = 0
+  // Ignora cliques repetidos durante a transição (evita dois goTo em paralelo).
+  if (transitioning) return
+  transitioning = true
 
   const step = steps[index]
   stepIndex.value = index
@@ -625,11 +775,34 @@ async function goTo(index) {
     await new Promise((resolve) => window.setTimeout(resolve, 200))
   }
 
-  if (!isActive.value) return
+  if (!isActive.value) {
+    transitioning = false
+    return
+  }
 
-  const ready = await waitForElement(step.el, step.wait || 7000)
+  // Passos que citam números do servidor declaram `ready` e esperam por eles
+  // (ex.: contagens reais do preview do Reset Geral), para nunca mostrarem
+  // uma frase vazia ou contagens de uma visita anterior.
+  if (typeof step.ready === 'function') {
+    const deadline = Date.now() + (step.readyTimeout || 4000)
+    while (!step.ready() && Date.now() < deadline && isActive.value) {
+      await new Promise((resolve) => window.setTimeout(resolve, 120))
+    }
+  }
+
+  if (!isActive.value) {
+    transitioning = false
+    return
+  }
+
+  // Num tour de página a página já está montada: não vale a pena esperar 7 s
+  // por um alvo que não existe naquele estado (ex.: caixa em modo electrónico).
+  const timeout = step.wait || (flow.value === 'page' ? 1500 : 7000)
+  const ready = await waitForElement(step.el, timeout)
+  transitioning = false
   if (!ready) {
-    // Alvo indisponível (sem dados, permissões, etc.): salta sem bloquear o tour.
+    // Alvo indisponível (sem dados, permissões, estado da página): salta sem
+    // bloquear o tour.
     console.warn(`[tour] passo ignorado (alvo ausente): ${step.el || step.title}`)
     return goTo(index + 1)
   }
@@ -667,6 +840,7 @@ function notifySessionEnd(reason) {
 
 /** Abre uma sessão de tour com uma lista de passos já preparada. */
 function beginSession(list, label, roleValue, onFinish) {
+  transitioning = false
   steps = list
   role.value = roleValue
   tourLabel.value = label
@@ -684,7 +858,11 @@ function beginSession(list, label, roleValue, onFinish) {
   window.setTimeout(() => goTo(0), 120)
 }
 
-function endSession(reason = 'close') {
+function endSession(reason = 'close', markPage = true) {
+  // Página em execução: marcada como vista no fim (concluída ou saltada).
+  const pageToMark = flow.value === 'page' ? currentPageTour : null
+  // Nenhuma transição pendente pode bloquear o próximo tour.
+  transitioning = false
   if (isActive.value) {
     isActive.value = false
     menuExpanded.value = false
@@ -694,12 +872,14 @@ function endSession(reason = 'close') {
     window.removeEventListener('keydown', keyHandler)
     keyHandler = null
   }
+  if (markPage && pageToMark) markPageTourSeen(pageToMark)
+  if (flow.value === 'page') currentPageTour = null
   notifySessionEnd(reason)
 }
 
 function finish(reason = 'close') {
   const roleValue = role.value
-  const isFullTour = flow.value !== 'steps'
+  const currentFlow = flow.value
   endSession(reason)
   if (driverObj) {
     navigating = true
@@ -711,8 +891,9 @@ function finish(reason = 'close') {
     navigating = false
     driverObj = null
   }
-  // Um mini-percurso do checklist não substitui o tour completo: não o marca como visto.
-  if (isFullTour) markSeen(roleValue)
+  // Um mini-percurso do checklist ou um tour de página não substitui o tour
+  // completo: só os percursos full/quick marcam o perfil como visto.
+  if (currentFlow === 'full' || currentFlow === 'quick') markSeen(roleValue)
 }
 
 /* ───────────────────────── API pública ───────────────────────── */
@@ -767,21 +948,79 @@ export function useAppTour(options = {}) {
     return true
   }
 
-  /** Abre o tour apenas com os passos da página actual (atalho do botão de ajuda). */
+  /**
+   * Abre o tour da página actual (biblioteca `pageTours`). Devolve `false`
+   * apenas quando a página realmente não tem passos — só nesse caso o botão de
+   * ajuda mostra o aviso «Esta página ainda não tem passos de tour».
+   */
   function startPageTour(roleOverride) {
     const roleValue = Number(roleOverride ?? role.value)
-    const tour = TOURS[roleValue]
-    if (!tour) return false
-
-    const path = currentPath()
-    const onThisPage = tour.full.filter((step) => stepMatchesPath(step, path))
-    if (onThisPage.length === 0) return false
+    refreshUserKey()
+    const page = findPageTour(currentPath(), roleValue)
+    if (!page || page.steps.length === 0) return false
 
     if (isActive.value) finish('close')
 
     flow.value = 'page'
-    beginSession(onThisPage, `${tour.label} · ${onThisPage[0].title}`, roleValue)
+    currentPageTour = page
+    beginSession(
+      page.steps.map((step) => ({ ...step, route: null })),
+      `${page.label} · tour da página`,
+      roleValue
+    )
     return true
+  }
+
+  /**
+   * Arranca o tour da página automaticamente na primeira visita — uma vez por
+   * utilizador e página. O utilizador pode sempre saltar com «Pular tour».
+   * @param {number} [roleOverride]
+   * @param {{ blocked?: boolean }} [options] `blocked` evita interromper um diálogo aberto
+   */
+  function maybeAutoStartPageTour(roleOverride, options = {}) {
+    const roleValue = Number(roleOverride ?? role.value)
+    if (isActive.value) return false
+    if (Date.now() < suppressAutoUntil) return false
+    if (options.blocked) return false
+    if (!hasTour(roleValue)) return false
+
+    refreshUserKey()
+    const page = findPageTour(currentPath(), roleValue)
+    if (!page || pageTourSeen(page)) return false
+    return startPageTour(roleValue)
+  }
+
+  /** Suspende o tour automático (ex.: enquanto o convite de onboarding está à vista). */
+  function suppressAutoTour(ms = 15000) {
+    suppressAutoUntil = Date.now() + Math.max(0, Number(ms) || 0)
+  }
+
+  /**
+   * Fecha o tour sem marcar a página como vista — usado quando o utilizador
+   * simplesmente mudou de página a meio (não chegou a ver o tour).
+   */
+  function abandonTour() {
+    if (!isActive.value) return
+    if (driverObj) {
+      navigating = true
+      try {
+        driverObj.destroy()
+      } catch {
+        /* já destruído */
+      }
+      navigating = false
+      driverObj = null
+    }
+    endSession('close', false)
+  }
+
+  /** Abre/fecha o painel com os tours de todas as páginas. */
+  function openPageTours() {
+    pageToursOpen.value = true
+  }
+
+  function closePageTours() {
+    pageToursOpen.value = false
   }
 
   function stopTour() {
@@ -812,18 +1051,37 @@ export function useAppTour(options = {}) {
     fullStepCount,
     quickStepCount,
     pageStepCount,
+    // tours por página
+    pageTourOnView,
+    pageToursBySection,
+    pageToursOpen,
+    pageTourTotal,
+    completedPages,
+    pageTourProgress,
     // consultas
     hasTour,
     hasSeenTour,
     shouldPromptOnboarding,
+    pageTourSeen,
+    hasPageTour: (path) => !!findPageTour(path ?? currentPath(), role.value),
     // comandos
     startTour,
     startPageTour,
     startSteps,
     stopTour,
+    abandonTour,
+    maybeAutoStartPageTour,
+    suppressAutoTour,
+    openPageTours,
+    closePageTours,
     markSeen,
     resetSeen,
-    setRole: (value) => { role.value = Number(value) }
+    markPageTourSeen,
+    resetPageTours,
+    setRole: (value) => {
+      role.value = Number(value)
+      refreshUserKey()
+    }
   }
 }
 

@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getWalletByCode = exports.buildClassificationProposals = exports.resolveWalletFromRate = exports.validateDisbursement = exports.getRealDisbursementBalance = exports.getWalletTotalsSummary = exports.getWalletWithAnalytics = exports.getWalletsWithAnalytics = exports.getWalletsMonthlySeries = void 0;
+exports.getWalletByCode = exports.buildClassificationProposals = exports.resolveWalletFromRate = exports.validateDisbursement = exports.getRealDisbursementBalance = exports.getWalletPeriodMovement = exports.getWalletTotalsSummary = exports.getWalletWithAnalytics = exports.getWalletsWithAnalytics = exports.getWalletsMonthlySeries = void 0;
 const sequelize_1 = require("sequelize");
 const db_1 = require("../database/db");
 const FinancingWalletModel_1 = require("../database/models/FinancingWalletModel");
@@ -279,6 +279,40 @@ const getWalletTotalsSummary = (companyId) => __awaiter(void 0, void 0, void 0, 
     };
 });
 exports.getWalletTotalsSummary = getWalletTotalsSummary;
+const getWalletPeriodMovement = (companyId, from, to) => __awaiter(void 0, void 0, void 0, function* () {
+    const empty = {
+        from,
+        to,
+        desembolsado: 0,
+        recebido: 0,
+        juros: 0,
+        mora: 0,
+        num_creditos: 0,
+        num_pagamentos: 0,
+    };
+    try {
+        const [loans] = yield db_1.db.query(`SELECT COUNT(*) AS creditos, IFNULL(SUM(amount), 0) AS desembolsado
+         FROM customer_loans
+        WHERE companyId = ? AND status IN (1, 3)
+          AND disbursementDate IS NOT NULL
+          AND disbursementDate >= ? AND disbursementDate <= ?`, { replacements: [companyId, from, to] });
+        const [payments] = yield db_1.db.query(`SELECT COUNT(*) AS pagamentos,
+              IFNULL(SUM(amount), 0) AS recebido,
+              IFNULL(SUM(interestRateAmount), 0) AS juros,
+              IFNULL(SUM(IFNULL(mora_amount, 0)), 0) AS mora
+         FROM tranzactions
+        WHERE companyId = ? AND paymentDate IS NOT NULL
+          AND paymentDate >= ? AND paymentDate <= ?`, { replacements: [companyId, from, to] });
+        const loanRow = loans[0] || {};
+        const payRow = payments[0] || {};
+        return Object.assign(Object.assign({}, empty), { desembolsado: round2(num(loanRow.desembolsado)), num_creditos: num(loanRow.creditos), recebido: round2(num(payRow.recebido)), juros: round2(num(payRow.juros)), mora: round2(num(payRow.mora)), num_pagamentos: num(payRow.pagamentos) });
+    }
+    catch (error) {
+        console.error("[Carteiras] Erro no movimento do período:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return empty;
+    }
+});
+exports.getWalletPeriodMovement = getWalletPeriodMovement;
 /**
  * Saldo REAL disponível para desembolsos: soma das contas activas com purpose
  * DESEMBOLSO ou MISTO (é de lá que sai o dinheiro entregue ao cliente).

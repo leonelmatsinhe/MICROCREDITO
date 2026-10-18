@@ -58,6 +58,8 @@ const profile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                     phone: company.companyPhone || "",
                     email: company.companyEmail || "",
                     address: company.companyAddress || "",
+                    // Branding do cabeçalho do portal (companies.companyLogo → uploads/…).
+                    companyLogo: company.companyLogo || "",
                 }
                 : null,
         },

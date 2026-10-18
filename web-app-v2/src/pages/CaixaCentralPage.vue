@@ -23,6 +23,7 @@
             unelevated
             icon="point_of_sale"
             label="Abrir Caixa do Dia"
+            data-tour="caixa-central-abrir"
             :loading="saving"
             @click="openOpenDialog"
           />
@@ -203,7 +204,7 @@
         </q-card>
 
         <!-- ═══════════ 6 CARDS DE RESUMO ═══════════ -->
-        <div class="row q-col-gutter-md q-mb-md">
+        <div class="row q-col-gutter-md q-mb-md" data-tour="caixa-central-resumo">
           <div class="col-6 col-md-2" v-for="card in summaryCards" :key="card.label">
             <q-card flat bordered style="border-radius: 12px">
               <q-card-section class="q-pa-sm">
@@ -254,7 +255,7 @@
 
         <!-- ═══════════ TABS: MOVIMENTOS / CONTAS BANCÁRIAS ═══════════ -->
         <q-card flat bordered style="border-radius: 12px; overflow: hidden">
-          <q-tabs v-model="tab" dense no-caps align="left" active-color="primary" class="text-grey-7">
+          <q-tabs v-model="tab" data-tour="caixa-central-tabs" dense no-caps align="left" active-color="primary" class="text-grey-7">
             <q-tab name="movimentos" icon="receipt_long" label="Movimentos do Dia" />
             <q-tab name="bancos" icon="account_balance" label="Contas Bancárias" />
             <q-tab name="diferencas" icon="report_problem" label="Diferenças de Caixa">
@@ -688,7 +689,7 @@
         </q-card>
 
         <!-- ═══════════ RODAPÉ: OPERAÇÕES OFICIAIS DE TESOURARIA (terminologia BM) ═══════════ -->
-        <div v-if="isOpen" class="q-mt-md q-pa-sm rounded-borders bg-grey-1 row q-gutter-sm items-center">
+        <div v-if="isOpen" class="q-mt-md q-pa-sm rounded-borders bg-grey-1 row q-gutter-sm items-center" data-tour="caixa-central-tesouraria">
           <div class="text-caption text-grey-7 q-mr-sm">
             <q-icon name="savings" size="14px" class="q-mr-xs" />Operações de tesouraria:
           </div>

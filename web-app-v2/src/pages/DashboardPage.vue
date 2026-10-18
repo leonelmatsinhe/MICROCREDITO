@@ -92,7 +92,7 @@
       </div>
 
       <!-- ═══════ SECÇÃO 1: CARTEIRAS DE FINANCIAMENTO ═══════ -->
-      <q-card flat class="section-card q-mb-md">
+      <q-card flat class="section-card q-mb-md" data-tour="dash-wallets">
         <q-card-section class="row items-center q-py-sm">
           <q-icon name="savings" size="22px" color="primary" class="q-mr-sm" />
           <div class="col">

@@ -144,6 +144,7 @@
       </q-card-section>
 
       <q-table
+        data-tour="gestor-table"
         :rows="filteredInstallments"
         :columns="columns"
         row-key="id"

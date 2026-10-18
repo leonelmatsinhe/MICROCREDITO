@@ -128,6 +128,13 @@
                   </template>
                 </q-input>
 
+                <q-banner v-if="resetSuccess" class="bg-positive text-white" rounded dense>
+                  <template v-slot:avatar>
+                    <q-icon name="check_circle" size="16px" />
+                  </template>
+                  <span style="font-size: 12px">Sistema resetado com sucesso - Recibos iniciarão do nº 1</span>
+                </q-banner>
+
                 <q-banner v-if="error" class="bg-negative text-white login-error" rounded dense>
                   <template v-slot:avatar>
                     <q-icon name="error" size="16px" />
@@ -661,6 +668,9 @@ const form = ref({ email: '', password: '' })
 const showPassword = ref(false)
 const loading = ref(false)
 const error = ref(null)
+
+// Mensagem de sucesso pós-reset geral (/?reset=1, vindo da Zona de Perigo)
+const resetSuccess = computed(() => route.query.reset === '1')
 
 // Explicação do tour guiado (atalho «Novo no sistema?»)
 const showTourGuide = ref(false)

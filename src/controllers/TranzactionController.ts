@@ -1190,6 +1190,9 @@ const addTranzaction = async (req: Request, res: Response) => {
         latePaymentInterest: result.latePaymentInterest,
         paymentDate: payDate,
         reference: String(tranzactionReference),
+        // Recibo emitido no passo 15 (ou regenerado acima) — vai no SMS com o
+        // número e o link de validação (envio automático do recibo por SMS).
+        reciboNumeros: recibo?.numero ? [String(recibo.numero)] : null,
       });
     } catch (smsError) {
       console.error("Erro ao enfileirar SMS de pagamento:", smsError);

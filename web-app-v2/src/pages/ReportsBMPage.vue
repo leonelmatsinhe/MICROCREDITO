@@ -15,7 +15,7 @@
               <q-tooltip>Gerar Relatório</q-tooltip>
             </q-btn>
           </div>
-          <div class="col-auto">
+          <div class="col-auto" data-tour="bm-export">
             <q-btn outline color="primary" icon="picture_as_pdf" label="PDF" no-caps rounded @click="generatePDF" :disable="reportData.length === 0" />
           </div>
           <div class="col-auto">
@@ -38,7 +38,7 @@
 
       <template v-else>
         <!-- TABELA PRINCIPAL -->
-        <q-card flat bordered class="bm-surface-card">
+        <q-card flat bordered class="bm-surface-card" data-tour="bm-table">
           <q-card-section class="bm-table-header">
             <div class="row items-center">
               <div class="bm-table-title">

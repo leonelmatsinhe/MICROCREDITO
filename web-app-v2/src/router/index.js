@@ -19,6 +19,8 @@ const CarteiraGestorPage = () => import('@/pages/cobranca/CarteiraGestorPage.vue
 // Páginas removidas: LoanDetailPage, AmortizationPage, PaymentsPage, InstallmentsPage, ReportsPage
 // Funcionalidades integradas nos Mutuários (painel do mutuário) e na página de Créditos
 const SettingsPage = () => import('@/pages/SettingsPage.vue')
+// ZONA DE PERIGO — Reset Geral de Dados Operacionais (Admin, single-tenant)
+const AdminSystemResetPage = () => import('@/pages/AdminSystemResetPage.vue')
 const ProfilePage = () => import('@/pages/ProfilePage.vue')
 const NotificationsPage = () => import('@/pages/NotificationsPage.vue')
 const PortalLayout = () => import('@/layouts/PortalLayout.vue')
@@ -231,6 +233,14 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: SettingsPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
+  },
+  // ZONA DE PERIGO — Reset Geral de Dados Operacionais (Admin; o backend
+  // restringe ainda a instalações single-tenant)
+  {
+    path: '/admin/sistema/reset',
+    name: 'AdminSystemReset',
+    component: AdminSystemResetPage,
     meta: { requiresAuth: true, allowedRoles: [1] }
   },
   {

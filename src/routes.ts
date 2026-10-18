@@ -189,6 +189,9 @@ import {
 } from "./controllers/LegalDocsController";
 import { companyLoans, companyLoansPaginated } from "./controllers/OperatorLoanController";
 
+// ADMINISTRAÇÃO DO SISTEMA — Zona de Perigo (Reset Geral de Dados Operacionais)
+import { resetStatus, resetOperationalData } from "./controllers/SystemResetController";
+
 // FLUXO DE SUBSCRIÇÃO — cadastro público + painel Super Admin
 import {
   registerCompany,
@@ -767,6 +770,11 @@ routes.get("/api/partner/statement", partnerStatement);
 routes.get("/api/partner/recibos/:id/pdf", partnerReciboPdf);
 routes.get("/api/partner/recibos", partnerRecibos);
 
-
+// ==================== ZONA DE PERIGO — RESET GERAL ====================
+// Configurações → Administração do Sistema → Zona de Perigo (só Admin, role 1).
+// Ambas as rotas validam internamente: modo single-tenant + role 1 + palavra
+// "RESETAR" + senha do Admin (bcrypt). O preview mostra o que será apagado.
+routes.get("/api/admin/system/reset-status", isAdmin, resetStatus);
+routes.post("/api/admin/system/reset-operational-data", isAdmin, resetOperationalData);
 
 export { routes };

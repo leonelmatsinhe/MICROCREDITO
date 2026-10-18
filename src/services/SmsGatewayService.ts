@@ -48,6 +48,54 @@ const safeMoney = (value: any): string =>
     maximumFractionDigits: 2,
   }).replace(/[\u00A0\u202F]/g, ".");
 
+/**
+ * Base pública de validação dos recibos — MESMA cadeia de fallback do
+ * `validationUrl` de reciboService.ts (PUBLIC_VALIDATION_URL → PUBLIC_BASE_URL
+ * → https://maismola.co.mz), sem a barra final.
+ */
+const validationBase = (): string =>
+  String(process.env.PUBLIC_VALIDATION_URL || process.env.PUBLIC_BASE_URL || "https://maismola.co.mz").replace(/\/+$/, "");
+
+/**
+ * Link curto de validação para SMS: só o número do recibo (sem hash — o
+ * endpoint /api/recibos/validar aceita `rec` sozinho e a página /validar
+ * também). O link com hash completo tem ~120 chars e partiria o SMS em 4
+ * segmentos; com o número chega a 1 segmento na maioria dos casos.
+ */
+export const reciboValidationShortUrl = (numero: string): string =>
+  `${validationBase()}/validar?rec=${encodeURIComponent(String(numero).trim())}`;
+
+/**
+ * Composição do SMS de pagamento (exportada para teste sem tocar na fila).
+ * Inclui o número do recibo e o link de validação quando o recibo existe —
+ * é o "envio automático do recibo por SMS" contratado. Sem recibo, mantém o
+ * template antigo (fallback para pagamentos cuja emissão falhou).
+ */
+export const buildPaymentSmsBody = (
+  params: {
+    paidAmount: number;
+    latePaymentInterest?: number;
+    reference?: string;
+    reciboNumeros?: string[] | null;
+  },
+  customerName: string
+): string => {
+  const interest = Number(params.latePaymentInterest || 0);
+  const mora = interest > 0 ? ` Mora: ${safeMoney(interest)} MZN.` : "";
+  const numeros = (params.reciboNumeros || [])
+    .map((n) => String(n || "").trim())
+    .filter(Boolean);
+  let reciboParte = "";
+  if (numeros.length === 1) {
+    reciboParte = ` Recibo ${numeros[0]}. Valide ${reciboValidationShortUrl(numeros[0])}.`;
+  } else if (numeros.length > 1) {
+    // Liquidação total: recibos sequenciais — indica-se o intervalo e o
+    // cliente valida pelo número no site (link sem query, com formulário).
+    reciboParte = ` Recibos ${numeros[0]} a ${numeros[numeros.length - 1]}. Valide em ${validationBase()}/validar.`;
+  }
+  return `Ola ${customerName}. Pagamento de ${safeMoney(params.paidAmount)} MZN confirmado.${mora}${reciboParte} Ref: ${params.reference || "N/A"}.`;
+};
+
 const parsePayload = (value: any): Record<string, any> | null => {
   if (!value) return null;
   if (typeof value === "object") return value;
@@ -168,13 +216,28 @@ export const enqueuePaymentSms = async (params: {
   latePaymentInterest?: number;
   paymentDate?: string;
   reference?: string;
+  /** Número(ões) do(s) recibo(s) emitido(s) — vai no SMS com link de validação. */
+  reciboNumeros?: string[] | null;
 }) => {
   const customer = await getCustomerForSms(params.companyId, params.accountNumber);
   if (!customer) return { created: false, reason: "customer_not_found" };
 
   const interest = Number(params.latePaymentInterest || 0);
-  // Template: max 160 chars, sem caracteres especiais
-  const msg = `Ola ${customer.customerName}. Pagamento de ${safeMoney(params.paidAmount)} MZN confirmado.${interest > 0 ? ` Mora: ${safeMoney(interest)} MZN.` : ''} Ref: ${params.reference || 'N/A'}. Obrigado.`;
+  // Template: sem caracteres especiais; com recibo/link pode exceder 160 chars
+  // e o gateway envia concatenado (2 segmentos) — ver buildPaymentSmsBody.
+  const msg = buildPaymentSmsBody(
+    {
+      paidAmount: params.paidAmount,
+      latePaymentInterest: interest,
+      reference: params.reference,
+      reciboNumeros: params.reciboNumeros,
+    },
+    String(customer.customerName || "")
+  );
+
+  const reciboNumeros = (params.reciboNumeros || [])
+    .map((n) => String(n || "").trim())
+    .filter(Boolean);
 
   return enqueueSms({
     companyId: params.companyId,
@@ -192,6 +255,8 @@ export const enqueuePaymentSms = async (params: {
       paid_amount: params.paidAmount,
       late_payment_interest: interest,
       reference: params.reference || null,
+      recibo_numeros: reciboNumeros.length > 0 ? reciboNumeros : null,
+      recibo_url: reciboNumeros.length === 1 ? reciboValidationShortUrl(reciboNumeros[0]) : null,
     },
   });
 };

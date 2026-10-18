@@ -1,7 +1,7 @@
 <template>
   <div>
     <!-- ═══════ CABEÇALHO ═══════ -->
-    <div class="row items-center q-col-gutter-sm q-mb-md">
+    <div class="row items-center q-col-gutter-sm q-mb-md" data-tour="financing-wallets">
       <div class="col-12 col-md">
         <div class="row items-center no-wrap">
           <div class="panel-icon q-mr-sm"><q-icon name="savings" size="20px" color="white" /></div>
@@ -14,7 +14,7 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-md-auto q-gutter-xs no-wrap">
+      <div class="col-12 col-md-auto q-gutter-xs no-wrap" data-tour="financing-actions">
         <q-btn color="primary" unelevated no-caps rounded icon="add" label="Nova Carteira" @click="openForm()" />
         <q-btn
           outline

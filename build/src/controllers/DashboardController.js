@@ -213,7 +213,20 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     companyId: companyIdNum,
                     loanId: { [sequelize_1.Op.in]: loanIds },
                 },
-                attributes: ["id", "loanId", "accountNumber", "dueDate", "status", "installment"],
+                // paidAmount é OBRIGATÓRIO: a mora é calculada sobre o saldo devedor
+                // (installment − paidAmount). Sem ele, prestações parcialmente pagas
+                // eram penalizadas como se estivessem por pagar na totalidade.
+                attributes: [
+                    "id",
+                    "loanId",
+                    "accountNumber",
+                    "dueDate",
+                    "status",
+                    "installment",
+                    "paidAmount",
+                    "amortization",
+                    "rateAmount",
+                ],
             });
         }
         const partialInstallments = amortizations
@@ -258,14 +271,21 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         }
         const now = (0, moment_1.default)();
         const openInstallments = amortizations.filter((a) => [0, -1].includes(Number(a.status)));
+        // Exposição = SALDO DEVEDOR da prestação (installment − paidAmount).
+        // A dívida registada (DebtModel) é a fonte preferida quando existe, mas
+        // nunca se volta ao valor integral se há pagamento parcial conhecido.
         const installmentExposure = (a) => {
             var _a;
+            const remaining = Math.max(0, toNumber(a.installment) - toNumber(a.paidAmount));
             if (Number(a.status) === -1) {
-                return toNumber((_a = debtMap[a.id]) !== null && _a !== void 0 ? _a : a.installment);
+                return toNumber((_a = debtMap[a.id]) !== null && _a !== void 0 ? _a : remaining);
             }
-            return toNumber(a.installment);
+            return remaining;
         };
-        const calculatedInstallments = (0, calculateLateAmount_1.installmentPanification)(amortizations, forfeit, undefined, { maxLateDays, capPercent });
+        // Só prestações EM ABERTO (0 = pendente, -1 = parcial) entram na carteira
+        // em aberto, na mora e nos rácios PAR. Prestações liquidadas (status 1) não
+        // têm saldo nem mora — incluí-las inflacionava carteira, atraso e PAR.
+        const calculatedInstallments = (0, calculateLateAmount_1.installmentPanification)(openInstallments, forfeit, undefined, { maxLateDays, capPercent });
         const overdueRows = calculatedInstallments
             .map((a) => {
             const due = parseDateSafe(a.dueDate);

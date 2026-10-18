@@ -49,12 +49,31 @@
               </q-item-section>
               <q-item-section side><q-icon name="chevron_right" size="18px" color="grey-5" /></q-item-section>
             </q-item>
+
+            <!-- ADMINISTRAÇÃO DO SISTEMA — Zona de Perigo (só Admin, role 1) -->
+            <q-item
+              v-if="authStore.isAdmin"
+              clickable
+              v-ripple
+              class="settings-nav-item settings-nav-danger"
+              to="/admin/sistema/reset"
+              data-tour="settings-danger-zone"
+            >
+              <q-item-section avatar><q-icon name="warning" color="negative" size="20px" /></q-item-section>
+              <q-item-section>
+                <q-item-label style="font-size: 13px" class="text-negative text-weight-bold">
+                  Administração do Sistema
+                </q-item-label>
+                <q-item-label caption style="font-size: 10px">Zona de Perigo (reset geral)</q-item-label>
+              </q-item-section>
+              <q-item-section side><q-icon name="chevron_right" size="18px" color="negative" /></q-item-section>
+            </q-item>
           </q-list>
         </q-card>
       </div>
 
       <!-- Conteúdo -->
-      <div class="col settings-content">
+      <div class="col settings-content" data-tour="settings-content">
         <transition name="fade" mode="out-in">
           <CompanySection v-if="activeSection === 'company'" key="company" />
           <AccountsSection v-else-if="activeSection === 'accounts'" key="accounts" />
@@ -69,11 +88,14 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import CompanySection from '@/components/settings/CompanySection.vue'
 import AccountsSection from '@/components/settings/AccountsSection.vue'
 import CashModeSection from '@/components/settings/CashModeSection.vue'
 import RolesSection from '@/components/settings/RolesSection.vue'
 import AppearanceSection from '@/components/settings/AppearanceSection.vue'
+
+const authStore = useAuthStore()
 
 /**
  * CONFIGURAÇÕES — apenas o que é do sistema/empresa.
@@ -134,6 +156,15 @@ body.body--dark .settings-nav-item {
   background-color: rgba($primary, 0.08) !important;
   color: $primary !important;
   font-weight: 600;
+}
+
+.settings-nav-danger {
+  border: 1px solid rgba($negative, 0.25);
+  border-radius: 8px;
+
+  &:hover {
+    background-color: rgba($negative, 0.06);
+  }
 }
 
 .fade-enter-active,

@@ -49,7 +49,7 @@
     <!-- Composição da carteira + atividade do mês -->
     <div class="row q-col-gutter-sm q-mb-md">
       <div class="col-12 col-md-5">
-        <q-card flat bordered class="fit">
+        <q-card flat bordered class="fit" data-tour="carteira-composicao">
           <q-card-section class="q-pb-xs">
             <div class="text-subtitle1 text-weight-bold">Composição da carteira</div>
             <div class="text-caption text-grey-6">Clientes atribuídos e clientes disponíveis</div>
@@ -312,7 +312,7 @@
     </q-card>
 
     <!-- Ranking por gestor (Admin) -->
-    <q-card v-if="isAdmin" flat bordered>
+    <q-card v-if="isAdmin" flat bordered data-tour="carteira-ranking">
       <q-card-section>
         <div class="text-subtitle1 text-weight-bold">Ranking por gestor</div>
         <div class="text-caption text-grey-6">Carteira, risco e atividade de cobrança de cada Gestor de Crédito</div>

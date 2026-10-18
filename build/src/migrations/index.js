@@ -210,8 +210,29 @@ const runMigrations = () => __awaiter(void 0, void 0, void 0, function* () {
     yield modifyColumnType("tranzactions", "discountAmount", "DECIMAL(15,2) NULL DEFAULT 0", results);
     yield modifyColumnType("debts", "debtAmount", "DECIMAL(15,2) NOT NULL", results);
     yield modifyColumnType("interest_rates", "tax", "DECIMAL(8,4) NOT NULL", results);
-    yield modifyColumnType("interest_rates", "administrativeFee", "DECIMAL(15,6) NOT NULL", results);
+    yield modifyColumnType("interest_rates", "administrativeFee", "DECIMAL(15,6) NOT NULL DEFAULT 0", results);
     yield modifyColumnType("loan_guarantees", "purchaseAmount", "DECIMAL(15,2) NULL", results);
+    // DIAGNÓSTICO DA TAXA ADMINISTRATIVA (0,01% = 0.0001): a coluna TEM de ser
+    // DECIMAL(15,6) nos dois lados. O log fica em cada arranque/deploy para que
+    // um "volta a zero" possa ser atribuído ao schema (aqui) ou à aplicação.
+    try {
+        const [rateType, loanType] = yield Promise.all([
+            columnType("interest_rates", "administrativeFee"),
+            columnType("customer_loans", "administrativeFee"),
+        ]);
+        const okRate = String(rateType || "").toLowerCase().startsWith("decimal(15,6)");
+        const okLoan = String(loanType || "").toLowerCase().startsWith("decimal(15,6)");
+        const linha = `[Migration] administrativeFee — interest_rates=${rateType || "ausente"} · customer_loans=${loanType || "ausente"}`;
+        if (okRate && okLoan) {
+            console.log(linha);
+        }
+        else {
+            console.warn(`${linha} — ATENÇÃO: precisão insuficiente para 0,01% (esperado DECIMAL(15,6)).`);
+        }
+    }
+    catch (error) {
+        results.errors.push(`DIAGNÓSTICO administrativeFee: ${(error === null || error === void 0 ? void 0 : error.message) || error}`);
+    }
     // Credenciais enviadas (clientes) — enviar credenciais de acesso ao portal
     yield addColumnIfMissing("customers", "credentialsSent", "INTEGER DEFAULT 0", results);
     yield addColumnIfMissing("customers", "interestRateId", "INTEGER NULL", results);

@@ -143,7 +143,7 @@ const getPartnerDashboard = (scope, period = {}) => __awaiter(void 0, void 0, vo
     const [receipts] = yield db_1.db.query(`SELECT DATE_FORMAT(paymentDate, '%Y-%m') AS mes, SUM(amount) AS total, COUNT(*) AS n
        FROM tranzactions
       WHERE companyId = ? AND walletId = ?
-        AND paymentDate IS NOT NULL AND paymentDate <> ''
+        AND paymentDate IS NOT NULL
       GROUP BY mes
       ORDER BY mes ASC`, { replacements: [scope.companyId, scope.walletId] });
     const months = new Map();

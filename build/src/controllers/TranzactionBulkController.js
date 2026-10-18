@@ -317,6 +317,9 @@ const addTranzactionBulk = (req, res) => __awaiter(void 0, void 0, void 0, funct
                     latePaymentInterest: Number(planned.reduce((sum, p) => sum + p.latePaymentInterest, 0).toFixed(2)),
                     paymentDate: payDate,
                     reference: tranzactionReference,
+                    // Recibos emitidos acima (um por prestação) — o SMS leva o intervalo
+                    // de números e o link de validação (envio automático por SMS).
+                    reciboNumeros: recibos.map((r) => String((r === null || r === void 0 ? void 0 : r.numero) || "")).filter(Boolean),
                 });
             }
             catch (smsError) {

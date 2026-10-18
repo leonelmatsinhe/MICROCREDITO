@@ -28,6 +28,9 @@ exports.InterestRateModel = db_1.db.define("interest_rates", {
         // (com (15,2) um 0,01% era arredondado a zero).
         type: sequelize_1.DataTypes.DECIMAL(15, 6),
         allowNull: false,
+        // Sem default, um create que omitisse o campo falhava (NOT NULL) ou, em
+        // MySQL não-estrito, gravava lixo — isento é 0 explícito.
+        defaultValue: 0,
     },
     walletId: {
         type: sequelize_1.DataTypes.INTEGER,

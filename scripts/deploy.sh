@@ -1,132 +1,248 @@
 #!/usr/bin/env bash
 #
-# deploy.sh - Script de deploy para o SERVIDOR (Ubuntu)
+# deploy.sh — MBR Microcrédito (Ubuntu / PM2 / Nginx)
 #
-# Flujo: git pull -> instalar deps -> compilar backend -> reiniciar PM2
-# (O build do frontend e feito manualmente e fica na pasta public/)
+# DOIS MODOS, o mesmo script:
+#
+#   deploy (omissão — também aceita uma branch como 1.º argumento)
+#     · Layout SINGLE (o projecto é 1 clone, como sempre foi)
+#         → builda e recarrega o app "microcredito".
+#     · Layout MULTI-TENANT ($TENANTS_DIR/tenant-a E tenant-b existem)
+#         → percorre os 2 tenants por ordem: PROD primeiro (tenant-a /
+#           microcredito-a), DEMO a seguir (tenant-b / microcredito-demo).
+#         → Cada tenant é ATÓMICO e ISOLADO: git pull + deps + tsc + vite +
+#           migrate e SÓ DEPOIS `pm2 ... --only <app>`. Se o demo falhar em
+#           QUALQUER passo, o prod já foi recarregado e continua online — e
+#           se o prod falhar, o demo nem é tentado a ser recarregado.
+#
+#   init-tenants
+#     · Cria a estrutura /opt/microcredito/{tenant-a,tenant-b} (clone do
+#       repo, .env de exemplo, esqueleto de uploads) e sincroniza o
+#       ecosystem.config.cjs. Idempotente — pode correr sempre.
+#
+# NÃO usa `pm2 delete all` nem `fuser -k` (mata outros projectos da VPS
+# e punha o serviço em baixo durante o build).
 #
 # Uso:
-#   ./scripts/deploy.sh              # pull da branch main
-#   ./scripts/deploy.sh feature/xyz  # pull de branch especifica
+#   ./scripts/deploy.sh                  # main
+#   ./scripts/deploy.sh feature/xyz      # branch específica (nos 2 tenants)
+#   ./scripts/deploy.sh init-tenants     # criar estrutura multi-tenant (1.ª vez)
+#
+# Variáveis opcionais:
+#   MICROCREDITO_TENANTS_DIR  pasta base dos tenants  (omissão /opt/microcredito)
+#   REPO_URL                  URL do repo p/ clones   (omissão leonelmatsinhe/MICROCREDITO)
+#   TENANT_B_BRANCH           branch do tenant demo   (omissão main)
+#   STRICT_DEPLOY=1           exit 1 se QUALQUER tenant falhar (omissão: só prod)
 #
 set -euo pipefail
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$PROJECT_ROOT"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-BRANCH="${1:-main}"
-PORT="${PORT:-3000}"
+TENANTS_DIR="${MICROCREDITO_TENANTS_DIR:-/opt/microcredito}"
+REPO_URL="${REPO_URL:-git@github.com:leonelmatsinhe/MICROCREDITO.git}"
+BRANCH="${BRANCH:-main}"
+TENANT_B_BRANCH="${TENANT_B_BRANCH:-main}"
+ECOSYSTEM_SRC="$PROJECT_ROOT/ecosystem.config.cjs"
 
-echo "=========================================="
-echo "  DEPLOY - MBR Microcredito"
-echo "  Branch: $BRANCH"
-echo "=========================================="
+banner() { echo; echo "=========================================="; echo "  $1"; echo "=========================================="; }
 
-# 0. Matar processos na porta antes de tudo
-echo ""
-echo "[0/5] A limpar porta $PORT..."
-pm2 delete all 2>/dev/null || true
-fuser -k "$PORT/tcp" 2>/dev/null || true
-sleep 1
-echo "  -> Porta $PORT livre."
+# Dependências reproducíveis a partir do package-lock.
+# --include=dev: o servidor precisa de typescript (tsc) e vite (build).
+install_deps() {
+  npm ci --include=dev
+  (cd web-app-v2 && npm ci --include=dev)
+}
 
-# 1. Preservar uploads (ficheiros sensíveis) — NUNCA alterados pelo deploy
-echo ""
-echo "[1/6] A preservar pasta uploads (nao e alterada pelo deploy)..."
-if [ -d "uploads" ]; then
-  cp -r uploads /tmp/uploads_backup_$(date +%s) 2>/dev/null || true
-  echo "  -> Backup de uploads criado em /tmp/ (apenas por seguranca; a pasta permanece intocada no sitio)"
-fi
-if [ -f .gitignore ] && ! grep -qE '^/?uploads/?$' .gitignore; then
-  echo "uploads/" >> .gitignore
-  echo "  -> AVISO: 'uploads/' faltava no .gitignore; adicionado (evita que git pull sobrescreva documentos no VPS)."
-fi
+# Compilação + migrações. O `npm run migrate` usa o .env DO TENANT em que
+# está a correr (o env.ts carrega o .env da raiz do seu clone) — logo cada
+# tenant migra a SUA base de dados, isolado dos restantes.
+build_and_migrate() {
+  npx tsc
+  (cd web-app-v2 && npx vite build)
+  npm run migrate
+}
 
-# 2. Pull do GitHub
-echo ""
-echo "[2/6] A obter alteracoes do GitHub..."
-git fetch origin
-git checkout "$BRANCH"
-git stash 2>/dev/null || true
-git pull origin "$BRANCH"
-
-# Restaurar uploads após pull
-if [ -d "/tmp/uploads_backup_"* ]; then
-  LATEST_BACKUP=$(ls -dt /tmp/uploads_backup_* | head -1)
-  if [ -n "$LATEST_BACKUP" ]; then
-    cp -rn "$LATEST_BACKUP"/* uploads/ 2>/dev/null || true
-    rm -rf "$LATEST_BACKUP"
-    echo "  -> Uploads restaurados."
+# uploads/ nunca vem do git; o guard garante que fica ignorado para o
+# pull jamais tocar nos documentos (recibos, fotos, logotipos).
+ensure_uploads() {
+  mkdir -p uploads/{concessao,docs,documents,recibos}
+  if [ -f .gitignore ] && ! grep -qE '^/?uploads/?$' .gitignore; then
+    echo "uploads/" >> .gitignore
+    echo "  -> AVISO: 'uploads/' faltava no .gitignore; adicionado."
   fi
-fi
-echo "  -> Codigo atualizado."
+}
 
-# 3. Instalar dependencias (caso haja novas)
-echo ""
-echo "[3/8] A verificar dependencias..."
-npm install --production=false
-echo "  -> Dependencias atualizadas."
+# ── init-tenants: cria /opt/microcredito/{tenant-a,tenant-b} ─────────────
+init_tenants() {
+  banner "INIT — estrutura multi-tenant em $TENANTS_DIR"
+  mkdir -p "$TENANTS_DIR"
 
-# 3.1 Instalar dependencias do frontend
-echo ""
-echo "[3.1/8] A instalar dependencias do frontend..."
-cd web-app-v2
-npm install
-cd "$PROJECT_ROOT"
-echo "  -> Dependencias do frontend atualizadas."
+  local t
+  for t in tenant-a tenant-b; do
+    echo ""
+    echo "-- $t --"
+    if [ -d "$TENANTS_DIR/$t/.git" ]; then
+      echo "  -> clone já existe (não tocado)."
+    else
+      git clone "$REPO_URL" "$TENANTS_DIR/$t"
+      if [ "$t" = "tenant-b" ] && [ "$TENANT_B_BRANCH" != "main" ]; then
+        git -C "$TENANTS_DIR/$t" checkout "$TENANT_B_BRANCH"
+      fi
+    fi
 
-# 4. Compilar backend (TypeScript -> build/)
-# A partir da RAIZ (tsconfig: rootDir "./" → build/src/app.js). Compilar dentro
-# de src/ mudava o rootDir e produzia build/src/... a partir de src (caminhos
-# __dirname/projectRoot errados no arranque).
-echo ""
-echo "[4/8] A compilar o backend (tsc)..."
-npx tsc
-echo "  -> Backend compilado."
+    local env_file="$TENANTS_DIR/$t/.env"
+    if [ ! -f "$env_file" ]; then
+      cp "$TENANTS_DIR/$t/docs/deploy/multi-tenant/env.$t.example" "$env_file"
+      chmod 600 "$env_file"
+      echo "  -> .env criado a partir do exemplo. EDITE as senhas (DATABASE_PASS, APP_SECRET, RECIBO_HASH_SECRET)."
+    else
+      echo "  -> .env já existe (não tocado)."
+    fi
 
-# 4.1 Aplicar migracoes de base de dados (idempotentes; tambem correm no arranque do servidor)
-# As migracoes NUNCA criam nem alteram carteiras de credito — o seed
-# (KMAD/PME/COM/INT + conta do parceiro) foi REMOVIDO do codigo.
-# Carteiras existentes ficam intactas; novas sao criadas apenas pelo Admin na interface.
-echo ""
-echo "[4.1/8] A aplicar migracoes de base de dados (carteiras intocaveis)..."
-npm run migrate
-echo "  -> Migracoes aplicadas (carteiras existentes preservadas)."
+    (cd "$TENANTS_DIR/$t" && mkdir -p uploads/{concessao,docs,documents,recibos})
+  done
 
-# 5. Compilar frontend (Vite -> public-v2/)
-echo ""
-echo "[5/8] A compilar o frontend (Vite)..."
-cd web-app-v2
-npx vite build
-cd "$PROJECT_ROOT"
-echo "  -> Frontend compilado."
+  cp -f "$ECOSYSTEM_SRC" "$TENANTS_DIR/ecosystem.config.cjs"
+  echo ""
+  echo "  -> ecosystem.config.cjs sincronizado para $TENANTS_DIR"
 
-# 6. Reiniciar PM2
-echo ""
-echo "[6/8] A reiniciar o servidor via PM2..."
-pm2 start ecosystem.config.cjs --update-env
-pm2 save
-echo "  -> PM2 iniciado."
+  banner "BASES DE DADOS — criar (ou correr o mysql abaixo)"
+  cat <<'SQL'
+CREATE DATABASE IF NOT EXISTS microcredito_a CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS microcredito_b CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'microcredito_a'@'localhost' IDENTIFIED BY 'SENHA_Forte_A';
+GRANT ALL PRIVILEGES ON microcredito_a.* TO 'microcredito_a'@'localhost';
+CREATE USER IF NOT EXISTS 'microcredito_b'@'localhost' IDENTIFIED BY 'SENHA_Forte_B';
+GRANT ALL PRIVILEGES ON microcredito_b.* TO 'microcredito_b'@'localhost';
+FLUSH PRIVILEGES;
+SQL
 
-# 7. Verificar se esta a correr
-echo ""
-echo "[7/8] A verificar estado do servidor..."
-sleep 2
-if pm2 list | grep -q "online"; then
-  echo "  -> Servidor ONLINE!"
-else
-  echo "  -> AVISO: Servidor pode nao estar a correr. Verifique: pm2 logs"
-fi
+  if command -v mysql >/dev/null 2>&1; then
+    echo "  -> Melhor esforço: a criar as 2 bases via mysql local..."
+    mysql -e "CREATE DATABASE IF NOT EXISTS microcredito_a CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" &&
+      mysql -e "CREATE DATABASE IF NOT EXISTS microcredito_b CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" &&
+      echo "  -> Bases de dados prontas (utilizadores: use o SQL acima, se ainda não existirem)."
+  fi
 
-# 8. Limpar backups antigos
-echo ""
-echo "[8/8] A limpar backups antigos..."
-rm -rf /tmp/uploads_backup_* 2>/dev/null || true
-echo "  -> Backups limpos."
+  banner "PROXIMO PASSO"
+  echo "  1) Edite $TENANTS_DIR/tenant-a/.env  (prod) e $TENANTS_DIR/tenant-b/.env (demo)"
+  echo "  2) Corra: $0            (deploy dos 2 tenants)"
+  echo "  3) Nginx + SSL: docs/deploy/multi-tenant/README.md"
+}
 
-echo ""
-echo "=========================================="
-echo "  DEPLOY CONCLUIDO COM SUCESSO!"
-echo "=========================================="
-echo ""
-pm2 list
+# ── deploy de UM tenant: atómico (ou tudo, ou nada) ──────────────────────
+deploy_tenant() {
+  local dir="$1" app="$2" branch="$3"
+  banner "TENANT: $app — $dir (branch $branch)"
+  {
+    cd "$dir" &&
+      ensure_uploads &&
+      git fetch origin &&
+      git checkout "$branch" &&
+      (git stash 2>/dev/null || true) &&
+      git pull origin "$branch" &&
+      install_deps &&
+      build_and_migrate &&
+      # Recarrega SÓ este app — o serviço do outro tenant não é tocado.
+      pm2 startOrReload "$TENANTS_DIR/ecosystem.config.cjs" --only "$app" --update-env
+  } || {
+    echo "  -> FALHOU o deploy de $app (o serviço já em execução mantém-se de pé)."
+    return 1
+  }
+  echo "  -> $app actualizado e online."
+}
+
+# ── modo multi-tenant: loop com isolamento ───────────────────────────────
+multi_deploy() {
+  banner "DEPLOY MULTI-TENANT — $TENANTS_DIR"
+
+  cp -f "$ECOSYSTEM_SRC" "$TENANTS_DIR/ecosystem.config.cjs"
+  echo "  -> ecosystem.config.cjs sincronizado."
+
+  local failed=()
+  local prod_ok=1
+
+  # PROD primeiro: mesmo que o demo falhe depois, o prod já está de pé.
+  deploy_tenant "$TENANTS_DIR/tenant-a" "microcredito-a" "$BRANCH" ||
+    { prod_ok=0; failed+=("microcredito-a"); }
+
+  deploy_tenant "$TENANTS_DIR/tenant-b" "microcredito-demo" "$TENANT_B_BRANCH" ||
+    failed+=("microcredito-demo")
+
+  pm2 save || true
+
+  banner "RESUMO"
+  pm2 list
+
+  if [ "${#failed[@]}" -gt 0 ]; then
+    echo ""
+    echo "  -> AVISO: falharam: ${failed[*]} — os restantes serviços continuam online."
+    if [ "$prod_ok" -eq 0 ]; then
+      echo "  -> O PROD falhou: exit 1."
+      exit 1
+    fi
+    if [ "${STRICT_DEPLOY:-0}" = "1" ]; then
+      echo "  -> STRICT_DEPLOY=1: exit 1."
+      exit 1
+    fi
+    echo "  -> Prod online; falha só no demo (exit 0). Use STRICT_DEPLOY=1 para tratar como erro."
+  else
+    echo ""
+    echo "  -> Todos os tenants online."
+  fi
+}
+
+# ── modo single: o fluxo de sempre, corrigido ────────────────────────────
+single_deploy() {
+  banner "DEPLOY — $BRANCH (modo single)"
+  cd "$PROJECT_ROOT"
+  ensure_uploads
+
+  git fetch origin
+  git checkout "$BRANCH"
+  git stash 2>/dev/null || true
+  git pull origin "$BRANCH"
+
+  install_deps
+  build_and_migrate
+
+  # Antes: `pm2 delete all` + `fuser -k` (mata outros projectos e põe tudo
+  # em baixo durante o build) seguido de `pm2 start` (falha se já corre).
+  # Agora: recarrega no sítio, sem downtime desnecessário.
+  pm2 startOrReload ecosystem.config.cjs --update-env
+  pm2 save
+
+  sleep 2
+  if pm2 jlist | grep -q '"status": *"online"'; then
+    echo "  -> Servidor ONLINE."
+  else
+    echo "  -> AVISO: servidor pode não estar a correr. Veja: pm2 logs microcredito"
+  fi
+  curl -sf "http://localhost:${PORT:-4000}/" >/dev/null &&
+    echo "  -> API responde em :${PORT:-4000}." ||
+    echo "  -> AVISO: API não respondeu ao health check."
+
+  pm2 list
+}
+
+# ── ponto de entrada ─────────────────────────────────────────────────────
+main() {
+  if [ "${1:-}" = "init-tenants" ]; then
+    init_tenants
+    return
+  fi
+  if [ $# -gt 0 ]; then
+    BRANCH="$1"
+  fi
+
+  if [ -d "$TENANTS_DIR/tenant-a" ] && [ -d "$TENANTS_DIR/tenant-b" ]; then
+    multi_deploy
+  else
+    single_deploy
+  fi
+
+  banner "DEPLOY CONCLUIDO"
+}
+
+main "$@"

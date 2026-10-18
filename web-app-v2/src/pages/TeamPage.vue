@@ -16,7 +16,7 @@
             </div>
           </div>
           <div class="col-12 col-md-auto q-gutter-xs no-wrap">
-            <q-btn color="primary" unelevated no-caps rounded icon="person_add" label="Novo Membro" @click="openCreate()" />
+            <q-btn color="primary" unelevated no-caps rounded icon="person_add" label="Novo Membro" data-tour="team-novo" @click="openCreate()" />
             <q-btn flat round icon="refresh" color="primary" :loading="loading" @click="load">
               <q-tooltip>Actualizar</q-tooltip>
             </q-btn>
@@ -44,6 +44,7 @@
       <q-card-section class="q-py-none">
         <q-tabs
           v-model="tab"
+          data-tour="team-tabs"
           dense
           no-caps
           align="left"
@@ -78,7 +79,7 @@
       </q-card-section>
 
       <!-- Lista -->
-      <q-card-section class="q-pt-none">
+      <q-card-section class="q-pt-none" data-tour="team-list">
         <div v-if="loading" class="text-center q-pa-xl">
           <q-spinner-dots size="40px" color="primary" />
         </div>

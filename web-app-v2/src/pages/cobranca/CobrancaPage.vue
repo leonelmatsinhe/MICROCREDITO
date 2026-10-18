@@ -57,6 +57,7 @@
 
     <!-- Tabela de cobrança -->
     <q-table
+      data-tour="cobranca-table"
       :rows="rows"
       :columns="columns"
       row-key="accountNumber"
@@ -93,7 +94,7 @@
       </template>
 
       <template v-slot:body-cell-actions="props">
-        <q-td :props="props" class="text-center">
+        <q-td :props="props" class="text-center" data-tour="cobranca-actions">
           <div class="row items-center no-wrap justify-center" style="gap: 2px">
             <q-btn flat round dense icon="home" color="teal" size="xs" @click.stop="openActivity(props.row, 'VISITA_DOMICILIAR')">
               <q-tooltip>Registar visita domiciliária</q-tooltip>

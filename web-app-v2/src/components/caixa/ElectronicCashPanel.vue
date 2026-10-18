@@ -50,7 +50,7 @@
       </q-card>
 
       <!-- ═══════════ CONTA BANCÁRIA (contas JÁ cadastradas) ═══════════ -->
-      <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
+      <q-card flat bordered class="q-mb-md" style="border-radius: 12px" data-tour="cash-electronic-account">
         <q-card-section class="row items-center q-col-gutter-md">
           <div class="col-12 col-md-7">
             <q-select
@@ -82,7 +82,7 @@
       </q-card>
 
       <!-- ═══════════ ABERTURA DO DIA ═══════════ -->
-      <q-card v-if="!register" flat bordered class="q-mb-md" style="border-radius: 12px">
+      <q-card v-if="!register" flat bordered class="q-mb-md" style="border-radius: 12px" data-tour="cash-electronic-open">
         <q-card-section class="q-pb-none">
           <div class="text-subtitle2 text-weight-bold">
             <q-icon name="wb_sunny" size="18px" class="q-mr-xs" color="orange-7" />
@@ -132,7 +132,7 @@
       </q-card>
 
       <!-- ═══════════ MOVIMENTO AUTOMÁTICO DO SISTEMA ═══════════ -->
-      <div v-if="account" class="row q-col-gutter-md q-mb-md">
+      <div v-if="account" class="row q-col-gutter-md q-mb-md" data-tour="cash-electronic-movimentos">
         <div class="col-12 col-sm-4">
           <q-card flat bordered style="border-radius: 12px">
             <q-card-section>
@@ -219,7 +219,7 @@
       </q-card>
 
       <!-- ═══════════ FECHO / RECONCILIAÇÃO ═══════════ -->
-      <q-card v-if="register && isOpen" flat bordered class="q-mb-md" style="border-radius: 12px">
+      <q-card v-if="register && isOpen" flat bordered class="q-mb-md" style="border-radius: 12px" data-tour="cash-electronic-fecho">
         <q-card-section class="q-pb-none">
           <div class="text-subtitle2 text-weight-bold">
             <q-icon name="fact_check" size="18px" class="q-mr-xs" color="primary" />

@@ -7,7 +7,7 @@
         <div class="text-caption text-grey-5">Registo completo de acções e movimentos</div>
       </div>
       <div class="col-auto">
-        <q-btn color="negative" icon="delete_sweep" label="Eliminar Selecionados" unelevated no-caps rounded size="sm" @click="deleteSelected" :disable="selected.length === 0 || !isAdmin" class="q-mr-sm" />
+        <q-btn color="negative" icon="delete_sweep" label="Eliminar Selecionados" unelevated no-caps rounded size="sm" data-tour="logs-delete" @click="deleteSelected" :disable="selected.length === 0 || !isAdmin" class="q-mr-sm" />
         <q-btn color="primary" icon="download" label="Exportar" unelevated no-caps rounded size="sm" @click="exportLogs" />
       </div>
     </div>
@@ -42,6 +42,7 @@
     <!-- Logs Table -->
     <q-table
       v-else
+      data-tour="logs-table"
       :rows="filteredLogs"
       :columns="columns"
       row-key="id"

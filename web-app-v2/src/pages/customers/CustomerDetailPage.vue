@@ -61,6 +61,7 @@
       <!-- TABS -->
       <q-tabs
         v-model="tab"
+        data-tour="mutuario-tabs"
         dense
         align="left"
         class="mutuario-tabs text-white"

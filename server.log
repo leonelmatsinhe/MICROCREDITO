@@ -885,3 +885,153 @@ MBR Server is running on PORT 4000
 [SMS Cobranca] Job diario: 0 enfileirado(s), 0 ignorado(s) em 3 empresa(s)
 [SMS] Alertas automáticos enfileirados para 3 empresa(s)
 [SMS] Alertas automáticos enfileirados para 3 empresa(s)
+[Migration] administrativeFee — interest_rates=decimal(15,6) · customer_loans=decimal(15,6)
+[Migration] customerId reconciliado em customer_loans
+[Migration] customerId reconciliado em amortization_loans
+[Migration] customerId reconciliado em tranzactions
+[Migration] customerId reconciliado em customer_documents
+[Migration] customerId reconciliado em debts
+[Migration] customerId reconciliado em whatsapp_messages
+[Migration] customerId reconciliado em sms_queue
+[Migration] Tipo cash_movements.category ajustado para ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL
+[Migration] Tipo cash_movements.category ajustado para ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','ENTREGA_COFRE','REFORCO_CAIXA','DEPOSITO_BANCARIO','DIFERENCA_CAIXA','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL
+[Migration] amortization_loans.dueDate convertido para DATE
+[Migration] tranzactions.paymentDate convertido para DATE
+[Migration] 4 aplicadas, 210 já existentes, 0 erros.
+MBR Server is running on PORT 4000
+[SMS] Fila de SMS activa (BulkSMM) — a cada 60s
+[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h
+[SMS Cobranca] Job diário activo — 07:00 e catch-up no arranque
+[Jobs] Late accrual de mora agendado (janela 00:05, catch-up horário)
+[0mGET /api/partner/dashboard [33m401[0m 4.089 ms - 48[0m
+[0mGET /api/partner/dashboard [32m200[0m 33.051 ms - 1493[0m
+[0mGET /api/partner/dashboard [32m200[0m 14.973 ms - 1493[0m
+[ReciboJob] Nenhum recibo antigo a regenerar.
+[SMS] Alertas automáticos enfileirados para 3 empresa(s)
+[Concessao] Backfill: 0 pacote(s) gerado(s)
+[SMS Cobranca] Job diario: 0 enfileirado(s), 0 ignorado(s) em 3 empresa(s)
+[0mPOST /api/logs [32m200[0m 63.267 ms - 51[0m
+[0mGET /api/partner/dashboard [32m200[0m 17.082 ms - 1493[0m
+[0mPOST /api/login [32m200[0m 223.972 ms - 535[0m
+[0mGET /api/company/36 [36m304[0m 54.631 ms - -[0m
+[0mPOST /api/logs [32m200[0m 93.405 ms - 51[0m
+[0mGET /api/onboarding/me [36m304[0m 58.707 ms - -[0m
+[0mGET /api/partner/profile [36m304[0m 58.352 ms - -[0m
+[0mGET /api/partner/dashboard [32m200[0m 139.288 ms - 1493[0m
+[0mGET /api/partner/loans [32m200[0m 9.663 ms - 28[0m
+[0mGET /api/partner/installments?scope=pagas [32m200[0m 13.584 ms - 28[0m
+[0mGET /api/partner/installments?scope=pendentes [32m200[0m 9.599 ms - 28[0m
+[0mGET /api/partner/installments?scope=atraso [32m200[0m 5.325 ms - 28[0m
+[0mGET /api/partner/installments?scope=todas [32m200[0m 7.327 ms - 28[0m
+[0mGET /api/partner/mora [32m200[0m 28.018 ms - 131[0m
+[0mGET /api/partner/transactions [32m200[0m 15.915 ms - 28[0m
+[0mGET /api/partner/statement [32m200[0m 27.509 ms - 1747[0m
+[0mGET /api/partner/recibos [32m200[0m 7.981 ms - 28[0m
+[0mGET /api/partner/dashboard [36m304[0m 21.834 ms - -[0m
+[0mGET /api/onboarding/me [36m304[0m 6.877 ms - -[0m
+[0mGET /api/company/36 [36m304[0m 5.190 ms - -[0m
+[0mGET /api/partner/dashboard [36m304[0m 49.386 ms - -[0m
+[0mGET /api/partner/profile [36m304[0m 49.661 ms - -[0m
+[0mGET /api/partner/recibos [36m304[0m 16.274 ms - -[0m
+[0mGET /api/partner/transactions [36m304[0m 11.170 ms - -[0m
+[0mGET /api/partner/mora [36m304[0m 13.646 ms - -[0m
+[0mGET /api/partner/installments?scope=pendentes [36m304[0m 9.213 ms - -[0m
+[0mGET /api/partner/installments?scope=pagas [36m304[0m 5.907 ms - -[0m
+[0mPOST /api/auth/refresh [32m200[0m 4.459 ms - 167[0m
+[0mGET /api/partner/installments?scope=pagas [36m304[0m 19.766 ms - -[0m
+[0mGET /api/partner/profile [36m304[0m 34.011 ms - -[0m
+[0mGET /api/company/36 [36m304[0m 7.954 ms - -[0m
+[0mGET /api/onboarding/me [36m304[0m 14.879 ms - -[0m
+[0mGET /api/partner/installments?scope=pagas [36m304[0m 11.164 ms - -[0m
+[0mGET /api/partner/profile [36m304[0m 19.514 ms - -[0m
+[0mPOST /api/logs [33m401[0m 0.428 ms - 48[0m
+[Migration] administrativeFee — interest_rates=decimal(15,6) · customer_loans=decimal(15,6)
+[Migration] customerId reconciliado em customer_loans
+[Migration] customerId reconciliado em amortization_loans
+[Migration] customerId reconciliado em tranzactions
+[Migration] customerId reconciliado em customer_documents
+[Migration] customerId reconciliado em debts
+[Migration] customerId reconciliado em whatsapp_messages
+[Migration] customerId reconciliado em sms_queue
+[Migration] Tipo cash_movements.category ajustado para ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL
+[Migration] Tipo cash_movements.category ajustado para ENUM('DESEMBOLSO','REEMBOLSO','JUROS_MORA','TAXA_ADMIN','ENTREGA_COFRE','REFORCO_CAIXA','DEPOSITO_BANCARIO','DIFERENCA_CAIXA','DEPOSITO_BANCO','LEVANTAMENTO_BANCO','TRANSFERENCIA','INTERNET','LUZ','AGUA','COMBUSTIVEL','RENTABILIDADE','SALARIOS','SALARIO','REUNIAO','TRANSPORTE','MATERIAL','OUTROS') NOT NULL
+[Migration] amortization_loans.dueDate convertido para DATE
+[Migration] tranzactions.paymentDate convertido para DATE
+[Migration] 4 aplicadas, 210 já existentes, 0 erros.
+MBR Server is running on PORT 4000
+[SMS] Fila de SMS activa (BulkSMM) — a cada 60s
+[SMS] Alertas automáticos activos — 30s após arranque e de 6 em 6h
+[SMS Cobranca] Job diário activo — 07:00 e catch-up no arranque
+[Jobs] Late accrual de mora agendado (janela 00:05, catch-up horário)
+[ReciboJob] Nenhum recibo antigo a regenerar.
+[0mGET /api/partner/dashboard [33m401[0m 4.756 ms - 48[0m
+[0mGET /api/partner/profile [32m200[0m 102.688 ms - 1413[0m
+[SMS] Alertas automáticos enfileirados para 3 empresa(s)
+[Concessao] Backfill: 0 pacote(s) gerado(s)
+[SMS Cobranca] Job diario: 0 enfileirado(s), 0 ignorado(s) em 3 empresa(s)
+[0mPOST /api/login [32m200[0m 198.019 ms - 537[0m
+[0mGET /api/company/36 [36m304[0m 15.093 ms - -[0m
+[0mPOST /api/logs [32m200[0m 205.903 ms - 51[0m
+[0mGET /api/onboarding/me [32m200[0m 26.589 ms - 110[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 86.456 ms - -[0m
+[0mGET /api/wallets/36 [32m200[0m 112.833 ms - 6671[0m
+[0mGET /api/wallets/36/dashboard?months=3&from=2026-10-01&to=2026-10-31 [32m200[0m 110.907 ms - 8076[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 11.725 ms - -[0m
+[0mGET /api/dashboard/36 [36m304[0m 29.648 ms - -[0m
+[0mGET /api/wallets/36 [36m304[0m 26.760 ms - -[0m
+[0mGET /api/wallets/36/unclassified-loans [36m304[0m 8.423 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 30.951 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 7.790 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 22.774 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 5.722 ms - -[0m
+[0mPUT /api/wallets/11 [32m200[0m 64.682 ms - 1136[0m
+[0mGET /api/wallets/36 [32m200[0m 17.931 ms - 6689[0m
+[0mGET /api/wallets/36/unclassified-loans [36m304[0m 10.805 ms - -[0m
+[0mGET /api/wallets/36/test-candidates [32m200[0m 70.771 ms - 28[0m
+[0mGET /api/bank-accounts [32m200[0m 19.907 ms - 1864[0m
+[0mGET /api/rate/36 [32m200[0m 30.432 ms - 5956[0m
+[0mGET /api/wallets/36 [36m304[0m 55.927 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 8.770 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 7.509 ms - -[0m
+[0mGET /api/wallets/36 [36m304[0m 19.232 ms - -[0m
+[0mGET /api/wallets/36/unclassified-loans [36m304[0m 48.700 ms - -[0m
+[0mGET /api/wallets/36 [36m304[0m 30.814 ms - -[0m
+[0mGET /api/wallets/36/unclassified-loans [36m304[0m 2.775 ms - -[0m
+[0mGET /api/wallets/36 [36m304[0m 52.953 ms - -[0m
+[0mGET /api/wallets/36/dashboard?months=3&from=2026-10-01&to=2026-10-31 [32m200[0m 70.322 ms - 8094[0m
+[0mGET /api/dashboard/36 [36m304[0m 15.716 ms - -[0m
+[0mGET /api/bank-accounts [36m304[0m 4.287 ms - -[0m
+[0mGET /api/cash-registers/today [32m200[0m 10.407 ms - 1702[0m
+[0mGET /api/cash-registers/system-register [36m304[0m 7.855 ms - -[0m
+[0mGET /api/cash-registers/differences?status=PENDENTE [36m304[0m 12.295 ms - -[0m
+[0mGET /api/cash-registers/treasury-panel [36m304[0m 9.107 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 29.539 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 40.764 ms - -[0m
+[0mPOST /api/auth/refresh [32m200[0m 3.110 ms - 167[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 36.303 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 8.767 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 11.272 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 4.520 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 13.748 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 7.565 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 19.109 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 5.575 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 29.908 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 6.343 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 24.245 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 7.773 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 11.729 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 5.502 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 43.029 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 6.376 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 27.223 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 5.830 ms - -[0m
+[0mGET /api/sms-gateway/summary?companyId=36 [36m304[0m 31.458 ms - -[0m
+[0mGET /api/cash-registers/portal-alert [36m304[0m 4.989 ms - -[0m
+[0mGET /api/cash-registers/today [33m401[0m 0.384 ms - 48[0m
+[0mGET /api/bank-accounts [33m401[0m 0.471 ms - 48[0m
+[0mGET /api/cash-registers/system-register [33m401[0m 0.444 ms - 48[0m
+[0mGET /api/cash-registers/differences?status=PENDENTE [33m401[0m 0.354 ms - 48[0m
+[0mGET /api/cash-registers/treasury-panel [33m401[0m 0.407 ms - 48[0m
+[0mPOST /api/logs [32m200[0m 73.294 ms - 51[0m
+[LateAccrualJob] mora diária: 0 criado(s), 0 ignorado(s), 0 erro(s) em 0 prestação(ões).

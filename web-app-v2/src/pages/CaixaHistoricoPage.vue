@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md caixa-historico-page">
     <!-- ═══════════ FILTROS ═══════════ -->
-    <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
+    <q-card flat bordered class="q-mb-md" style="border-radius: 12px" data-tour="caixa-hist-filters">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
           <div class="col-6 col-md-2">
@@ -34,7 +34,7 @@
               <q-tooltip>Actualizar</q-tooltip>
             </q-btn>
           </div>
-          <div class="col text-right">
+          <div class="col text-right" data-tour="caixa-hist-resumo">
             <!-- Resumo do período filtrado -->
             <span class="text-caption text-grey-6 q-mr-md">
               {{ registers.length }} {{ registers.length === 1 ? 'caixa' : 'caixas' }}
@@ -53,7 +53,7 @@
       <div class="text-caption text-grey-5 q-mt-sm">A carregar histórico...</div>
     </div>
 
-    <q-card v-else flat bordered style="border-radius: 12px; overflow: hidden">
+    <q-card v-else flat bordered style="border-radius: 12px; overflow: hidden" data-tour="caixa-hist-table">
       <q-card-section v-if="registers.length === 0" class="text-center q-pa-xl">
         <q-icon name="history" size="64px" color="grey-4" />
         <div class="text-h6 text-grey-6 q-mt-md">Nenhum caixa encontrado</div>

@@ -11,3 +11,7 @@ web-app-v2/dist/.env
 .env
 .env.backup
 public/v2/
+
+# Dumps de BD e scripts temporários — nunca versionar
+backups/
+tools-tmp/

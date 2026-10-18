@@ -82,7 +82,7 @@
       <div class="text-caption text-grey-5 q-mt-sm">A carregar pagamentos...</div>
     </div>
 
-    <q-card v-else flat bordered class="table-card" style="border-radius: 12px; overflow: hidden">
+    <q-card v-else flat bordered class="table-card" style="border-radius: 12px; overflow: hidden" data-tour="payments-table">
       <q-card-section v-if="filteredRows.length === 0" class="text-center q-pa-xl">
         <q-icon name="payments" size="64px" color="grey-4" />
         <div class="text-h6 text-grey-6 q-mt-md">Nenhum pagamento encontrado</div>

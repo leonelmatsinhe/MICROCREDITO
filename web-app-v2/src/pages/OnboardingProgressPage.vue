@@ -1,7 +1,7 @@
 <template>
   <div class="q-pa-md onboarding-page">
     <!-- ═══════════ CABEÇALHO ═══════════ -->
-    <div class="row items-center q-col-gutter-sm q-mb-md">
+    <div class="row items-center q-col-gutter-sm q-mb-md" data-tour="onb-header">
       <div class="col-12 col-md">
         <div class="row items-center no-wrap">
           <div class="page-icon q-mr-sm"><q-icon name="checklist" size="20px" color="white" /></div>
@@ -21,7 +21,7 @@
     </div>
 
     <!-- ═══════════ KPIs ═══════════ -->
-    <div class="row q-col-gutter-md q-mb-md">
+    <div class="row q-col-gutter-md q-mb-md" data-tour="onb-kpis">
       <div v-for="kpi in kpis" :key="kpi.label" class="col-6 col-md-3">
         <q-card flat bordered class="kpi-card">
           <q-card-section class="row items-center no-wrap">
@@ -38,7 +38,7 @@
     </div>
 
     <!-- ═══════════ FILTROS ═══════════ -->
-    <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
+    <q-card flat bordered class="q-mb-md" style="border-radius: 12px" data-tour="onb-filtros">
       <q-card-section class="q-py-sm">
         <div class="row q-col-gutter-sm items-center">
           <div class="col-12 col-md-4">
@@ -101,6 +101,7 @@
     <!-- ═══════════ TABELA ═══════════ -->
     <q-table
       v-else
+      data-tour="onb-tabela"
       :rows="rows"
       :columns="columns"
       row-key="userId"

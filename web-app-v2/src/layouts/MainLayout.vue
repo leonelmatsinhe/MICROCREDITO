@@ -55,7 +55,9 @@ const {
   isActive: tourActive,
   shouldPromptOnboarding,
   startTour,
-  markSeen
+  markSeen,
+  suppressAutoTour,
+  maybeAutoStartPageTour
 } = useAppTour({ router })
 
 const {
@@ -119,6 +121,9 @@ onMounted(() => {
   const role = authStore.userRole
   if (!shouldPromptOnboarding(role)) return
   markSeen(role)
+  // O convite ocupa o topo do ecrã: não deixar o tour da página abrir por cima.
+  // 13 s = validade do próprio aviso; depois disso o tour da página pode abrir.
+  suppressAutoTour(13000)
   window.setTimeout(() => {
     $q.notify({
       type: 'positive',
@@ -130,7 +135,15 @@ onMounted(() => {
       actions: [
         { label: 'Tour rápido', color: 'white', handler: () => startTour('quick', role) },
         { label: 'Tour completo', color: 'white', handler: () => startTour('full', role) },
-        { label: 'Agora não', color: 'white' }
+        {
+          label: 'Agora não',
+          color: 'white',
+          // Recusar o tour geral liberta logo o tour da página actual.
+          handler: () => {
+            suppressAutoTour(0)
+            maybeAutoStartPageTour(role)
+          }
+        }
       ]
     })
   }, 1400)
