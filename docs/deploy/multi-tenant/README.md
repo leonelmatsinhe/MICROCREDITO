@@ -10,7 +10,7 @@ single-tenant: o `tenantGuard` (`TENANT_MODE=single`) força sempre o
 ```
 /opt/microcredito/
 ├── ecosystem.config.cjs      # espelho do da raiz do repo (sincronizado pelo deploy)
-├── tenant-a/                 # PROD   → PORT 4000 · BD microcredito_a
+├── tenant-a/                 # PROD   → PORT 4000 · BD actual do prod (ex.: mbr_microcredito)
 │   ├── .env                  #   (não versionado, chmod 600)
 │   ├── uploads/              #   documentos PROD (nunca partilhados)
 │   └── …clone do repo…
@@ -42,11 +42,64 @@ sudo certbot --nginx -d a.tuaempresa.co.mz
 sudo certbot --nginx -d demo.tuaempresa.co.mz
 ```
 
+## Migrar um PROD já a correr (VPS existente, 1 app)
+
+O app antigo (`microcredito`) ocupa a porta 4000, portanto a troca tem de ser
+feita por esta ordem — a janela de downtime é o build da primeira corrida:
+
+```bash
+cd /home/mbr/MICROCREDITO          # (ou o caminho do clone actual)
+./scripts/deploy.sh init-tenants  # 1) cria tenant-a, tenant-b, .env de exemplo e a BD demo
+
+nano /opt/microcredito/tenant-a/.env   # 2) PROD: manter a BD ACTUAL (ex.: mbr_microcredito),
+                                       #    PORT=4000, credenciais reais, segredos
+nano /opt/microcredito/tenant-b/.env   # 3) DEMO: DATABASE_NAME=microcredito_b, PORT=4001,
+                                       #    segredos NOVOS (nunca copiar os do prod)
+# (a BD microcredito_b: o init tentou criá-la; senão, correr o SQL que imprimiu)
+
+pm2 stop microcredito                  # 4) janela de troca: parar o app antigo (":4000")
+./scripts/deploy.sh                    #    modo multi: builda e sobe os 2 tenants
+
+pm2 status                            # 5) confirmar microcredito-a + microcredito-demo online
+pm2 delete microcredito && pm2 save   #    limpar a entrada antiga
+
+# 6) SÓ se a BD do tenant (microcredito_a) estiver VAZIA (foi criada pelo init):
+#    mysql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='microcredito_a'"
+#    → 0  =>  pode apagar: mysql -e "DROP DATABASE microcredito_a;"
+#    → >0 => NÃO APAGAR (tem dados)
+```
+
+Se o deploy automático (webhook/CI) aponta para o clone antigo
+(`/home/mbr/MICROCREDITO/scripts/deploy.sh`), continua a funcionar depois da
+migração: esse script detecta os tenants em `/opt/microcredito` e passa a
+fazer o loop. Mais tarde pode apontar o webhook directamente para
+`/opt/microcredito/tenant-a/scripts/deploy.sh` e arquivar o clone antigo.
+
+## Semear a DEMO (obrigatório — as migrações não criam o esquema)
+
+As migrações deste projecto são **incrementais**: criam só tabelas auxiliares
+novas; o esquema base (customers, users, tranzactions, recibos…) vem de um
+dump. Uma BD nova (ex.: `microcredito_b`) fica vazia e a app rebenta com
+`Table … doesn't exist`. Copia-se do prod:
+
+```bash
+cd /opt/microcredito/tenant-a   # (ou qualquer clone, para correr o script)
+./scripts/deploy.sh seed-demo  # lê DATABASE_NAME/USER/PASS dos .env dos tenants
+# equivalente manual:
+mysqldump mbr_microcredito | mysql microcredito_b
+```
+
+**Protecção de dados:** se a BD da demo **já tem tabelas/dados**, o
+`seed-demo` **aborta** (o mysqldump inclui `DROP TABLE` — importar por cima
+destruiria os dados). Só passa a barreira explícita `seed-demo --force`.
+Aviso: forçar deixa a demo com dados reais do prod (inclui PII de
+mutuários) — anonimise ou use dump parcial se for expor publicamente.
+
 ## Regras single-tenant
 
 | Regra | Como funciona |
 |---|---|
-| **Uma BD por tenant** | `microcredito_a` (prod) e `microcredito_b` (demo). O `.env` de cada clone define `DATABASE_NAME`; o `ecosystem.config.cjs` reforça-o no `env` de cada app. |
+| **Uma BD por tenant** | Cada `.env` define a SUA `DATABASE_NAME` (ex.: `mbr_microcredito` no prod existente, `microcredito_b` no demo). O ecosystem **não** sobrescreve — migrate e runtime partilham sempre o mesmo `.env`. |
 | **Migrações isoladas** | O deploy corre `npm run migrate` **dentro de cada tenant**, logo cada BD recebe as suas migrações, na sua ordem. Nunca correr migrate de um tenant dentro da pasta do outro. |
 | **Uploads isolados** | Cada tenant tem o seu `uploads/` (recibos, fotos, logotipos). O `gitignore` é garantido pelo deploy. |
 | **Logs separados** | `pm2 logs microcredito-a` · `pm2 logs microcredito-demo`. |

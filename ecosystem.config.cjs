@@ -14,11 +14,12 @@
  *     Se um dos tenants for removido (ex.: demo desligado), este ficheiro
  *     passa a exportar só os apps cujas pastas existem — sem editar nada.
  *
- * Precedência de variáveis: os blocos `env` abaixo VENCEM o .env de cada
- * tenant (o dotenv do projecto não sobrescreve variáveis já definidas).
- * As restantes variáveis (M-Pesa, SMS, e-mail, segredos) vêm do .env de
- * cada tenant — que também é o que `npm run migrate` lê ao correr dentro
- * da pasta do tenant.
+ * Precedência de variáveis: PORT e DATABASE_NAME vêm do .env de CADA
+ * tenant — a MESMA fonte que o `npm run migrate` lê quando corre dentro da
+ * pasta do tenant, para o runtime e as migrações nunca divergirem (um
+ * override aqui apontaria a app para outra BD do que a migrada). As
+ * restantes variáveis (M-Pesa, SMS, e-mail, segredos) também vêm do .env
+ * de cada tenant. O único env fixo por app é NODE_ENV.
  *
  * Uso:
  *   pm2 startOrReload ecosystem.config.cjs --update-env   # cria/recarrega
@@ -52,11 +53,7 @@ if (hasTenant("tenant-a")) {
     name: "microcredito-a",
     script: path.join(tenantDir("tenant-a"), "build", "src", "app.js"),
     cwd: tenantDir("tenant-a"),
-    env: {
-      ...base.env,
-      PORT: "4000",
-      DATABASE_NAME: "microcredito_a",
-    },
+    // PORT=4000 e DATABASE_NAME vem do .env do tenant (tenant-a/.env)
   });
 }
 
@@ -67,11 +64,7 @@ if (hasTenant("tenant-b")) {
     name: "microcredito-demo",
     script: path.join(tenantDir("tenant-b"), "build", "src", "app.js"),
     cwd: tenantDir("tenant-b"),
-    env: {
-      ...base.env,
-      PORT: "4001",
-      DATABASE_NAME: "microcredito_b",
-    },
+    // PORT=4001 e DATABASE_NAME=microcredito_b vêm do .env do tenant
   });
 }
 

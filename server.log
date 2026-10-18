@@ -1035,3 +1035,6 @@ MBR Server is running on PORT 4000
 [0mGET /api/cash-registers/treasury-panel [33m401[0m 0.407 ms - 48[0m
 [0mPOST /api/logs [32m200[0m 73.294 ms - 51[0m
 [LateAccrualJob] mora diária: 0 criado(s), 0 ignorado(s), 0 erro(s) em 0 prestação(ões).
+[0mPOST /api/v1/auth/login [33m401[0m 90.839 ms - 48[0m
+[0mGET /api/v1/auth/me [33m401[0m 0.602 ms - 48[0m
+[0mGET /api/v1/leituras/grade?mes=10&ano=2026 [33m401[0m 0.951 ms - 48[0m

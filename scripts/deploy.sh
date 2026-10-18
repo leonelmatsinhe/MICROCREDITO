@@ -127,8 +127,11 @@ SQL
 
   banner "PROXIMO PASSO"
   echo "  1) Edite $TENANTS_DIR/tenant-a/.env  (prod) e $TENANTS_DIR/tenant-b/.env (demo)"
-  echo "  2) Corra: $0            (deploy dos 2 tenants)"
-  echo "  3) Nginx + SSL: docs/deploy/multi-tenant/README.md"
+  echo "  2) ATENÇÃO: as BDs criadas ficam VAZIAS — as migrações são incrementais e"
+  echo "     não criam o esquema base. Copie o esquema/dados do prod para a demo:"
+  echo "       $0 seed-demo          (ou: mysqldump <prod> | mysql <demo>)"
+  echo "  3) Corra: $0            (deploy dos 2 tenants)"
+  echo "  4) Nginx + SSL: docs/deploy/multi-tenant/README.md"
 }
 
 # ── deploy de UM tenant: atómico (ou tudo, ou nada) ──────────────────────
@@ -226,10 +229,62 @@ single_deploy() {
   pm2 list
 }
 
+# ── seed-demo: copia esquema + dados do PROD para a BD do DEMO ─────────
+# As migrações são incrementais (não criam o esquema base): uma BD nova só
+# funciona depois de receber o esquema — aqui copia-se do prod real.
+read_env_var() { # $1 = ficheiro .env, $2 = chave
+  grep -E "^$2=" "$1" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r' | xargs || true
+}
+
+seed_demo() {
+  banner "SEED DEMO — copiar PROD => DEMO"
+  local env_a="$TENANTS_DIR/tenant-a/.env" env_b="$TENANTS_DIR/tenant-b/.env"
+  if [ ! -f "$env_a" ] || [ ! -f "$env_b" ]; then
+    echo "  -> Faltam .env dos tenants. Corra antes: $0 init-tenants"
+    exit 1
+  fi
+  local db_a db_b user pass
+  db_a="$(read_env_var "$env_a" DATABASE_NAME)"
+  db_b="$(read_env_var "$env_b" DATABASE_NAME)"
+  user="$(read_env_var "$env_a" DATABASE_USER)"
+  pass="$(read_env_var "$env_a" DATABASE_PASS)"
+  if [ -z "$db_a" ] || [ -z "$db_b" ]; then
+    echo "  -> DATABASE_NAME em falta em $env_a ou $env_b."
+    exit 1
+  fi
+  if [ "$db_a" = "$db_b" ]; then
+    echo "  -> AVISO CRÍTICO: as 2 BDs são a MESMA ($db_a) — aborto para não auto-copiar."
+    exit 1
+  fi
+  local opts=()
+  [ -n "$user" ] && opts+=("-u$user")
+
+  # PROTECÇÃO DE DADOS: o mysqldump inclui DROP TABLE — importar por cima
+  # de uma BD da demo que JÁ TEM tabelas destruiria os dados existentes.
+  local tables
+  tables="$(MYSQL_PWD="$pass" mysql "${opts[@]}" -N -e \
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$db_b'")"
+  if [ "${tables:-0}" -gt 0 ] && [ "${1:-}" != "--force" ]; then
+    echo "  -> A BD da DEMO ($db_b) já tem $tables tabela(s) — ABORTO para não destruir dados."
+    echo "     • Quer manter os dados actuais? Não faça nada — a demo já tem esquema."
+    echo "     • Quer mesmo substituir pelos do prod?  $0 seed-demo --force"
+    exit 1
+  fi
+
+  echo "  -> $db_a  =>  $db_b   (mysqldump completo: esquema + dados)"
+  MYSQL_PWD="$pass" mysqldump "${opts[@]}" "$db_a" |
+    MYSQL_PWD="$pass" mysql "${opts[@]}" "$db_b"
+  echo "  -> Demo semeada. NOTA: contém dados reais do prod — reveja/anonimise antes de expor publicamente."
+}
+
 # ── ponto de entrada ─────────────────────────────────────────────────────
 main() {
   if [ "${1:-}" = "init-tenants" ]; then
     init_tenants
+    return
+  fi
+  if [ "${1:-}" = "seed-demo" ]; then
+    seed_demo "${@:2}"
     return
   fi
   if [ $# -gt 0 ]; then
