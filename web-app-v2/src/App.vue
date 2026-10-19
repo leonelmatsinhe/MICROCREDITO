@@ -4,7 +4,16 @@
   </LandingLayout>
   <!-- Portal do mutuário e portal do financiador têm layout próprio (sem sidebar MBRM) -->
   <router-view v-else-if="isPortalRoute || isPartnerRoute" />
-  <MainLayout v-else-if="isLoggedIn">
+  <!--
+    FIX (logout em produção): o MainLayout ficava DESMONTADO durante a
+    transição de logout — o estado do Pinia é limpo antes de o
+    router.push('/') concluir —, e o DashboardPage (raiz <q-page>) ficava
+    montado sem nenhum <q-layout>: "QPage needs to be a deep child of QLayout"
+    + ecrã em branco. Agora o layout do staff mantém-se enquanto a rota
+    activa for uma rota staff protegida; o guard já redirecciona sempre
+    utilizadores sem sessão para o Login, logo isto só cobre a janela do logout.
+  -->
+  <MainLayout v-else-if="isLoggedIn || isProtectedStaffRoute">
     <router-view />
   </MainLayout>
   <router-view v-else />
@@ -33,6 +42,11 @@ const isLoggedIn = computed(() => authStore.isLoggedIn)
 const isPortalRoute = computed(() => route.path === '/portal' || route.path.startsWith('/portal/'))
 // Portal do parceiro financiador (userRole 4): layout dedicado, sem sidebar do staff
 const isPartnerRoute = computed(() => route.path === '/parceiro' || route.path.startsWith('/parceiro/'))
+// Rota staff protegida (as rotas do portal/parceiro já foram apanhadas acima):
+// mantém o q-layout do staff montado durante a janela de logout.
+const isProtectedStaffRoute = computed(() =>
+  route.matched.some((record) => record.meta.requiresAuth)
+)
 
 // Aplicar tema ao iniciar
 $q.dark.set(uiStore.isDark)

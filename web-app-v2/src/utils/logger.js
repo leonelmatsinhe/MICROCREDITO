@@ -7,18 +7,32 @@ import { formatMoney as formatCurrency } from '@/utils/formatters'
  */
 export async function logAction({ userId, companyId, userName, userRole, action, module, description }) {
   if (!userId || !companyId) return
+  // FIX (logout em produção): o token é capturado de forma SÍNCRONA agora,
+  // porque o logout limpa o localStorage imediatamente a seguir e o
+  // interceptor do axios (que lê o localStorage) só corre numa microtask —
+  // sem esta captura o pedido sairia sem Authorization e o backend
+  // respondia 401 "Token is required!" a cada logout.
+  const token = localStorage.getItem('applicationMicroToken')
   try {
-    await api.post('/api/logs', {
-      userId,
-      companyId,
-      userName: String(userName || 'Utilizador').trim() || 'Utilizador',
-      userRole: userRole === undefined || userRole === null || userRole === '' ? null : userRole,
-      action: String(action || 'ACÇÃO').trim() || 'ACÇÃO',
-      module: module || null,
-      description: String(description || '').trim()
-    })
+    await api.post(
+      '/api/logs',
+      {
+        userId,
+        companyId,
+        userName: String(userName || 'Utilizador').trim() || 'Utilizador',
+        userRole: userRole === undefined || userRole === null || userRole === '' ? null : userRole,
+        action: String(action || 'ACÇÃO').trim() || 'ACÇÃO',
+        module: module || null,
+        description: String(description || '').trim()
+      },
+      token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
+    )
   } catch (error) {
-    console.error('Erro ao registar log:', error)
+    // Logs de auditoria são best-effort: sessão já expirada (401/403) não é
+    // um erro da aplicação — não poluir a consola nem assustar o utilizador.
+    if (error.response?.status !== 401 && error.response?.status !== 403) {
+      console.error('Erro ao registar log:', error)
+    }
   }
 }
 
