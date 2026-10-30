@@ -19,6 +19,10 @@ export const useMutuarioStore = defineStore('mutuario', {
     contextLoanLoading: false,
     installments: [],          // plano de amortização do activeLoan (compatibilidade)
     installmentsTotals: null,
+    transactions: [],          // histórico de pagamentos/recibos deste mutuário
+    collectionActivities: [],  // histórico de actividades/visitas/promessas de cobrança
+    guarantees: [],            // garantias do crédito activo
+    guaranteeCoverage: null,   // rácio de cobertura de garantias (ICR)
     loading: false,
     loansLoading: false,
     kycLoading: false,
@@ -61,6 +65,36 @@ export const useMutuarioStore = defineStore('mutuario', {
     maxCapacity() {
       return (Number(this.customer?.customerMonthlySalary) || 0) / 3
     },
+    // Prestação mensal contratual do crédito activo
+    currentInstallmentAmount() {
+      const list = this.contextInstallments.length > 0 ? this.contextInstallments : this.installments
+      if (list.length > 0) {
+        return Number(list[0]?.installment) || 0
+      }
+      if (this.activeLoan) {
+        const rate = Number(this.activeLoan.interestRate) || 0
+        const n = Number(this.activeLoan.numberOfInstallments) || 1
+        const principal = Number(this.activeLoan.amount) || 0
+        if (principal <= 0 || rate <= 0) return principal / n
+        const factor = Math.pow(1 + rate, n)
+        return principal * (rate * factor) / (factor - 1)
+      }
+      return 0
+    },
+    // Taxa de Esforço (DTI - Debt-to-Income): Prestação / Salário Mensal (%)
+    dtiRatio() {
+      const salary = Number(this.customer?.customerMonthlySalary) || 0
+      if (salary <= 0) return 0
+      return (this.currentInstallmentAmount / salary) * 100
+    },
+    // Classificação de risco por DTI (Banco de Moçambique & CGAP)
+    dtiStatus() {
+      const ratio = this.dtiRatio
+      if (ratio <= 0) return { ratio: 0, percentStr: '0%', label: 'Sem Encargos', color: 'positive', level: 'baixo' }
+      if (ratio <= 33) return { ratio, percentStr: `${Math.round(ratio)}%`, label: 'Saudável', color: 'positive', level: 'baixo' }
+      if (ratio <= 50) return { ratio, percentStr: `${Math.round(ratio)}%`, label: 'Moderado', color: 'warning', level: 'medio' }
+      return { ratio, percentStr: `${Math.round(ratio)}%`, label: 'Sobre-endividado', color: 'negative', level: 'critico' }
+    },
     // Próximo vencimento entre os créditos activos
     proximoVencimento() {
       let next = null
@@ -73,9 +107,50 @@ export const useMutuarioStore = defineStore('mutuario', {
     },
     // Progresso do financiamento activo (0..1) — prestações pagas / total
     activeLoanProgress() {
+      const list = this.contextInstallments.length > 0 ? this.contextInstallments : this.installments
+      if (list.length > 0) {
+        const paid = list.filter(i => Number(i.status) === 1).length
+        return paid / list.length
+      }
       const metrics = this.loanMetrics[Number(this.activeLoan?.id)]
       if (!metrics || !Number(metrics.installmentsCount)) return 0
       return Math.min(1, (Number(metrics.paidInstallments) || 0) / Number(metrics.installmentsCount))
+    },
+    activeLoanPaidCount() {
+      const list = this.contextInstallments.length > 0 ? this.contextInstallments : this.installments
+      if (list.length > 0) {
+        return list.filter(i => Number(i.status) === 1).length
+      }
+      const metrics = this.loanMetrics[Number(this.activeLoan?.id)]
+      return Number(metrics?.paidInstallments) || 0
+    },
+    activeLoanTotalCount() {
+      const list = this.contextInstallments.length > 0 ? this.contextInstallments : this.installments
+      if (list.length > 0) {
+        return list.length
+      }
+      return Number(this.activeLoan?.numberOfInstallments) || 0
+    },
+    // Próxima prestação detalhada (dias restantes, mora, total a pagar)
+    activeLoanNextInstallment() {
+      const list = this.contextInstallments.length > 0 ? this.contextInstallments : this.installments
+      const pending = list.filter(i => Number(i.status) === 0 || Number(i.status) === -1)
+      if (pending.length === 0) return null
+      const sorted = [...pending].sort((a, b) => String(a.dueDate || '').localeCompare(String(b.dueDate || '')))
+      const next = sorted[0]
+      const today = new Date().toISOString().split('T')[0]
+      const dueDate = next.dueDate ? String(next.dueDate).split('T')[0] : ''
+      const isOverdue = !!(dueDate && dueDate < today)
+      const diffDays = dueDate
+        ? Math.round((new Date(dueDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24))
+        : 0
+      return {
+        ...next,
+        isOverdue,
+        daysOverdue: isOverdue ? Math.abs(diffDays) : 0,
+        daysLeft: !isOverdue ? diffDays : 0,
+        totalDue: (Number(next.installment) || 0) + (Number(next.latePaymentInterest) || 0) - (Number(next.paidAmount) || 0)
+      }
     },
 
     // Prestações pendentes/pagas do crédito em CONTEXTO (para liquidação total)
@@ -83,17 +158,63 @@ export const useMutuarioStore = defineStore('mutuario', {
       state.contextInstallments.filter(i => Number(i.status) === 0 || Number(i.status) === -1),
     paidInstallments: (state) => state.contextInstallments.filter(i => Number(i.status) === 1),
 
-    // Histórico unificado para a timeline (créditos + documentos recentes)
+    // Histórico unificado para a timeline (créditos + pagamentos + actividades de cobrança + documentos)
     timelineEvents(state) {
       const events = []
+      // 1. Empréstimos
       for (const loan of state.loans) {
         events.push({
           id: `loan-${loan.id}`,
+          type: 'loan',
           icon: 'payments',
           color: Number(loan.status) === 1 ? 'positive' : Number(loan.status) === 3 ? 'teal' : Number(loan.status) === 0 ? 'orange' : 'negative',
-          title: `Crédito de ${Number(loan.amount).toLocaleString('pt-MZ', { minimumFractionDigits: 2 })} MZN`,
+          title: `Crédito #${loan.id} de ${Number(loan.amount).toLocaleString('pt-MZ', { minimumFractionDigits: 2 })} MZN`,
           subtitle: `${Number(loan.numberOfInstallments)}x prestações — ${Number(loan.status) === 1 ? 'Activo' : Number(loan.status) === 3 ? 'Liquidado' : Number(loan.status) === 0 ? 'Pendente' : 'Rejeitado'}`,
           date: loan.disbursementDate || loan.dateCreated || loan.createdAt
+        })
+      }
+      // 2. Transações / Pagamentos
+      for (const t of state.transactions) {
+        const method = t.paymentMethod ? String(t.paymentMethod).toUpperCase() : 'NUMERÁRIO'
+        events.push({
+          id: `tranz-${t.id}`,
+          type: 'payment',
+          icon: 'receipt_long',
+          color: 'teal-7',
+          title: `Amortização de ${Number(t.amount).toLocaleString('pt-MZ', { minimumFractionDigits: 2 })} MZN`,
+          subtitle: `Canal: ${method}${t.reference ? ` · Ref: ${t.reference}` : ''}${t.receiptNumber ? ` · Recibo #${t.receiptNumber}` : ''}`,
+          date: t.dateCreated || t.createdAt
+        })
+      }
+      // 3. Actividades de Cobrança (Visitas, Contactos, Promessas)
+      for (const c of state.collectionActivities) {
+        const typeLabels = {
+          call: 'Chamada Telefónica',
+          visit: 'Visita no Terreno',
+          promise: 'Promessa de Pagamento',
+          formal_notice: 'Notificação Formal',
+          warning: 'Aviso de Cobrança'
+        }
+        events.push({
+          id: `col-${c.id}`,
+          type: 'collection',
+          icon: c.activityType === 'visit' ? 'place' : c.activityType === 'promise' ? 'handshake' : 'call',
+          color: c.activityType === 'promise' ? 'purple' : 'deep-orange',
+          title: typeLabels[c.activityType] || 'Registo de Cobrança',
+          subtitle: `${c.notes || c.details || 'Registo efetuado'}${c.createdByName ? ` · Por: ${c.createdByName}` : ''}`,
+          date: c.activityDate || c.dateCreated || c.createdAt
+        })
+      }
+      // 4. Documentos KYC
+      for (const doc of (state.checklist?.documents || [])) {
+        events.push({
+          id: `doc-${doc.id}`,
+          type: 'document',
+          icon: 'description',
+          color: 'blue-grey',
+          title: `Documento: ${doc.documentName}`,
+          subtitle: 'Anexado ao dossier KYC do mutuário',
+          date: doc.dateCreated || doc.createdAt
         })
       }
       return events.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
@@ -111,8 +232,17 @@ export const useMutuarioStore = defineStore('mutuario', {
         }
         await Promise.all([
           this.fetchLoans(),
-          this.fetchChecklist(accountNumber)
+          this.fetchChecklist(accountNumber),
+          this.fetchTransactions(accountNumber),
+          this.fetchCollectionActivities(accountNumber)
         ])
+        if (this.activeLoan?.id) {
+          await Promise.all([
+            this.fetchPlanFor(this.activeLoan.id),
+            this.fetchAmortization(),
+            this.fetchGuaranteeCoverage(this.activeLoan.id)
+          ])
+        }
       } finally {
         this.loading = false
       }
@@ -144,6 +274,48 @@ export const useMutuarioStore = defineStore('mutuario', {
         this.activeLoan = active
       } finally {
         this.loansLoading = false
+      }
+    },
+
+    async fetchTransactions(accountNumber) {
+      if (!accountNumber) return
+      try {
+        const { data } = await api.get(`/api/tranzaction/${accountNumber}`)
+        if (data && data.success && Array.isArray(data.result)) {
+          this.transactions = data.result
+        } else {
+          this.transactions = []
+        }
+      } catch {
+        this.transactions = []
+      }
+    },
+
+    async fetchCollectionActivities(accountNumber) {
+      if (!accountNumber) return
+      try {
+        const { data } = await api.get('/api/collection/activities', {
+          params: { accountNumber }
+        })
+        if (data && data.success && Array.isArray(data.result)) {
+          this.collectionActivities = data.result
+        } else {
+          this.collectionActivities = []
+        }
+      } catch {
+        this.collectionActivities = []
+      }
+    },
+
+    async fetchGuaranteeCoverage(loanId) {
+      if (!loanId) return
+      try {
+        const { data } = await api.get(`/api/loan/${loanId}/guarantee-coverage`)
+        if (data && data.success) {
+          this.guaranteeCoverage = data.result
+        }
+      } catch {
+        this.guaranteeCoverage = null
       }
     },
 
@@ -239,15 +411,17 @@ export const useMutuarioStore = defineStore('mutuario', {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('documentName', documentName)
-      formData.append('accountNumber', this.customer.accountNumber)
-      formData.append('companyId', this.customer.companyId)
+      const acc = this.customer?.accountNumber
+      if (acc) formData.append('accountNumber', acc)
+      const compId = this.customer?.companyId
+      if (compId) formData.append('companyId', compId)
       formData.append('uploadedBy', uploadedBy || '')
       const { data } = await api.post('/api/document', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      if (!data.success) throw new Error(data.message || 'Erro ao salvar documento')
+      if (!data.success) throw new Error(data.message || 'Erro ao guardar documento')
       // Refrescar checklist: isKycComplete actualiza em tempo real
-      await this.fetchChecklist(this.customer.accountNumber)
+      if (acc) await this.fetchChecklist(acc)
       return data
     },
 
@@ -324,6 +498,10 @@ export const useMutuarioStore = defineStore('mutuario', {
       this.contextInstallments = []
       this.installments = []
       this.installmentsTotals = null
+      this.transactions = []
+      this.collectionActivities = []
+      this.guarantees = []
+      this.guaranteeCoverage = null
       this.simulation = null
     }
   }

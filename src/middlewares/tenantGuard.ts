@@ -89,6 +89,15 @@ const forceCompanyId = (
   if (!container || typeof container !== "object") return container;
 
   const current = container.companyId;
+  if (Array.isArray(current)) {
+    const first = current[0];
+    if (first !== undefined && String(first) !== String(forced)) {
+      warnForge(req, source, current, forced, tokenCompanyId);
+    }
+    container.companyId = typeof first === "number" ? forced : String(forced);
+    return container;
+  }
+
   if (current !== undefined && current !== null && String(current) !== String(forced)) {
     warnForge(req, source, current, forced, tokenCompanyId);
   }
@@ -115,6 +124,9 @@ const lockTenantProperty = (
       configurable: true,
       enumerable: true,
       get() {
+        if (current && typeof current === "object" && Array.isArray(current.companyId)) {
+          current.companyId = typeof current.companyId[0] === "number" ? forced : String(forced);
+        }
         return current;
       },
       set(next: any) {

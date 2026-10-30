@@ -1145,7 +1145,12 @@ const loanDetail = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
         let emAtraso = 0;
         let moraGerada = 0;
         let proximoVencimento = null;
-        (prestacoes || []).forEach((item) => {
+        const penaltyParams = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyId);
+        const plan = (0, calculateLateAmount_1.installmentPanification)(prestacoes || [], penaltyParams.forfeit, undefined, {
+            maxLateDays: penaltyParams.maxLateDays,
+            capPercent: penaltyParams.capPercent,
+        });
+        (plan || []).forEach((item) => {
             const falta = Math.max(0, toNumber(item.installment) - toNumber(item.paidAmount));
             const status = Number(item.status);
             const vencimento = item.dueDate ? new Date(String(item.dueDate).slice(0, 10)) : null;
@@ -1156,7 +1161,7 @@ const loanDetail = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
             }
             saldoDevedor += falta;
             pendentes += 1;
-            moraGerada += toNumber(item.mora_amount);
+            moraGerada += Number(item.latePaymentInterest) || 0;
             if (vencida)
                 emAtraso += 1;
             if (vencimento && !vencida) {

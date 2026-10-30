@@ -222,6 +222,24 @@ const registerMovement = (input) => __awaiter(void 0, void 0, void 0, function* 
                 };
             }
         }
+        // ── VALIDAÇÃO DE SALDO FÍSICO NA GAVETA (SAÍDA DE NUMERÁRIO) ──
+        if (!(0, exports.isElectronic)(paymentMethod) &&
+            type === "SAIDA" &&
+            !["DIFERENCA_CAIXA"].includes(String(category))) {
+            const fundoAbertura = register.getDataValue("counted_open");
+            const naGaveta = round2((Number(fundoAbertura != null ? fundoAbertura : register.getDataValue("opening_balance")) || 0) +
+                (Number(register.getDataValue("total_cash_in")) || 0) -
+                (Number(register.getDataValue("total_cash_out")) || 0));
+            if (round2(amount) > naGaveta) {
+                throw {
+                    code: "INSUFFICIENT_CASH",
+                    message: `Numerário insuficiente na gaveta do caixa (disponível: ${naGaveta.toFixed(2)} MZN; solicitado: ${round2(amount).toFixed(2)} MZN). ` +
+                        `Efectue um REFORÇO DE CAIXA a partir do Cofre Central antes de realizar a saída.`,
+                    dinheiro_em_caixa: naGaveta,
+                    solicitado: round2(amount),
+                };
+            }
+        }
         // ── Passo 2: validações de método/conta ──
         let account = null;
         if ((0, exports.isElectronic)(paymentMethod)) {
@@ -296,6 +314,25 @@ const registerMovement = (input) => __awaiter(void 0, void 0, void 0, function* 
         // ── Passo 5: recalcular totais CASH/BANK do caixa (fonte de verdade) ──
         yield (0, exports.recalculateRegisterTotals)(register.getDataValue("id"), transaction);
         yield transaction.commit();
+        // ── RAZÃO CONTABILÍSTICO (Partidas Dobradas): Despesas Operacionais (OPEX) ──
+        if (type === "SAIDA" && !["DESEMBOLSO", "DEPOSITO_BANCO"].includes(String(category))) {
+            try {
+                const { recordExpenseLedger } = yield Promise.resolve().then(() => __importStar(require("./generalLedgerService")));
+                yield recordExpenseLedger({
+                    companyId,
+                    cashMovementId: movement.getDataValue("id"),
+                    category,
+                    amount,
+                    paymentMethod,
+                    bankAccountId,
+                    description: finalDescription,
+                    userId: userId || undefined,
+                });
+            }
+            catch (ledgerErr) {
+                console.error("[GeneralLedger] Erro ao lançar despesa no razão:", (ledgerErr === null || ledgerErr === void 0 ? void 0 : ledgerErr.message) || ledgerErr);
+            }
+        }
         if (automatic) {
             console.log(`[TESOURARIA] ${type}/${category}/${paymentMethod} ${round2(amount)} MZN — caixa #${register.getDataValue("id")}${usedSystemRegister ? " (SISTEMA/portal)" : ""}` +
                 (account ? ` · conta #${bankAccountId}` : ""));

@@ -116,7 +116,13 @@
                   <q-chip :color="r.status === 'ANULADO' ? 'negative' : 'positive'" text-color="white" dense>
                     {{ r.status || 'EMITIDO' }}
                   </q-chip>
-                  <q-btn flat round dense icon="picture_as_pdf" size="sm" color="negative" @click="openReciboPdf(r)">
+                  <q-btn flat round dense icon="print" size="sm" color="amber-9" @click="openThermal(r)">
+                    <q-tooltip>Talão Térmico de Balcão (80mm)</q-tooltip>
+                  </q-btn>
+                  <q-btn flat round dense icon="visibility" size="sm" color="primary" @click="openViewer(r)">
+                    <q-tooltip>Visualizar Recibo Oficial A4</q-tooltip>
+                  </q-btn>
+                  <q-btn flat round dense icon="download" size="sm" color="positive" @click="openReciboPdf(r)">
                     <q-tooltip>Descarregar PDF</q-tooltip>
                   </q-btn>
                 </q-card-section>
@@ -129,6 +135,10 @@
 
     <!-- Modal de garantias (reutiliza o modal existente do sistema) -->
     <GuaranteesModal v-model="showGuarantees" :loan-id="selectedLoanId" @update:model-value="onGuaranteesModalToggle" />
+
+    <!-- Visualizadores de Recibos -->
+    <ReciboViewerDialog v-model="showViewer" :recibo="selectedRecibo" />
+    <ThermalReceiptDialog v-model="showThermal" :recibo="selectedRecibo" />
   </div>
 </template>
 
@@ -141,6 +151,8 @@ import { useCustomerStore } from '@/stores/customers'
 import { api } from '@/boot/axios'
 import { formatMoney } from '@/utils/formatters'
 import GuaranteesModal from '@/components/modals/GuaranteesModal.vue'
+import ReciboViewerDialog from '@/components/recibos/ReciboViewerDialog.vue'
+import ThermalReceiptDialog from '@/components/recibos/ThermalReceiptDialog.vue'
 
 const store = useMutuarioStore()
 const loansStore = useLoansStore()
@@ -154,6 +166,20 @@ const recibos = ref([])
 const recibosLoading = ref(false)
 const selectedLoanId = ref(null)
 const coverage = ref(null)
+
+const showViewer = ref(false)
+const showThermal = ref(false)
+const selectedRecibo = ref(null)
+
+function openViewer(r) {
+  selectedRecibo.value = r
+  showViewer.value = true
+}
+
+function openThermal(r) {
+  selectedRecibo.value = r
+  showThermal.value = true
+}
 
 const customerId = computed(() => store.customer?.id)
 

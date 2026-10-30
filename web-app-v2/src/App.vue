@@ -104,7 +104,9 @@ function stopActivityTracker() {
 onMounted(() => {
   if (isLoggedIn.value && authStore.companyId) {
     companyStore.fetchCompany(authStore.companyId)
-    startActivityTracker()
+    if (!authStore.isCustomer) {
+      startActivityTracker()
+    }
   }
 })
 
@@ -119,7 +121,9 @@ watch(
     if (companyId) {
       companyStore.fetchCompany(companyId)
       warningDismissed = false
-      startActivityTracker()
+      if (!authStore.isCustomer) {
+        startActivityTracker()
+      }
     } else {
       companyStore.clearCompany()
       stopActivityTracker()

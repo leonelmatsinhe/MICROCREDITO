@@ -5,17 +5,21 @@ import { getLegacyPenaltyParams } from "./lateInterestService";
 import { AuditLogModel } from "../database/models/paymentsV2Models";
 const MICRO_SECTORS = ["Comércio", "Agricultura", "Pecuária", "Indústria", "Serviços", "Consumo", "Outros"] as const;
 export const riskClassForDays = (days: number): "I" | "II" | "III" | "IV" | null => days <= 0 ? null : days <= 30 ? "I" : days <= 90 ? "II" : days <= 365 ? "III" : "IV";
+export const validateDateString = (value: string): boolean => {
+  if (!value || typeof value !== "string" || value.length !== 10) return false;
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part))) return false;
+  const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  return date.toISOString().slice(0, 10) === value;
+};
+
 const validateQuarterRange = (start: string, end: string): boolean => {
-  const validDate = (value: string) => {
-    const parts = value.split("-").map(Number);
-    if (value.length !== 10 || parts.length !== 3 || parts.some((part) => !Number.isInteger(part))) return false;
-    const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
-    return date.toISOString().slice(0, 10) === value;
-  };
-  if (!validDate(start) || !validDate(end) || start > end) return false;
+  if (!validateDateString(start) || !validateDateString(end)) return false;
+  if (start > end) return false;
   const first = new Date(`${start}T00:00:00Z`), last = new Date(`${end}T00:00:00Z`);
-  if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime()) || first.toISOString().slice(0, 10) !== start || last.toISOString().slice(0, 10) !== end) return false;
-  return (last.getUTCFullYear() - first.getUTCFullYear()) * 12 + last.getUTCMonth() - first.getUTCMonth() === 2 && first.getUTCDate() === 1 && last.getUTCDate() === new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth() + 1, 0)).getUTCDate();
+  if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return false;
+  const monthsDiff = (last.getUTCFullYear() - first.getUTCFullYear()) * 12 + last.getUTCMonth() - first.getUTCMonth();
+  return monthsDiff >= 0 && monthsDiff <= 12;
 };
 
 export const validateBmQuarterRange = validateQuarterRange;
@@ -184,7 +188,7 @@ export class ReporteBMMapperService {
         interest += remainingInterest;
         if (remainingCapital + remainingInterest > 0.009) lateDays = Math.max(lateDays, lateDaysById.get(Number(row.id)) || 0);
       }
-      const purpose = loan.customerProfession || loan.companyMainActivity || loan.loanDescription || "";
+      const purpose = loan.loanDescription || loan.customerProfession || loan.companyMainActivity || "";
       return { loan, installments: parts, capital: round2(capital), interest: round2(interest), lateDays, sector: resolveBmSector(purpose), sex: normalizeBmSex(loan.sex) };
     });
     const periodStates = states.filter((state) => {
@@ -210,7 +214,6 @@ export class ReporteBMMapperService {
     let activeCapital = 0, activeInterest = 0, riskCapital = 0, riskInterest = 0;
     for (const state of active) {
       activeCapital += state.capital; activeInterest += state.interest;
-      sectors[state.sector] += state.capital;
       if (state.loan.customerId) activeClientSex.set(Number(state.loan.customerId), state.sex);
       if (state.lateDays > 0) {
         riskCapital += state.capital; riskInterest += state.interest;
@@ -220,7 +223,9 @@ export class ReporteBMMapperService {
     }
     let grantedCapital = 0, grantedInterest = 0;
     for (const state of core.periodLoans) {
-      grantedCapital += number(state.loan.amount);
+      const cap = number(state.loan.amount);
+      grantedCapital += cap;
+      sectors[state.sector] = round2(sectors[state.sector] + cap);
       grantedInterest += state.installments.reduce((sum: number, item: InstallmentState) => sum + number(item.installment.rateAmount), 0);
     }
     const paid = { capital: 0, interest: 0 };
@@ -271,7 +276,7 @@ export class ReporteBMMapperService {
       ...(active.some((state: LoanState) => state.sector === "Outros") ? ["Há actividade/finalidade não classificada automaticamente num sector BM; rever a categoria Outros."] : []),
     ];
     return {
-      tenant: core.tenant, period: { start: core.start, end: core.end, months: this.monthKeys(core.start) },
+      tenant: core.tenant, period: { start: core.start, end: core.end, months: this.monthKeys(core.start, core.end) },
       volume: { granted: { capital: round2(grantedCapital), interest: round2(grantedInterest) }, repaid: { capital: round2(paid.capital), interest: round2(paid.interest) }, writtenOff: { capital: 0, interest: 0 }, active: { capital: round2(activeCapital), interest: round2(activeInterest) }, risk: { capital: round2(riskCapital), interest: round2(riskInterest) } },
       loanCounts: { granted: core.periodLoans.length, repaid: repaidCount }, sectors,
       clients: { men: [...activeClientSex.values()].filter((sex) => sex === "Homem").length, women: [...activeClientSex.values()].filter((sex) => sex === "Mulher").length, other: [...activeClientSex.values()].filter((sex) => sex === "Outro").length, total: activeClientSex.size },
@@ -282,13 +287,21 @@ export class ReporteBMMapperService {
     };
   }
 
-  private static monthKeys(start: string): string[] {
+  private static monthKeys(start: string, end?: string): string[] {
     const first = new Date(`${start}T00:00:00Z`);
-    return [0, 1, 2].map((offset) => { const d = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + offset, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`; });
+    const last = end ? new Date(`${end}T00:00:00Z`) : first;
+    const months: string[] = [];
+    const cur = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1));
+    const targetEnd = new Date(Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), 1));
+    while (cur <= targetEnd && months.length < 12) {
+      months.push(`${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, "0")}`);
+      cur.setUTCMonth(cur.getUTCMonth() + 1);
+    }
+    return months.length > 0 ? months : [`${first.getUTCFullYear()}-${String(first.getUTCMonth() + 1).padStart(2, "0")}`];
   }
 
   static async getQuarterlyReport(companyId: number, operator: string, start: string, end: string): Promise<any> {
-    if (!validateQuarterRange(start, end)) throw new Error("O reporte trimestral deve abranger exactamente três meses civis completos.");
+    if (!validateQuarterRange(start, end)) throw new Error("Período de reporte BM inválido.");
     const core = await this.loadCore(companyId, start, end);
     const report = this.makeReport(core);
     const [sources, periodFunding, capital] = await Promise.all([
@@ -299,7 +312,8 @@ export class ReporteBMMapperService {
     report.funding.sources = sources;
     report.funding.period = periodFunding;
     report.capital = capital;
-    report.dataWarnings.push(sources.warning, periodFunding.warning, capital.warning);
+    const customWarnings = [sources?.warning, periodFunding?.warning, capital?.warning].filter(Boolean);
+    report.dataWarnings.push(...customWarnings);
     report.operator = operator || "";
     Object.assign(report.tenant, { operator: report.operator });
     report.assets = await this.getSituacaoFinanceira(companyId, start, end);
@@ -316,14 +330,18 @@ export class ReporteBMMapperService {
   static async getFontesFinanciamento(_companyId: number, _start?: string, _end?: string): Promise<any> { return { Proprio: 0, Alheio_Nacional: 0, Alheio_Estrangeiro: 0, mapped: false, warning: "Não há evento core de captação nem classificação da origem nacional/estrangeira." }; }
   static async getFinanciamentosPeriodo(_companyId: number, _start: string, _end: string): Promise<any> { return { Emprestimo: 0, Donativo: 0, Aumento_Capital: 0, mapped: false, warning: "Não há evento core de captação classificado como empréstimo, donativo ou aumento de capital." }; }
   static async getCapital(companyId: number): Promise<any> {
-    const [company] = await select("SELECT companyName FROM companies WHERE id=?", [companyId]);
-    if (!company) throw new Error("Empresa do utilizador não encontrada.");
-    return { initial: 0, current: 0, mapped: false, warning: "Capital social/inicial não está registado no core financeiro auditado." };
+    try {
+      const [cfg] = await select("SELECT capital_inicial, capital_actual FROM config_microcredito WHERE tenant_id=?", [companyId]);
+      if (cfg && (number(cfg.capital_inicial) > 0 || number(cfg.capital_actual) > 0)) {
+        return { initial: round2(number(cfg.capital_inicial)), current: round2(number(cfg.capital_actual)), mapped: true };
+      }
+    } catch {}
+    return { initial: 0, current: 0, mapped: false, warning: "Capital social/inicial não está registado; pode ser configurado nas configurações de microcrédito." };
   }
 
   static async getSituacaoFinanceira(companyId: number, start: string, end: string): Promise<any> {
     if (!validateQuarterRange(start, end)) throw new Error("Período trimestral inválido.");
-    const months = this.monthKeys(start);
+    const months = this.monthKeys(start, end);
     const monthEnds = months.map((month) => { const [year, mon] = month.split("-").map(Number); return new Date(Date.UTC(year, mon, 0)).toISOString().slice(0, 10); });
     const accounts = await select("SELECT id,type,initial_balance FROM accounts WHERE companyId=? AND is_active=1", [companyId]);
     const txRows = await select("SELECT accountId,balanceAfter,createdAt FROM bank_transactions WHERE companyId=? AND createdAt<=? ORDER BY createdAt,id", [companyId, `${end} 23:59:59`]);
@@ -334,7 +352,7 @@ export class ReporteBMMapperService {
     const movementsByRegister = new Map<number, any[]>();
     for (const movement of movements) { const list = movementsByRegister.get(Number(movement.cashRegisterId)) || []; list.push(movement); movementsByRegister.set(Number(movement.cashRegisterId), list); }
     const cash: number[] = [], banks: number[] = [], warnings: string[] = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < months.length; i++) {
       const cutoff = monthEnds[i];
       let bankTotal = 0;
       for (const account of accounts) {
@@ -364,7 +382,7 @@ export class ReporteBMMapperService {
       if (i === 0 && accounts.some((account: any) => String(account.type) === "BANCO" && !(bankByAccount.get(Number(account.id)) || []).some((tx: any) => dateKey(tx.createdAt) <= cutoff))) warnings.push("Pelo menos uma conta bancária não tem extrato até ao fecho e usa initial_balance como saldo-base.");
     }
     warnings.push("Outros Activos não têm ledger core classificável e ficam a zero; saldos de mobile money/e-wallet não são apresentados como Bancos.");
-    return { cash, banks, other: [0, 0, 0], warnings };
+    return { cash, banks, other: months.map(() => 0), warnings };
   }
 
   static async listFunding(companyId: number): Promise<any[]> {
@@ -402,7 +420,7 @@ export class ReporteBMMapperService {
         disbursement = firstDue.toISOString().slice(0, 10);
       }
       const rate = number(loan.interestRate);
-      return { ...loan, codigo: `CR-${loan.id}`, montante_capital: number(loan.amount), taxa_juro_mensal: rate * 100, prazo_meses: number(loan.numberOfInstallments), data_concessao: disbursement, sector_finalidade: resolveBmSector(loan.customerProfession || loan.companyMainActivity || loan.loanDescription), total_em_divida: round2(balances.get(Number(loan.id)) || 0), estado: states[Number(loan.status)] || "Pendente" };
+      return { ...loan, codigo: `CR-${loan.id}`, montante_capital: number(loan.amount), taxa_juro_mensal: rate * 100, prazo_meses: number(loan.numberOfInstallments), data_concessao: disbursement, sector_finalidade: resolveBmSector(loan.loanDescription || loan.customerProfession || loan.companyMainActivity), total_em_divida: round2(balances.get(Number(loan.id)) || 0), estado: states[Number(loan.status)] || "Pendente" };
     });
   }
 
@@ -433,7 +451,24 @@ export class ReporteBMMapperService {
 
   static async getCoreCreditRanges(companyId: number): Promise<any> {
     const [row] = await select("SELECT MIN(interestRate) AS rate_min,MAX(interestRate) AS rate_max,MIN(numberOfInstallments) AS term_min,MAX(numberOfInstallments) AS term_max FROM customer_loans WHERE companyId=? AND status IN (1,3)", [companyId]);
-    return { taxa_juro_min: round2(number(row?.rate_min) * 100), taxa_juro_max: round2(number(row?.rate_max) * 100), prazo_min: number(row?.term_min) || 1, prazo_max: number(row?.term_max) || 6, capital_inicial: 0, capital_actual: 0, readOnly: true, aviso: "Taxas e prazos são derivados de créditos core. Capital inicial/actual requer registo contabilístico ainda não existente." };
+    let capInicial = 0, capActual = 0;
+    try {
+      const [cfg] = await select("SELECT capital_inicial, capital_actual FROM config_microcredito WHERE tenant_id=?", [companyId]);
+      if (cfg) {
+        capInicial = round2(number(cfg.capital_inicial));
+        capActual = round2(number(cfg.capital_actual));
+      }
+    } catch {}
+    return {
+      taxa_juro_min: round2(number(row?.rate_min) * 100),
+      taxa_juro_max: round2(number(row?.rate_max) * 100),
+      prazo_min: number(row?.term_min) || 1,
+      prazo_max: number(row?.term_max) || 6,
+      capital_inicial: capInicial,
+      capital_actual: capActual,
+      readOnly: false,
+      aviso: "Taxas e prazos são derivados de créditos core. Capital inicial e actual podem ser parametrizados nas configurações de microcrédito."
+    };
   }
 
   static async listMovements(companyId: number, start?: string, end?: string): Promise<any[]> {

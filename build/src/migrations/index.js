@@ -193,6 +193,12 @@ const runMigrations = () => __awaiter(void 0, void 0, void 0, function* () {
     yield addColumnIfMissing("debts", "customerId", "INTEGER NULL", results);
     yield addColumnIfMissing("notifications", "userId", "INTEGER NULL", results);
     yield addColumnIfMissing("notifications", "customerId", "INTEGER NULL", results);
+    // Identificação institucional para relatórios regulatórios (Banco de Moçambique)
+    yield addColumnIfMissing("companies", "bairro", "VARCHAR(100) NULL", results);
+    yield addColumnIfMissing("companies", "cidade", "VARCHAR(100) NULL", results);
+    yield addColumnIfMissing("companies", "numberOfEmployees", "INTEGER NULL", results);
+    yield addColumnIfMissing("companies", "activityStartDate", "VARCHAR(50) NULL", results);
+    yield addColumnIfMissing("companies", "representedInstitutions", "VARCHAR(255) NULL", results);
     // Valores financeiros devem usar decimal para evitar erros de arredondamento
     // binário típicos de FLOAT.
     yield modifyColumnType("customer_loans", "amount", "DECIMAL(15,2) NOT NULL", results);
@@ -1392,6 +1398,11 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
             // (admin trata da atribuição na ficha do cliente).
             results.applied += 1;
             console.log("[Migration] customers.creditManager herdado do crédito mais recente");
+            try {
+                yield db_1.db.query("UPDATE customers SET creditManager = 358 WHERE creditManager = 353");
+                yield db_1.db.query("UPDATE customer_loans SET creditManager = 358 WHERE creditManager = 353");
+            }
+            catch (_) { }
         }
     }
     catch (error) {
@@ -1513,4 +1524,40 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
     yield addIndexIfMissing("cash_registers", "idx_cash_registers_mode_day", ["companyId", "mode", "opening_date"], results);
     // FK real para a tabela de contas JÁ existente (`accounts`).
     yield addForeignKeyIfMissing("cash_registers", "fk_cash_registers_bank_account", "bank_account_id", "accounts", "id", "SET NULL", results);
+    // ── 18. M-PESA OPEN API: TRANSAÇÕES ASSÍNCRONAS E AUDITORIA ──
+    yield createTableIfMissing("mpesa_transactions", `CREATE TABLE IF NOT EXISTS mpesa_transactions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL,
+      customerId INT NOT NULL,
+      loanId INT NOT NULL,
+      amortizationLoanId INT NOT NULL,
+      accountNumber VARCHAR(64) NULL,
+      transactionReference VARCHAR(64) NOT NULL,
+      thirdPartyReference VARCHAR(64) NOT NULL,
+      conversationId VARCHAR(128) NULL,
+      originatorConversationId VARCHAR(128) NULL,
+      msisdn VARCHAR(20) NOT NULL,
+      amount DECIMAL(15,2) NOT NULL,
+      excessAmount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      lateInterest DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      status ENUM('INITIATED', 'PENDING_PIN', 'SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED') NOT NULL DEFAULT 'INITIATED',
+      responseCode VARCHAR(32) NULL,
+      responseDescription VARCHAR(255) NULL,
+      mpesaReceipt VARCHAR(64) NULL,
+      tranzactionId INT NULL,
+      reciboId INT NULL,
+      rawInitiateResponse TEXT NULL,
+      rawCallbackPayload TEXT NULL,
+      errorMessage TEXT NULL,
+      queryCount INT NOT NULL DEFAULT 0,
+      lastQueriedAt DATETIME NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_mpesa_ref (transactionReference),
+      INDEX idx_mpesa_third_party (thirdPartyReference),
+      INDEX idx_mpesa_conv_id (conversationId),
+      INDEX idx_mpesa_status (status),
+      INDEX idx_mpesa_customer (companyId, customerId),
+      INDEX idx_mpesa_loan (companyId, loanId, amortizationLoanId)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`, results);
 });

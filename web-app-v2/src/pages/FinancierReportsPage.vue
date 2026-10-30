@@ -1,336 +1,560 @@
 <template>
   <q-page class="financier-reports-page q-pa-md">
-    <!-- ═══════ FILTROS ═══════ -->
-    <q-card flat class="glass-card q-mb-md" data-tour="fin-rep-filtros">
-      <q-card-section class="row q-col-gutter-sm items-center q-py-sm">
-        <div class="col-12 col-lg-4">
-          <q-select
-            v-model="walletId"
-            :options="walletOptions"
-            outlined dense
-            emit-value map-options
-            label="Carteira / Fundo *"
-            @update:model-value="onWalletChange"
-          >
-            <template v-slot:prepend><q-icon name="savings" size="16px" color="grey-5" /></template>
-            <template v-slot:option="scope">
-              <q-item v-bind="scope.itemProps">
-                <q-item-section avatar><q-badge :color="scope.opt.cor || 'blue'" :label="scope.opt.codigo" /></q-item-section>
-                <q-item-section>
-                  <q-item-label>{{ scope.opt.label }}</q-item-label>
-                  <q-item-label caption>
-                    {{ scope.opt.parceiro ? `Parceiro: ${scope.opt.parceiro}` : 'Fundo próprio MBRM' }}
-                    <span v-if="scope.opt.saldo !== null && scope.opt.saldo !== undefined">
-                      · disponível {{ money(scope.opt.saldo) }}
-                    </span>
-                  </q-item-label>
-                </q-item-section>
-              </q-item>
-            </template>
-          </q-select>
+    <!-- ═══════ CABEÇALHO EXECUTIVO & FILTROS ═══════ -->
+    <q-card flat bordered class="filter-card q-mb-md" data-tour="fin-rep-filtros">
+      <q-card-section class="q-py-sm">
+        <div class="row items-center justify-between q-col-gutter-sm">
+          <div>
+            <div class="text-subtitle1 text-weight-bold text-slate-900 flex items-center">
+              <q-icon name="assessment" class="q-mr-xs text-primary" size="22px" />
+              Relatório de Financiadores e Fundos
+            </div>
+            <div class="text-caption text-grey-7">
+              Prestação analítica de contas e retorno por carteira segregada
+            </div>
+          </div>
+
+          <!-- Botões de Acção e Exportação -->
+          <div class="row items-center q-gutter-xs" data-tour="fin-rep-acoes">
+            <q-btn
+              color="primary"
+              outline
+              no-caps
+              rounded
+              size="sm"
+              icon="grid_on"
+              label="Excel (2 Abas)"
+              :disable="!walletId"
+              @click="exportExcel"
+            />
+            <q-btn
+              color="grey-8"
+              outline
+              no-caps
+              rounded
+              size="sm"
+              icon="print"
+              label="Imprimir / PDF"
+              :disable="!walletId"
+              @click="printView"
+            />
+            <q-btn
+              color="positive"
+              unelevated
+              no-caps
+              rounded
+              size="sm"
+              icon="forward_to_inbox"
+              label="Enviar por E-mail"
+              :disable="!walletId"
+              @click="openEmailDialog"
+            />
+          </div>
         </div>
 
-        <!-- Datas em dd/mm/yyyy -->
-        <div class="col-6 col-lg-2">
-          <q-input v-model="fromDisplay" outlined dense label="De" mask="##/##/####" placeholder="dd/mm/aaaa">
-            <template v-slot:prepend>
-              <q-icon name="event" size="16px" class="cursor-pointer">
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                  <q-date v-model="fromDisplay" mask="DD/MM/YYYY" locale="pt" :today-btn="true" />
-                </q-popup-proxy>
-              </q-icon>
-            </template>
-          </q-input>
-        </div>
-        <div class="col-6 col-lg-2">
-          <q-input v-model="toDisplay" outlined dense label="Até" mask="##/##/####" placeholder="dd/mm/aaaa">
-            <template v-slot:prepend>
-              <q-icon name="event" size="16px" class="cursor-pointer">
-                <q-popup-proxy cover transition-show="scale" transition-hide="scale">
-                  <q-date v-model="toDisplay" mask="DD/MM/YYYY" locale="pt" :today-btn="true" />
-                </q-popup-proxy>
-              </q-icon>
-            </template>
-          </q-input>
-        </div>
-        <div class="col-12 col-lg q-gutter-xs no-wrap">
-          <q-btn outline no-caps rounded size="sm" label="Hoje" @click="applyQuickRange('today')" />
-          <q-btn outline no-caps rounded size="sm" label="7 dias" @click="applyQuickRange('7d')" />
-          <q-btn outline no-caps rounded size="sm" label="Este mês" @click="applyQuickRange('month')" />
-          <q-btn outline no-caps rounded size="sm" label="Este ano" @click="applyQuickRange('year')" />
-        </div>
-        <div class="col-12 col-lg-auto">
-          <q-btn color="primary" unelevated no-caps rounded size="sm" icon="filter_alt" label="Aplicar" :loading="loading" @click="load" />
-        </div>
-      </q-card-section>
+        <q-separator class="q-my-sm" />
 
-      <q-separator />
+        <!-- Barra de Parâmetros e Filtros de Data -->
+        <div class="row q-col-gutter-sm items-center">
+          <div class="col-12 col-md-4">
+            <q-select
+              v-model="walletId"
+              :options="walletOptions"
+              outlined
+              dense
+              emit-value
+              map-options
+              label="Carteira / Fundo Financiador *"
+              @update:model-value="onWalletChange"
+            >
+              <template v-slot:prepend><q-icon name="savings" size="16px" color="grey-6" /></template>
+              <template v-slot:option="scope">
+                <q-item v-bind="scope.itemProps">
+                  <q-item-section avatar>
+                    <span class="code-badge font-mono">{{ scope.opt.codigo }}</span>
+                  </q-item-section>
+                  <q-item-section>
+                    <q-item-label class="text-weight-bold text-slate-900">{{ scope.opt.label }}</q-item-label>
+                    <q-item-label caption>
+                      {{ scope.opt.parceiro ? `Parceiro: ${scope.opt.parceiro}` : 'Fundo Próprio MBRM' }}
+                      <span v-if="scope.opt.saldo !== null && scope.opt.saldo !== undefined">
+                        · Disp: {{ money(scope.opt.saldo) }}
+                      </span>
+                    </q-item-label>
+                  </q-item-section>
+                </q-item>
+              </template>
+            </q-select>
+          </div>
 
-      <q-card-section class="row q-col-gutter-sm items-center q-py-sm" data-tour="fin-rep-acoes">
-        <div class="col-12 col-lg-5">
-          <q-select
-            v-model="emails"
-            use-input use-chips
-            multiple hide-dropdown-icon
-            input-debounce="0"
-            outlined dense
-            :options="emailSuggestions"
-            label="E-mail(s) destinatário(s)"
-            hint="Por defeito, o e-mail do parceiro configurado na carteira"
-            new-value-mode="add-unique"
-            @new-value="onNewEmail"
-          >
-            <template v-slot:prepend><q-icon name="mail" size="16px" color="grey-5" /></template>
-          </q-select>
-        </div>
-        <div class="col-12 col-lg q-gutter-xs no-wrap">
-          <q-btn color="positive" unelevated no-caps rounded icon="forward_to_inbox" label="Enviar por e-mail" :disable="!walletId" @click="openEmailDialog" />
-          <q-btn color="primary" outline no-caps rounded icon="grid_on" label="Exportar Excel (2 abas)" :disable="!walletId" @click="exportExcel" />
-          <q-btn color="grey-8" outline no-caps rounded icon="print" label="Imprimir / PDF" :disable="!walletId" @click="printView" />
+          <!-- Atalhos Rápidos de Data -->
+          <div class="col-12 col-md-auto q-gutter-xs">
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activeQuickRange === 'today' ? 'primary' : 'grey-2'"
+              :text-color="activeQuickRange === 'today' ? 'white' : 'grey-8'"
+              label="Hoje"
+              @click="applyQuickRange('today')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activeQuickRange === '7d' ? 'primary' : 'grey-2'"
+              :text-color="activeQuickRange === '7d' ? 'white' : 'grey-8'"
+              label="7 Dias"
+              @click="applyQuickRange('7d')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activeQuickRange === 'month' ? 'primary' : 'grey-2'"
+              :text-color="activeQuickRange === 'month' ? 'white' : 'grey-8'"
+              label="Este Mês"
+              @click="applyQuickRange('month')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activeQuickRange === 'year' ? 'primary' : 'grey-2'"
+              :text-color="activeQuickRange === 'year' ? 'white' : 'grey-8'"
+              label="Este Ano"
+              @click="applyQuickRange('year')"
+            />
+          </div>
+
+          <!-- Campos de Data -->
+          <div class="col-6 col-sm-3 col-md-2">
+            <q-input v-model="fromDisplay" outlined dense label="Data Inicial" mask="##/##/####" placeholder="dd/mm/aaaa" input-style="font-size: 12px">
+              <template v-slot:prepend>
+                <q-icon name="event" size="16px" class="cursor-pointer">
+                  <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                    <q-date v-model="fromDisplay" mask="DD/MM/YYYY" locale="pt" :today-btn="true" @update:model-value="activeQuickRange = 'custom'" />
+                  </q-popup-proxy>
+                </q-icon>
+              </template>
+            </q-input>
+          </div>
+
+          <div class="col-6 col-sm-3 col-md-2">
+            <q-input v-model="toDisplay" outlined dense label="Data Final" mask="##/##/####" placeholder="dd/mm/aaaa" input-style="font-size: 12px">
+              <template v-slot:prepend>
+                <q-icon name="event" size="16px" class="cursor-pointer">
+                  <q-popup-proxy cover transition-show="scale" transition-hide="scale">
+                    <q-date v-model="toDisplay" mask="DD/MM/YYYY" locale="pt" :today-btn="true" @update:model-value="activeQuickRange = 'custom'" />
+                  </q-popup-proxy>
+                </q-icon>
+              </template>
+            </q-input>
+          </div>
+
+          <div class="col-auto">
+            <q-btn color="primary" unelevated rounded size="sm" icon="filter_alt" label="Filtrar" :loading="loading" @click="load" />
+          </div>
         </div>
       </q-card-section>
     </q-card>
 
-    <!-- ═══════ SEM CARTEIRA ═══════ -->
-    <q-card v-if="!walletId" flat class="glass-card text-center q-pa-xl">
-      <q-icon name="assessment" size="52px" color="grey-4" />
-      <div class="text-subtitle1 text-grey-6 q-mt-sm">Escolha uma carteira para gerar o relatório do financiador</div>
-      <div class="text-caption text-grey-5">O relatório mostra apenas desembolsos e recebimentos desta carteira.</div>
+    <!-- ═══════ NENHUMA CARTEIRA SELECCIONADA ═══════ -->
+    <q-card v-if="!walletId" flat bordered class="empty-card text-center q-pa-xl">
+      <q-icon name="savings" size="56px" color="grey-4" />
+      <div class="text-subtitle1 text-grey-7 text-weight-medium q-mt-md">Seleccione uma carteira para emitir o relatório</div>
+      <div class="text-caption text-grey-5">O relatório analisa exclusivamente os desembolsos, reembolsos e rentabilidade do fundo selecionado.</div>
     </q-card>
 
     <template v-else>
-      <!-- ═══════ CABEÇALHO DA CARTEIRA ═══════ -->
-      <q-card v-if="report?.carteira" flat class="glass-card q-mb-md">
-        <q-card-section class="row items-center q-py-sm">
-          <q-badge :color="report.carteira.cor_badge || 'blue'" :label="report.carteira.codigo" class="q-mr-sm" />
-          <div class="col">
-            <div class="text-weight-bold">{{ report.carteira.nome }}</div>
-            <div class="text-caption text-grey-6">
-              {{ report.empresa?.name || 'Empresa' }} · NUIT {{ report.empresa?.nuit || '—' }} ·
-              período {{ periodoLabel }}
+      <!-- ═══════ IDENTIFICAÇÃO DO PARCEIRO / CARTEIRA ═══════ -->
+      <q-card v-if="report?.carteira" flat bordered class="statement-card q-mb-md">
+        <q-card-section class="q-py-sm">
+          <div class="row items-center justify-between no-wrap">
+            <div class="row items-center no-wrap">
+              <span class="code-badge font-mono q-mr-sm">{{ report.carteira.codigo }}</span>
+              <div>
+                <div class="text-weight-bold text-slate-900" style="font-size: 14px">
+                  {{ report.carteira.nome }}
+                  <span v-if="report.carteira.parceiro_nome" class="text-grey-6 text-caption">
+                    (Parceiro: <strong>{{ report.carteira.parceiro_nome }}</strong>)
+                  </span>
+                </div>
+                <div class="text-caption text-grey-6">
+                  Empresa: {{ report.empresa?.name || 'MBR Microcrédito' }} · NUIT: {{ report.empresa?.nuit || '—' }} · Período: <strong>{{ periodoLabel }}</strong>
+                </div>
+              </div>
+            </div>
+            <div class="text-right">
+              <q-btn flat dense no-caps color="primary" icon="refresh" label="Actualizar" size="sm" :loading="loading" @click="load" />
             </div>
           </div>
-          <q-btn flat dense no-caps color="primary" icon="refresh" label="Actualizar" :loading="loading" @click="load" />
         </q-card-section>
       </q-card>
 
-      <!-- ═══════ KPIs ═══════ -->
-      <div class="row q-col-gutter-md q-mb-md" data-tour="fin-rep-kpis">
-        <div v-for="item in resumoItems" :key="item.label" class="col-6 col-md-4 col-lg-3">
-          <q-card flat class="glass-tile q-pa-md">
-            <div class="row items-center no-wrap">
-              <div class="tile-icon q-mr-sm" :style="{ background: item.bg }">
-                <q-icon :name="item.icon" size="18px" :color="item.color" />
+      <!-- ═══════ 3 BLOCOS EXECUTIVOS FINANCEIROS ═══════ -->
+      <div class="row q-col-gutter-sm q-mb-md" data-tour="fin-rep-kpis">
+        <!-- BLOCO A: CAPITAL & ALOCAÇÃO -->
+        <div class="col-12 col-md-4">
+          <q-card flat bordered class="statement-card h-full">
+            <q-card-section class="q-pa-sm">
+              <div class="statement-header row items-center justify-between q-pb-xs border-b">
+                <span class="text-caption text-weight-bold text-slate-800 text-uppercase">Posição de Capital</span>
+                <q-icon name="account_balance" size="16px" color="primary" />
               </div>
-              <div style="min-width: 0">
-                <div class="text-caption text-grey-6">{{ item.label }}</div>
-                <div class="text-subtitle2 text-weight-bold" :class="item.class">{{ item.value }}</div>
-                <div v-if="item.hint" class="text-caption text-grey-5">{{ item.hint }}</div>
+
+              <div class="q-mt-xs q-gutter-y-xs">
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Capital Alocado:</span>
+                  <span class="metric-val font-mono">{{ blocoCapital.alocado }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Desembolsado no Período:</span>
+                  <span class="metric-val font-mono text-primary">{{ blocoCapital.desembolsadoPeriodo }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Disponível Analítico:</span>
+                  <span class="metric-val font-mono text-positive">{{ blocoCapital.disponivel }}</span>
+                </div>
+                <div class="row items-center justify-between text-caption text-grey-6 q-pt-xs">
+                  <span>Utilização do Fundo:</span>
+                  <span class="font-mono text-weight-bold">{{ blocoCapital.utilizacao }}%</span>
+                </div>
+                <q-linear-progress
+                  :value="blocoCapital.utilizacao / 100"
+                  rounded
+                  size="5px"
+                  :color="blocoCapital.utilizacao >= 90 ? 'negative' : 'primary'"
+                  track-color="grey-2"
+                />
               </div>
-            </div>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <!-- BLOCO B: DEMONSTRAÇÃO DE RETORNO -->
+        <div class="col-12 col-md-4">
+          <q-card flat bordered class="statement-card h-full">
+            <q-card-section class="q-pa-sm">
+              <div class="statement-header row items-center justify-between q-pb-xs border-b">
+                <span class="text-caption text-weight-bold text-slate-800 text-uppercase">Cobrança & Retorno</span>
+                <q-icon name="trending_up" size="16px" color="positive" />
+              </div>
+
+              <div class="q-mt-xs q-gutter-y-xs">
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Total Recebido no Período:</span>
+                  <span class="metric-val font-mono text-positive">{{ blocoRetorno.totalRecebido }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Capital Amortizado:</span>
+                  <span class="metric-val font-mono">{{ blocoRetorno.capitalAmortizado }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Juros Recebidos:</span>
+                  <span class="metric-val font-mono text-positive">{{ blocoRetorno.jurosRecebidos }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Mora Recebida:</span>
+                  <span class="metric-val font-mono text-amber-9">{{ blocoRetorno.moraRecebida }}</span>
+                </div>
+                <div class="row items-baseline justify-between q-pt-xs border-t">
+                  <span class="metric-label text-weight-medium">Juros Gerados (Acumulado):</span>
+                  <span class="metric-val font-mono text-indigo-8">{{ blocoRetorno.jurosGerados }}</span>
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </div>
+
+        <!-- BLOCO C: CARTEIRA ATIVA & QUALIDADE -->
+        <div class="col-12 col-md-4">
+          <q-card flat bordered class="statement-card h-full">
+            <q-card-section class="q-pa-sm">
+              <div class="statement-header row items-center justify-between q-pb-xs border-b">
+                <span class="text-caption text-weight-bold text-slate-800 text-uppercase">Qualidade da Carteira</span>
+                <q-icon name="speed" size="16px" color="amber-9" />
+              </div>
+
+              <div class="q-mt-xs q-gutter-y-xs">
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Saldo a Receber (Principal):</span>
+                  <span class="metric-val font-mono text-amber-9">{{ blocoQualidade.saldoAReceber }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Previsão de Lucro Futuro:</span>
+                  <span class="metric-val font-mono text-deep-purple-8">{{ blocoQualidade.previsaoLucro }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Taxa Média Ponderada:</span>
+                  <span class="metric-val font-mono">{{ blocoQualidade.taxaMedia }}</span>
+                </div>
+                <div class="row items-baseline justify-between">
+                  <span class="metric-label">Prestações Pagas / Total:</span>
+                  <span class="metric-val font-mono">{{ blocoQualidade.prestacoesPagas }}</span>
+                </div>
+                <div class="row items-baseline justify-between q-pt-xs border-t">
+                  <span class="metric-label">Prestações em Atraso:</span>
+                  <span class="metric-val font-mono" :class="blocoQualidade.emAtrasoCount > 0 ? 'text-negative text-weight-bold' : 'text-positive'">
+                    {{ blocoQualidade.emAtrasoCount }} pendência(s)
+                  </span>
+                </div>
+              </div>
+            </q-card-section>
           </q-card>
         </div>
       </div>
 
-      <!-- ═══════ GRÁFICOS ═══════ -->
-      <div class="row q-col-gutter-md q-mb-md">
+      <!-- ═══════ GRÁFICOS ANALÍTICOS ═══════ -->
+      <div class="row q-col-gutter-sm q-mb-md">
         <div class="col-12 col-lg-7">
-          <q-card flat class="glass-card">
-            <q-card-section>
-              <div class="text-subtitle2 text-weight-bold">Desembolsado vs Recebido por mês</div>
-              <div class="text-caption text-grey-6">Movimento da carteira no período selecionado</div>
-              <div class="chart-box q-mt-sm"><Bar :data="barData" :options="barOptions" /></div>
+          <q-card flat bordered class="statement-card">
+            <q-card-section class="q-pa-sm">
+              <div class="text-caption text-weight-bold text-slate-800 text-uppercase">Desembolsado vs Recebido por Mês</div>
+              <div class="text-caption text-grey-6">Fluxo mensal no período selecionado</div>
+              <div class="chart-box q-mt-xs"><Bar :data="barData" :options="barOptions" /></div>
             </q-card-section>
           </q-card>
         </div>
         <div class="col-12 col-lg-5">
-          <q-card flat class="glass-card">
-            <q-card-section>
-              <div class="text-subtitle2 text-weight-bold">Composição dos recebimentos</div>
-              <div class="text-caption text-grey-6">Capital, juros, mora e descontos</div>
-              <div class="chart-box q-mt-sm"><Doughnut :data="pieData" :options="pieOptions" /></div>
+          <q-card flat bordered class="statement-card">
+            <q-card-section class="q-pa-sm">
+              <div class="text-caption text-weight-bold text-slate-800 text-uppercase">Composição dos Recebimentos</div>
+              <div class="text-caption text-grey-6">Distribuição entre Capital, Juros, Mora e Descontos</div>
+              <div class="chart-box q-mt-xs"><Doughnut :data="pieData" :options="pieOptions" /></div>
             </q-card-section>
           </q-card>
         </div>
       </div>
 
-      <!-- ═══════ DESEMBOLSOS ═══════ -->
-      <q-card flat class="glass-card q-mb-md" data-tour="fin-rep-desembolsos">
-        <q-card-section class="row items-center q-py-sm">
-          <q-icon name="request_quote" size="20px" color="primary" class="q-mr-sm" />
-          <div class="col">
-            <div class="text-subtitle2 text-weight-bold">Desembolsos da carteira ({{ desembolsos.length }})</div>
-            <div class="text-caption text-grey-6">Total: <strong>{{ money(totalDesembolsado) }}</strong></div>
+      <!-- ═══════ TABELA 1: EXTRACTO DE DESEMBOLSOS (LOAN TAPE) ═══════ -->
+      <q-card flat bordered class="statement-card q-mb-md" data-tour="fin-rep-desembolsos">
+        <q-card-section class="q-py-xs row items-center justify-between border-b">
+          <div class="row items-center no-wrap">
+            <q-icon name="request_quote" size="18px" color="primary" class="q-mr-xs" />
+            <div>
+              <div class="text-caption text-weight-bold text-slate-800 text-uppercase">
+                Desembolsos da Carteira ({{ desembolsos.length }})
+              </div>
+              <div class="text-caption text-grey-6">Total Desembolsado: <strong class="font-mono">{{ money(totalDesembolsado) }}</strong></div>
+            </div>
           </div>
-          <q-input v-model="searchLoans" dense outlined clearable placeholder="Pesquisar cliente" style="max-width: 220px" input-style="font-size: 13px">
-            <template v-slot:prepend><q-icon name="search" size="16px" color="grey-5" /></template>
+          <q-input
+            v-model="searchLoans"
+            dense
+            outlined
+            clearable
+            placeholder="Pesquisar cliente ou conta..."
+            style="max-width: 240px"
+            input-style="font-size: 12px"
+          >
+            <template v-slot:prepend><q-icon name="search" size="14px" color="grey-6" /></template>
           </q-input>
         </q-card-section>
-        <q-separator />
+
         <q-table
           :rows="filteredDesembolsos"
           :columns="loanColumns"
           row-key="id"
-          flat dense separator="horizontal"
+          flat
+          dense
+          separator="horizontal"
           :loading="loading"
           :pagination="{ rowsPerPage: 10 }"
           :rows-per-page-options="[10, 25, 50]"
+          class="reports-table"
         >
           <template v-slot:no-data>
             <div class="full-width text-center q-pa-xl text-grey-6">
               <q-icon name="savings" size="42px" color="grey-4" />
-              <div class="q-mt-sm">
-                Nenhum desembolso encontrado para
-                <strong>{{ walletLabel }}</strong> no período {{ periodoLabel }}.
-              </div>
-              <div class="text-caption text-grey-5">Tente ajustar os filtros ou alargar o período.</div>
-              <q-btn flat dense no-caps color="primary" label="Limpar filtros" class="q-mt-sm" @click="clearFilters" />
+              <div class="q-mt-sm">Nenhum desembolso encontrado para <strong>{{ walletLabel }}</strong> no período.</div>
             </div>
           </template>
+
           <template v-slot:body-cell-customerName="props">
             <q-td :props="props">
-              <div class="row items-center no-wrap">
-                <q-avatar size="26px" color="primary" text-color="white" class="q-mr-sm" style="font-size: 11px">
-                  {{ initials(props.row.customerName) }}
-                </q-avatar>
-                <div style="min-width: 0">
-                  <div class="ellipsis">{{ props.row.customerName }}</div>
-                  <div class="text-caption text-grey-6">Conta {{ props.row.accountNumber || '—' }}</div>
-                </div>
-              </div>
+              <div class="text-weight-bold text-slate-900" style="font-size: 12px">{{ props.row.customerName }}</div>
+              <div class="text-caption text-grey-6 font-mono">Conta: {{ props.row.accountNumber || '—' }}</div>
             </q-td>
           </template>
+
           <template v-slot:body-cell-disbursementDate="props">
-            <q-td :props="props" class="text-center">{{ formatDate(props.row.disbursementDate) }}</q-td>
+            <q-td :props="props" class="text-center font-mono">{{ formatDate(props.row.disbursementDate) }}</q-td>
           </template>
+
           <template v-slot:body-cell-amount="props">
-            <q-td :props="props" class="text-right text-weight-bold">{{ money(props.row.amount) }}</q-td>
+            <q-td :props="props" class="text-right font-mono text-weight-bold text-primary">{{ money(props.row.amount) }}</q-td>
           </template>
+
           <template v-slot:body-cell-rate="props">
-            <q-td :props="props" class="text-center">
-              <q-badge outline color="deep-purple" :label="`${(Number(props.row.interestRate) * 100).toFixed(2)}%`" />
+            <q-td :props="props" class="text-center font-mono">
+              {{ (Number(props.row.interestRate) * 100).toFixed(1) }}%
             </q-td>
           </template>
+
           <template v-slot:body-cell-saldo_devedor="props">
-            <q-td :props="props" class="text-right">{{ money(props.row.saldo_devedor) }}</q-td>
+            <q-td :props="props" class="text-right font-mono text-amber-9">{{ money(props.row.saldo_devedor) }}</q-td>
           </template>
+
           <template v-slot:body-cell-mora_gerada="props">
-            <q-td :props="props" class="text-right" :class="Number(props.row.mora_gerada) > 0 ? 'text-negative' : ''">
+            <q-td :props="props" class="text-right font-mono" :class="Number(props.row.mora_gerada) > 0 ? 'text-negative' : 'text-grey-6'">
               {{ money(props.row.mora_gerada) }}
             </q-td>
           </template>
+
           <template v-slot:body-cell-estado="props">
             <q-td :props="props" class="text-center">
-              <q-badge :color="loanStatusColor(props.row)" :label="loanStatusLabel(props.row)" />
+              <q-badge
+                :color="loanStatusBadgeColor(props.row)"
+                :label="loanStatusLabel(props.row)"
+                style="font-size: 10px"
+              />
             </q-td>
           </template>
         </q-table>
-        <q-separator v-if="filteredDesembolsos.length > 0" />
-        <q-card-section v-if="filteredDesembolsos.length > 0" class="row items-center q-py-xs text-caption">
-          <div class="col text-grey-6">Total do filtro</div>
-          <div class="text-weight-bold">{{ money(totalFiltradoDesembolsos) }}</div>
-        </q-card-section>
       </q-card>
 
-      <!-- ═══════ RECEBIMENTOS ═══════ -->
-      <q-card flat class="glass-card">
-        <q-card-section class="row items-center q-py-sm">
-          <q-icon name="payments" size="20px" color="positive" class="q-mr-sm" />
-          <div class="col">
-            <div class="text-subtitle2 text-weight-bold">Recebimentos da carteira ({{ recebimentos.length }})</div>
-            <div class="text-caption text-grey-6">Total: <strong>{{ money(totalRecebido) }}</strong></div>
+      <!-- ═══════ TABELA 2: EXTRACTO DE RECEBIMENTOS ═══════ -->
+      <q-card flat bordered class="statement-card">
+        <q-card-section class="q-py-xs row items-center justify-between border-b">
+          <div class="row items-center no-wrap">
+            <q-icon name="payments" size="18px" color="positive" class="q-mr-xs" />
+            <div>
+              <div class="text-caption text-weight-bold text-slate-800 text-uppercase">
+                Recebimentos da Carteira ({{ recebimentos.length }})
+              </div>
+              <div class="text-caption text-grey-6">Total Recebido: <strong class="font-mono text-positive">{{ money(totalRecebido) }}</strong></div>
+            </div>
           </div>
-          <q-input v-model="searchTx" dense outlined clearable placeholder="Pesquisar cliente" style="max-width: 220px" input-style="font-size: 13px">
-            <template v-slot:prepend><q-icon name="search" size="16px" color="grey-5" /></template>
+          <q-input
+            v-model="searchTx"
+            dense
+            outlined
+            clearable
+            placeholder="Pesquisar cliente ou crédito..."
+            style="max-width: 240px"
+            input-style="font-size: 12px"
+          >
+            <template v-slot:prepend><q-icon name="search" size="14px" color="grey-6" /></template>
           </q-input>
         </q-card-section>
-        <q-separator />
+
         <q-table
           :rows="filteredRecebimentos"
           :columns="txColumns"
           row-key="id"
-          flat dense separator="horizontal"
+          flat
+          dense
+          separator="horizontal"
           :loading="loading"
           :pagination="{ rowsPerPage: 10 }"
           :rows-per-page-options="[10, 25, 50]"
+          class="reports-table"
         >
           <template v-slot:no-data>
             <div class="full-width text-center q-pa-xl text-grey-6">
               <q-icon name="payments" size="42px" color="grey-4" />
-              <div class="q-mt-sm">
-                Nenhum recebimento encontrado para
-                <strong>{{ walletLabel }}</strong> no período {{ periodoLabel }}.
-              </div>
-              <div class="text-caption text-grey-5">Tente ajustar os filtros ou alargar o período.</div>
-              <q-btn flat dense no-caps color="primary" label="Limpar filtros" class="q-mt-sm" @click="clearFilters" />
+              <div class="q-mt-sm">Nenhum recebimento registado para <strong>{{ walletLabel }}</strong> no período.</div>
             </div>
           </template>
+
           <template v-slot:body-cell-paymentDate="props">
-            <q-td :props="props" class="text-center">{{ formatDate(props.row.paymentDate) }}</q-td>
+            <q-td :props="props" class="text-center font-mono">{{ formatDate(props.row.paymentDate) }}</q-td>
           </template>
+
           <template v-slot:body-cell-customerName="props">
             <q-td :props="props">
-              <div class="ellipsis">{{ props.row.customerName }}</div>
-              <div class="text-caption text-grey-6">Crédito {{ props.row.loanId || '—' }}</div>
+              <div class="text-weight-bold text-slate-900" style="font-size: 12px">{{ props.row.customerName }}</div>
+              <div class="text-caption text-grey-6 font-mono">Crédito #{{ props.row.loanId || '—' }}</div>
             </q-td>
           </template>
+
           <template v-slot:body-cell-amount="props">
-            <q-td :props="props" class="text-right text-weight-bold text-positive">{{ money(props.row.amount) }}</q-td>
+            <q-td :props="props" class="text-right font-mono text-weight-bold text-positive">{{ money(props.row.amount) }}</q-td>
           </template>
+
           <template v-slot:body-cell-juros="props">
-            <q-td :props="props" class="text-right">{{ money(props.row.juros) }}</q-td>
+            <q-td :props="props" class="text-right font-mono">{{ money(props.row.juros) }}</q-td>
           </template>
+
           <template v-slot:body-cell-mora="props">
-            <q-td :props="props" class="text-right">{{ money(props.row.mora) }}</q-td>
+            <q-td :props="props" class="text-right font-mono text-amber-9">{{ money(props.row.mora) }}</q-td>
           </template>
+
           <template v-slot:body-cell-paymentMethod="props">
-            <q-td :props="props" class="text-center text-caption">{{ props.row.paymentMethod || '—' }}</q-td>
+            <q-td :props="props" class="text-center font-mono text-caption">
+              {{ props.row.paymentMethod || '—' }}
+            </q-td>
           </template>
+
           <template v-slot:body-cell-recibo_numero="props">
-            <q-td :props="props" class="text-center">
-              <span v-if="props.row.recibo_numero">{{ props.row.recibo_numero }}</span>
-              <span v-else class="text-caption text-grey-5">—</span>
+            <q-td :props="props" class="text-center font-mono text-caption">
+              {{ props.row.recibo_numero || '—' }}
             </q-td>
           </template>
         </q-table>
-        <q-separator v-if="filteredRecebimentos.length > 0" />
-        <q-card-section v-if="filteredRecebimentos.length > 0" class="row items-center q-py-xs text-caption">
-          <div class="col text-grey-6">Total do filtro</div>
-          <div class="text-weight-bold text-positive">{{ money(totalFiltradoRecebimentos) }}</div>
-        </q-card-section>
       </q-card>
     </template>
 
     <!-- ═══════ DIALOG: ENVIAR POR E-MAIL ═══════ -->
     <q-dialog v-model="emailDialog" persistent>
       <q-card class="dialog-md">
-        <q-card-section class="row items-center dialog-head">
+        <q-card-section class="row items-center bg-slate-900 text-white q-py-sm">
           <q-icon name="mail" size="20px" class="q-mr-sm" />
-          <div class="text-h6">Enviar relatório por e-mail</div>
+          <div class="text-subtitle1 text-weight-bold">Enviar Relatório ao Financiador</div>
           <q-space />
-          <q-btn flat round dense icon="close" @click="emailDialog = false" />
+          <q-btn flat round dense icon="close" color="white" @click="emailDialog = false" />
         </q-card-section>
-        <q-card-section class="q-gutter-y-md">
+
+        <q-card-section class="q-gutter-y-sm q-pa-md">
           <q-select
             v-model="emailForm.to"
-            use-chips multiple use-input new-value-mode="add-unique"
-            outlined dense :options="emailSuggestions"
-            label="E-mail(s) destinatário(s) *"
+            use-chips
+            multiple
+            use-input
+            new-value-mode="add-unique"
+            outlined
+            dense
+            :options="emailSuggestions"
+            label="E-mail(s) Destinatário(s) *"
+            hint="Pressione Enter para adicionar múltiplos destinatários"
             input-debounce="0"
           >
-            <template v-slot:prepend><q-icon name="mail" size="16px" color="grey-5" /></template>
+            <template v-slot:prepend><q-icon name="mail" size="16px" color="grey-6" /></template>
           </q-select>
-          <q-input v-model="emailForm.subject" outlined dense label="Assunto *" />
-          <q-input v-model="emailForm.message" outlined dense type="textarea" autogrow label="Mensagem" />
-          <q-banner dense rounded class="bg-blue-1 text-blue-10">
-            <template v-slot:avatar><q-icon name="attach_file" /></template>
-            Anexos: <strong>Relatório_{{ walletCode }}_{{ periodoLabel.replace(/\//g, '-') }}.xlsx</strong>
-            (2 abas: Desembolsos e Recebimentos). O resumo do período segue no corpo do e-mail.
-          </q-banner>
+
+          <q-input v-model="emailForm.subject" outlined dense label="Assunto da Mensagem *" />
+          <q-input v-model="emailForm.message" outlined dense type="textarea" rows="4" label="Corpo do E-mail" />
+
+          <div class="bg-blue-1 text-blue-10 q-pa-sm rounded-borders text-caption row items-center" style="border: 1px solid #bfdbfe">
+            <q-icon name="attach_file" size="16px" class="q-mr-xs text-primary" />
+            <span>
+              Anexo gerado automaticamente: <strong>Relatório_{{ walletCode }}_{{ periodoLabel.replace(/\//g, '-') }}.xlsx</strong>
+            </span>
+          </div>
         </q-card-section>
-        <q-card-actions align="right" class="q-px-md q-pb-md">
-          <q-btn flat no-caps label="Cancelar" @click="emailDialog = false" />
-          <q-btn unelevated rounded no-caps color="positive" icon="send" label="Enviar" :loading="sending" @click="sendEmail" />
+
+        <q-separator />
+
+        <q-card-actions align="right" class="q-px-md q-py-sm">
+          <q-btn flat no-caps label="Cancelar" color="grey-7" @click="emailDialog = false" />
+          <q-btn
+            unelevated
+            no-caps
+            color="positive"
+            icon="send"
+            label="Enviar E-mail"
+            :loading="sending"
+            @click="sendEmail"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -347,17 +571,9 @@ import { api } from '@/boot/axios'
 import { format, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns'
 import { useAuthStore } from '@/stores/auth'
 import { useWalletsStore } from '@/stores/wallets'
-import { getInitials } from '@/utils/formatters'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend)
 
-/**
- * RELATÓRIO DE FINANCIADOR — isolado por carteira (nunca mistura fundos).
- * Datas em dd/mm/yyyy, KPIs de acompanhamento, tabelas com pesquisa e
- * totalizadores, gráficos e envio por e-mail com Excel (2 abas) em anexo.
- * O relatório oficial do Banco de Moçambique continua consolidado, sem
- * discriminar carteiras.
- */
 const $q = useQuasar()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -366,6 +582,7 @@ const walletsStore = useWalletsStore()
 const walletId = ref(null)
 const fromDisplay = ref('')
 const toDisplay = ref('')
+const activeQuickRange = ref('month')
 const emails = ref([])
 const emailSuggestions = ref([])
 const loading = ref(false)
@@ -390,8 +607,6 @@ const totalRecebido = computed(() => round(recebimentos.value.reduce((sum, row) 
 
 const filteredDesembolsos = computed(() => filterRows(desembolsos.value, searchLoans.value))
 const filteredRecebimentos = computed(() => filterRows(recebimentos.value, searchTx.value))
-const totalFiltradoDesembolsos = computed(() => round(filteredDesembolsos.value.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)))
-const totalFiltradoRecebimentos = computed(() => round(filteredRecebimentos.value.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)))
 
 const periodoLabel = computed(() => {
   const from = fromDisplay.value || '—'
@@ -399,84 +614,63 @@ const periodoLabel = computed(() => {
   return `${from} a ${to}`
 })
 
-const resumoItems = computed(() => {
+// ─── Consolidação dos 3 Blocos Executivos ───
+const blocoCapital = computed(() => {
   const r = report.value?.resumo || {}
-  return [
-    {
-      label: 'Capital alocado', value: r.capital_alocado === null || r.capital_alocado === undefined ? 'Sem limite' : money(r.capital_alocado),
-      icon: 'account_balance', color: 'blue-7', bg: 'rgba(37,99,235,0.12)'
-    },
-    {
-      label: 'Desembolsado no período', value: money(r.desembolsado_periodo),
-      hint: `${Number(r.num_desembolsos_periodo) || 0} crédito(s)`, icon: 'arrow_upward', color: 'indigo-7', bg: 'rgba(79,70,229,0.12)'
-    },
-    {
-      label: 'Recebido no período', value: money(r.recebido_periodo),
-      hint: `${Number(r.num_recebimentos) || 0} recebimento(s)`, icon: 'arrow_downward', color: 'green-7', bg: 'rgba(5,150,105,0.12)', class: 'text-positive'
-    },
-    {
-      label: 'Juros recebidos no período', value: money(r.juros_periodo),
-      icon: 'savings', color: 'teal', bg: 'rgba(13,148,136,0.12)'
-    },
-    {
-      label: 'Mora recebida no período', value: money(r.mora_periodo),
-      icon: 'warning_amber', color: 'deep-orange', bg: 'rgba(234,88,12,0.12)'
-    },
-    {
-      label: 'Saldo analítico disponível', value: r.saldo_analitico === null || r.saldo_analitico === undefined ? 'Sem limite' : money(r.saldo_analitico),
-      hint: `${Math.round((Number(r.utilizacao) || 0) * 100)}% utilizado`, icon: 'account_balance_wallet', color: 'green-7', bg: 'rgba(5,150,105,0.12)', class: 'text-positive'
-    },
-    {
-      label: 'Saldo a receber dos clientes', value: money(r.saldo_a_receber),
-      hint: `${Number(r.prestacoes_pendentes) || 0} prestação(ões) pendente(s)`,
-      icon: 'pending_actions', color: 'deep-orange', bg: 'rgba(234,88,12,0.12)', class: 'text-deep-orange'
-    },
-    {
-      label: 'Créditos / recebimentos', value: `${Number(r.num_creditos) || 0} / ${Number(r.num_recebimentos) || 0}`,
-      icon: 'sync_alt', color: 'grey-8', bg: 'rgba(100,116,139,0.12)'
-    },
-    {
-      label: 'Taxa média da carteira', value: r.taxa_media === null || r.taxa_media === undefined ? '—' : `${(Number(r.taxa_media) * 100).toFixed(2)}%`,
-      icon: 'percent', color: 'deep-purple', bg: 'rgba(124,58,237,0.12)'
-    },
-    {
-      label: 'Juros gerados (carteira)', value: money(r.juros_gerados),
-      hint: 'Total previsto no plano de amortização', icon: 'functions', color: 'indigo-7', bg: 'rgba(79,70,229,0.12)'
-    },
-    {
-      label: 'Previsão de lucro', value: money(r.previsao_lucro),
-      hint: 'Juros previstos − juros recebidos', icon: 'trending_up', color: 'deep-purple', bg: 'rgba(124,58,237,0.12)', class: 'text-deep-purple'
-    },
-    {
-      label: 'Prestações pagas', value: `${Number(r.prestacoes_pagas) || 0} / ${Number(r.prestacoes_total) || 0}`,
-      hint: `${Number(r.prestacoes_atraso) || 0} em atraso`, icon: 'task_alt', color: 'green-7', bg: 'rgba(5,150,105,0.12)'
-    }
-  ]
+  const alocadoNum = r.capital_alocado === null || r.capital_alocado === undefined ? null : Number(r.capital_alocado)
+  const utilizacaoVal = Math.round((Number(r.utilizacao) || 0) * 100)
+  return {
+    alocado: alocadoNum === null ? 'Sem limite contratual' : money(alocadoNum),
+    desembolsadoPeriodo: money(r.desembolsado_periodo),
+    disponivel: r.saldo_analitico === null || r.saldo_analitico === undefined ? 'Sem limite' : money(r.saldo_analitico),
+    utilizacao: utilizacaoVal
+  }
+})
+
+const blocoRetorno = computed(() => {
+  const r = report.value?.resumo || {}
+  const dist = report.value?.distribuicao_recebimentos || {}
+  return {
+    totalRecebido: money(r.recebido_periodo),
+    capitalAmortizado: money(dist.capital || 0),
+    jurosRecebidos: money(r.juros_periodo),
+    moraRecebida: money(r.mora_periodo),
+    jurosGerados: money(r.juros_gerados)
+  }
+})
+
+const blocoQualidade = computed(() => {
+  const r = report.value?.resumo || {}
+  return {
+    saldoAReceber: money(r.saldo_a_receber),
+    previsaoLucro: money(r.previsao_lucro),
+    taxaMedia: r.taxa_media === null || r.taxa_media === undefined ? '—' : `${(Number(r.taxa_media) * 100).toFixed(2)}%`,
+    prestacoesPagas: `${Number(r.prestacoes_pagas) || 0} de ${Number(r.prestacoes_total) || 0}`,
+    emAtrasoCount: Number(r.prestacoes_atraso) || 0
+  }
 })
 
 const loanColumns = [
-  { name: 'id', label: 'N.º', field: 'id', align: 'center', sortable: true },
-  { name: 'customerName', label: 'Cliente', field: 'customerName', align: 'left', sortable: true },
-  { name: 'disbursementDate', label: 'Data desembolso', field: 'disbursementDate', align: 'center', sortable: true },
-  { name: 'amount', label: 'Montante', field: 'amount', align: 'right', sortable: true },
+  { name: 'customerName', label: 'Beneficiário / Conta', field: 'customerName', align: 'left', sortable: true },
+  { name: 'disbursementDate', label: 'Data', field: 'disbursementDate', align: 'center', sortable: true },
+  { name: 'amount', label: 'Capital', field: 'amount', align: 'right', sortable: true },
   { name: 'rate', label: 'Taxa', field: 'interestRate', align: 'center' },
-  { name: 'saldo_devedor', label: 'Saldo devedor', field: 'saldo_devedor', align: 'right', sortable: true },
-  { name: 'mora_gerada', label: 'Mora gerada', field: 'mora_gerada', align: 'right', sortable: true },
+  { name: 'saldo_devedor', label: 'Saldo Devedor', field: 'saldo_devedor', align: 'right', sortable: true },
+  { name: 'mora_gerada', label: 'Mora Gerada', field: 'mora_gerada', align: 'right', sortable: true },
   { name: 'estado', label: 'Estado', field: 'status', align: 'center' }
 ]
+
 const txColumns = [
   { name: 'paymentDate', label: 'Data', field: 'paymentDate', align: 'center', sortable: true },
-  { name: 'customerName', label: 'Cliente', field: 'customerName', align: 'left', sortable: true },
-  { name: 'amount', label: 'Valor', field: 'amount', align: 'right', sortable: true },
+  { name: 'customerName', label: 'Beneficiário / Ref', field: 'customerName', align: 'left', sortable: true },
+  { name: 'amount', label: 'Total Recebido', field: 'amount', align: 'right', sortable: true },
   { name: 'juros', label: 'Juros', field: 'juros', align: 'right', sortable: true },
   { name: 'mora', label: 'Mora', field: 'mora', align: 'right', sortable: true },
-  { name: 'paymentMethod', label: 'Método', field: 'paymentMethod', align: 'center' },
-  { name: 'recibo_numero', label: 'Recibo', field: 'recibo_numero', align: 'center' }
+  { name: 'paymentMethod', label: 'Canal', field: 'paymentMethod', align: 'center' },
+  { name: 'recibo_numero', label: 'Nº Recibo', field: 'recibo_numero', align: 'center' }
 ]
 
-/* ── Formatação/utilitários ── */
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100
-const initials = (name) => getInitials(name || '?')
 
 function formatDate(value) {
   if (!value) return '—'
@@ -485,20 +679,11 @@ function formatDate(value) {
   return format(date, 'dd/MM/yyyy')
 }
 
-/** dd/mm/yyyy (ecrã) → yyyy-mm-dd (API) */
 function toApiDate(display) {
   if (!display) return ''
   const parts = String(display).split('/')
   if (parts.length !== 3 || parts[2].length < 4) return ''
   return `${parts[2]}-${parts[1]}-${parts[0]}`
-}
-
-/** yyyy-mm-dd (API) → dd/mm/yyyy (ecrã) */
-function toDisplayDate(apiDate) {
-  if (!apiDate) return ''
-  const parts = String(apiDate).slice(0, 10).split('-')
-  if (parts.length !== 3) return ''
-  return `${parts[2]}/${parts[1]}/${parts[0]}`
 }
 
 function filterRows(rows, term) {
@@ -514,16 +699,17 @@ function filterRows(rows, term) {
 function loanStatusLabel(row) {
   if (Number(row.status) === 3) return 'Liquidado'
   if (Number(row.prestacoes_atraso) > 0) return 'Em atraso'
-  return 'Activo'
+  return 'Regular'
 }
-function loanStatusColor(row) {
+
+function loanStatusBadgeColor(row) {
   if (Number(row.status) === 3) return 'grey-6'
   if (Number(row.prestacoes_atraso) > 0) return 'negative'
   return 'positive'
 }
 
 /* ── Gráficos ── */
-const pieColor = { capital: '#1d4ed8', juros: '#0d9488', mora: '#ea580c', desconto: '#94a3b8' }
+const pieColor = { capital: '#2563eb', juros: '#059669', mora: '#d97706', desconto: '#94a3b8' }
 
 const barData = computed(() => {
   const serie = report.value?.serie_mensal || { meses: [], desembolsos: [], recebimentos: [] }
@@ -534,8 +720,8 @@ const barData = computed(() => {
       return `${nomes[Number(mesNumero) - 1] || mesNumero}/${String(ano).slice(2)}`
     }),
     datasets: [
-      { label: 'Desembolsado', data: serie.desembolsos || [], backgroundColor: '#2563eb', borderRadius: 6 },
-      { label: 'Recebido', data: serie.recebimentos || [], backgroundColor: '#16a34a', borderRadius: 6 }
+      { label: 'Desembolsado', data: serie.desembolsos || [], backgroundColor: '#3b82f6', borderRadius: 4 },
+      { label: 'Recebido', data: serie.recebimentos || [], backgroundColor: '#10b981', borderRadius: 4 }
     ]
   }
 })
@@ -546,7 +732,7 @@ const barOptions = {
   plugins: {
     legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } },
     tooltip: {
-      backgroundColor: '#0f172a', padding: 10, cornerRadius: 10,
+      backgroundColor: '#0f172a', padding: 8, cornerRadius: 8,
       callbacks: { label: (ctx) => `${ctx.dataset.label}: ${money(ctx.parsed.y)}` }
     }
   },
@@ -559,7 +745,7 @@ const barOptions = {
 const pieData = computed(() => {
   const dist = report.value?.distribuicao_recebimentos || { capital: 0, juros: 0, mora: 0, desconto: 0 }
   return {
-    labels: ['Capital', 'Juros', 'Mora', 'Descontos'],
+    labels: ['Capital Principal', 'Juros Remuneratórios', 'Juros de Mora', 'Descontos'],
     datasets: [{
       data: [Number(dist.capital) || 0, Number(dist.juros) || 0, Number(dist.mora) || 0, Number(dist.desconto) || 0],
       backgroundColor: [pieColor.capital, pieColor.juros, pieColor.mora, pieColor.desconto],
@@ -571,18 +757,18 @@ const pieData = computed(() => {
 const pieOptions = {
   responsive: true,
   maintainAspectRatio: false,
-  cutout: '60%',
+  cutout: '65%',
   plugins: {
     legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } },
     tooltip: {
-      backgroundColor: '#0f172a', padding: 10, cornerRadius: 10,
+      backgroundColor: '#0f172a', padding: 8, cornerRadius: 8,
       callbacks: { label: (ctx) => `${ctx.label}: ${money(ctx.parsed)}` }
     }
   }
 }
 
-/* ── Filtros ── */
 function applyQuickRange(range) {
+  activeQuickRange.value = range
   const today = new Date()
   if (range === 'today') {
     fromDisplay.value = format(today, 'dd/MM/yyyy')
@@ -597,12 +783,6 @@ function applyQuickRange(range) {
     fromDisplay.value = format(startOfYear(today), 'dd/MM/yyyy')
     toDisplay.value = format(endOfYear(today), 'dd/MM/yyyy')
   }
-}
-
-function clearFilters() {
-  applyQuickRange('month')
-  searchLoans.value = ''
-  searchTx.value = ''
   load()
 }
 
@@ -613,12 +793,6 @@ function onWalletChange() {
   load()
 }
 
-function onNewEmail(value, done) {
-  const email = String(value || '').trim()
-  if (email.includes('@')) done(email)
-}
-
-/* ── Carregamento ── */
 const queryString = () => {
   const params = new URLSearchParams()
   const from = toApiDate(fromDisplay.value)
@@ -659,13 +833,12 @@ async function exportExcel() {
       `/api/reports/financiadores/${authStore.companyId}/${walletId.value}/excel?${queryString().toString()}`,
       `Relatorio_${walletCode.value}_${toApiDate(fromDisplay.value)}_${toApiDate(toDisplay.value)}.xlsx`
     )
-    $q.notify({ type: 'positive', message: 'Excel gerado (2 abas)', position: 'top' })
+    $q.notify({ type: 'positive', message: 'Ficheiro Excel gerado com sucesso (2 abas)', position: 'top' })
   } catch {
-    $q.notify({ type: 'negative', message: 'Erro ao exportar o Excel', position: 'top' })
+    $q.notify({ type: 'negative', message: 'Erro ao exportar o ficheiro Excel', position: 'top' })
   }
 }
 
-/* ── Envio por e-mail (dialog) ── */
 const emailDialog = ref(false)
 const emailForm = ref({ to: [], subject: '', message: '' })
 
@@ -673,23 +846,24 @@ function openEmailDialog() {
   const resumo = report.value?.resumo || {}
   emailForm.value = {
     to: emails.value.length ? [...emails.value] : [currentWallet.value?.parceiro_email].filter(Boolean),
-    subject: `Relatório Financiador ${walletCode.value} - ${periodoLabel.value}`,
+    subject: `Relatório de Financiamento ${walletCode.value} — Período ${periodoLabel.value}`,
     message:
       `Exmo(a). Sr(a). ${currentWallet.value?.parceiro_nome || 'Parceiro'},\n\n` +
-      `Segue o relatório do movimento da carteira ${currentWallet.value?.nome || ''} (${walletCode.value}) no período ${periodoLabel.value}.\n\n` +
+      `Enviamos em anexo o relatório analítico do movimento da carteira ${currentWallet.value?.nome || ''} (${walletCode.value}) referente ao período de ${periodoLabel.value}.\n\n` +
+      `Resumo das Movimentações:\n` +
       `• Desembolsado no período: ${money(resumo.desembolsado_periodo)}\n` +
-      `• Recebido no período: ${money(resumo.recebido_periodo)}\n` +
+      `• Total Recebido no período: ${money(resumo.recebido_periodo)}\n` +
       `• Juros recebidos: ${money(resumo.juros_periodo)}\n` +
       `• Saldo analítico disponível: ${resumo.saldo_analitico === null || resumo.saldo_analitico === undefined ? 'Sem limite' : money(resumo.saldo_analitico)}\n` +
       `• Saldo a receber dos clientes: ${money(resumo.saldo_a_receber)}\n\n` +
-      `Com os melhores cumprimentos,\n${report.value?.empresa?.name || 'MBR Microcrédito'}`
+      `Atenciosamente,\n${report.value?.empresa?.name || 'MBR Microcrédito'}`
   }
   emailDialog.value = true
 }
 
 async function sendEmail() {
   if (!emailForm.value.to?.length) {
-    $q.notify({ type: 'warning', message: 'Indique pelo menos um destinatário', position: 'top' })
+    $q.notify({ type: 'warning', message: 'Indique pelo menos um destinatário de e-mail', position: 'top' })
     return
   }
   sending.value = true
@@ -701,10 +875,10 @@ async function sendEmail() {
         { email: recipient, subject: emailForm.value.subject, message: emailForm.value.message }
       )
     }
-    $q.notify({ type: 'positive', message: `Relatório enviado para ${recipients.join(', ')}`, position: 'top' })
+    $q.notify({ type: 'positive', message: `Relatório enviado com sucesso para ${recipients.join(', ')}`, position: 'top' })
     emailDialog.value = false
   } catch (error) {
-    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao enviar o e-mail', position: 'top' })
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Falha ao enviar e-mail', position: 'top' })
   } finally {
     sending.value = false
   }
@@ -739,44 +913,93 @@ onMounted(async () => {
   min-height: calc(100vh - 100px);
 }
 
-.glass-card {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+.filter-card, .statement-card, .empty-card {
+  border-radius: 12px;
+  background: #ffffff;
+  border-color: #e2e8f0;
 }
 
-.glass-tile {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  height: 100%;
+.statement-header {
+  border-bottom: 1px solid #f1f5f9;
 }
 
-.tile-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+.metric-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.metric-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.code-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.border-b {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.border-t {
+  border-top: 1px solid #f1f5f9;
 }
 
 .chart-box {
-  height: 240px;
+  height: 220px;
   position: relative;
 }
 
-.dialog-md { width: 620px; max-width: 95vw; border-radius: 18px; }
-
-.dialog-head {
-  background: linear-gradient(135deg, $primary, #16a34a);
-  color: #fff;
+.reports-table {
+  :deep(.q-table thead th) {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+    background-color: #f1f5f9;
+    padding: 8px 10px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  :deep(.q-table tbody td) {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-color: #f1f5f9;
+  }
 }
 
+.dialog-md { width: 560px; max-width: 95vw; border-radius: 14px; }
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-slate-900 { color: #0f172a; }
+.text-slate-800 { color: #1e293b; }
+
 body.body--dark {
-  .financier-reports-page { background: #1a1a2e; }
-  .glass-card, .glass-tile { background: rgba(30, 41, 59, 0.72); border-color: rgba(255, 255, 255, 0.06); }
+  .financier-reports-page { background: #0f172a; }
+  .filter-card, .statement-card, .empty-card {
+    background: #1e293b;
+    border-color: #334155;
+  }
+  .statement-header, .border-b, .border-t {
+    border-color: #334155;
+  }
+  .text-slate-900, .metric-val { color: #f8fafc; }
+  .code-badge {
+    background: #1e3a8a;
+    border-color: #2563eb;
+    color: #bfdbfe;
+  }
 }
 </style>

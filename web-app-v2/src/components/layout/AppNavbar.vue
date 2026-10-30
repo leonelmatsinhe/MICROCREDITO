@@ -14,9 +14,9 @@
 
       <!-- Route Title + Breadcrumbs (Home / Painel) -->
       <div class="row items-center no-wrap" data-tour="navbar-title">
-        <q-icon :name="routeIcon" size="22px" class="q-mr-sm text-green-10" />
+        <q-icon :name="routeIcon" size="22px" class="q-mr-sm navbar-route-icon" />
         <div>
-          <div class="text-grey-9 text-weight-bold" style="font-size: 15px; line-height: 1.2">
+          <div class="navbar-title-text text-weight-bold" style="font-size: 15px; line-height: 1.2">
             {{ routeTitle }}
           </div>
           <AppBreadcrumb class="navbar-breadcrumb" />
@@ -305,14 +305,32 @@ function handleLogout() {
   color: #1f2937;
 }
 
+.navbar-route-icon {
+  color: #0D7C3D;
+}
+
+.navbar-title-text {
+  color: #111827;
+}
+
 .navbar-breadcrumb {
   font-size: 10.5px;
   opacity: 0.8;
 }
 
-body.body--dark .navbar-header {
-  background: rgba(17, 24, 39, 0.82);
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-  color: #f3f4f6;
+body.body--dark {
+  .navbar-header {
+    background: rgba(17, 24, 39, 0.88);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    color: #f3f4f6;
+  }
+
+  .navbar-route-icon {
+    color: #4ade80;
+  }
+
+  .navbar-title-text {
+    color: #f8fafc;
+  }
 }
 </style>

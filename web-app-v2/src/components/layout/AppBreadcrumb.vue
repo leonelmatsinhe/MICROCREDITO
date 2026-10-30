@@ -1,5 +1,5 @@
 <template>
-  <q-breadcrumbs class="text-grey-6" style="font-size: 12px">
+  <q-breadcrumbs class="app-breadcrumbs">
     <q-breadcrumbs-el icon="home" to="/" />
     <q-breadcrumbs-el
       v-for="crumb in breadcrumbs"
@@ -72,9 +72,45 @@ function getRouteLabel(name) {
     PartnerPrestacoesPendentes: 'Prestações Pendentes',
     PartnerMora: 'Juros de Mora',
     PartnerRecebimentos: 'Recebimentos',
-    PartnerExtrato: 'Extrato da Carteira',
+    PartnerExtrato: 'Extracto da Carteira',
     PartnerRecibos: 'Recibos'
   }
   return labels[name] || name
 }
 </script>
+
+<style lang="scss" scoped>
+.app-breadcrumbs {
+  font-size: 11px;
+  color: #64748b;
+
+  :deep(.q-breadcrumbs__el) {
+    color: #64748b;
+    transition: color 0.15s ease;
+
+    &:hover {
+      color: #0D7C3D;
+    }
+  }
+
+  :deep(.q-breadcrumbs__separator) {
+    color: #94a3b8;
+  }
+}
+
+body.body--dark .app-breadcrumbs {
+  color: #94a3b8;
+
+  :deep(.q-breadcrumbs__el) {
+    color: #94a3b8;
+
+    &:hover {
+      color: #4ade80;
+    }
+  }
+
+  :deep(.q-breadcrumbs__separator) {
+    color: #64748b;
+  }
+}
+</style>

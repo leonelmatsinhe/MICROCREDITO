@@ -83,7 +83,7 @@
                   <q-list style="min-width: 190px">
                     <q-item clickable v-close-popup @click="openStatement(account)">
                       <q-item-section avatar><q-icon name="receipt_long" size="16px" /></q-item-section>
-                      <q-item-section style="font-size: 13px">Ver extrato</q-item-section>
+                      <q-item-section style="font-size: 13px">Ver extracto</q-item-section>
                     </q-item>
                     <q-item clickable v-close-popup @click="openEdit(account)">
                       <q-item-section avatar><q-icon name="edit" size="16px" color="grey-7" /></q-item-section>
@@ -136,7 +136,7 @@
 
           <q-separator />
           <q-card-actions class="q-px-md q-py-xs">
-            <q-btn flat dense no-caps size="sm" color="primary" icon="receipt_long" label="Ver extrato" @click="openStatement(account)" />
+            <q-btn flat dense no-caps size="sm" color="primary" icon="receipt_long" label="Ver extracto" @click="openStatement(account)" />
             <q-btn flat dense no-caps size="sm" color="grey-8" icon="edit" label="Editar" @click="openEdit(account)" />
           </q-card-actions>
         </q-card>
@@ -180,7 +180,7 @@
           </div>
           <div class="row justify-end q-gutter-sm q-mt-md">
             <q-btn flat label="Cancelar" color="grey" @click="closeForm" no-caps />
-            <q-btn unelevated rounded :label="editingAccount ? 'Salvar' : 'Criar'" color="primary" :loading="saving" @click="saveAccount" no-caps />
+            <q-btn unelevated rounded :label="editingAccount ? 'Guardar' : 'Criar'" color="primary" :loading="saving" @click="saveAccount" no-caps />
           </div>
         </q-card-section>
       </q-card>
@@ -203,7 +203,7 @@
       </q-card>
     </q-dialog>
 
-    <!-- ═══════ DIALOG: EXTRATO ═══════ -->
+    <!-- ═══════ DIALOG: EXTRACTO ═══════ -->
     <q-dialog v-model="statementDialog">
       <q-card class="dialog-lg">
         <q-card-section class="row items-center dialog-head">
@@ -267,7 +267,7 @@ import { logUpdateAccount } from '@/utils/logger'
  * CONTAS BANCÁRIAS (Configurações) — mesma fonte de verdade do Caixa Central.
  * Ambos leem/escrevem em /api/bank-accounts (tabela `accounts` com saldo real).
  * O visual aqui é o mesmo das restantes páginas: KPIs no topo, cartões com
- * cabeçalho em gradiente por finalidade e extrato da conta num clique.
+ * cabeçalho em gradiente por finalidade e extracto da conta num clique.
  */
 const $q = useQuasar()
 const authStore = useAuthStore()
@@ -475,7 +475,7 @@ async function deleteAccountConfirmed() {
   }
 }
 
-/* ── Extrato da conta (mesma API do Caixa Central) ── */
+/* ── Extracto da conta (mesma API do Caixa Central) ── */
 const statementDialog = ref(false)
 const statementAccount = ref(null)
 const statementRows = ref([])
@@ -495,7 +495,7 @@ async function openStatement(account) {
     const { data } = await api.get(`/api/bank-accounts/${account.id}/transactions`)
     if (data.success) statementRows.value = data.result?.transactions || []
   } catch {
-    $q.notify({ type: 'negative', message: 'Erro ao carregar extrato', position: 'top' })
+    $q.notify({ type: 'negative', message: 'Erro ao carregar extracto', position: 'top' })
   }
 }
 

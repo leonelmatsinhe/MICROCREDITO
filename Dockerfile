@@ -42,8 +42,9 @@ RUN npm ci --omit=dev
 COPY --from=backend /app/build ./build
 COPY --from=frontend /app/public-v2 ./public-v2
 
-# Pasta de ficheiros persistidos (montar como volume em produção)
+# Pasta de ficheiros persistidos (montar como volume em produção no Dokploy/Docker)
 RUN mkdir -p uploads
+VOLUME ["/app/uploads"]
 
 EXPOSE 4000
 CMD ["node", "build/src/app.js"]

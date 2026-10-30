@@ -62,7 +62,13 @@ export const removeFunding = legacyWriteDisabled;
 export const movements = handler(async (req, res) => res.json({ success: true, result: await listMovements(context(req).tenantId, req.query.dataInicio as string, req.query.dataFim as string) }));
 export const createMovement = legacyWriteDisabled;
 export const updateMovement = legacyWriteDisabled;
-export const config = handler(async (req, res) => res.json({ success: true, result: await readConfig(context(req).tenantId) }));
+export const config = handler(async (req, res) => {
+  const c = context(req);
+  if (req.method === "PUT") {
+    return res.json({ success: true, result: await saveConfig(c.tenantId, req.body) });
+  }
+  return res.json({ success: true, result: await readConfig(c.tenantId) });
+});
 export const previewReport = handler(async (req, res) => {
   const c = context(req); const { dataInicio, dataFim } = req.query as any;
   const [result, tenant] = await Promise.all([

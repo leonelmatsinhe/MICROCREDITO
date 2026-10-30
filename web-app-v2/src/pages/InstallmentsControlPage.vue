@@ -1,286 +1,429 @@
 <template>
-  <div class="q-pa-md">
-    <!-- Filtros + Acções -->
-    <q-card flat bordered class="q-mb-md filter-card" data-tour="installments-body">
-      <q-card-section class="row q-col-gutter-sm items-center">
-        <div class="col-12 col-sm-6 col-md-2">
-          <q-select v-model="filter.status" :options="statusOptions" label="Estado" dense outlined emit-value map-options clearable />
+  <div class="q-pa-md installments-page">
+    <!-- ═══════════ CABEÇALHO EXECUTIVO ═══════════ -->
+    <div class="row items-center justify-between q-mb-md">
+      <div>
+        <div class="row items-center no-wrap">
+          <q-icon name="receipt_long" class="q-mr-sm text-primary" size="26px" />
+          <h1 class="text-h6 text-weight-bold text-slate-800 q-my-none">
+            Controlo de Prestações e Cobrança
+          </h1>
+          <q-chip color="primary" text-color="white" size="sm" dense class="q-ml-sm font-mono">
+            Agenda Financeira
+          </q-chip>
         </div>
-        <div class="col-12 col-sm-6 col-md-3">
-          <q-input v-model="filter.search" label="Pesquisar mutuário" dense outlined clearable>
-            <template v-slot:prepend><q-icon name="search" size="16px" /></template>
-          </q-input>
+        <div class="text-caption text-grey-7 q-mt-xs">
+          Acompanhamento de vencimentos, apuramento de mora e emissão de alertas aos mutuários
         </div>
-        <div class="col-6 col-sm-4 col-md-2">
-          <q-input v-model="filter.from" dense outlined label="De" type="date" stack-label />
-        </div>
-        <div class="col-6 col-sm-4 col-md-2">
-          <q-input v-model="filter.to" dense outlined label="Até" type="date" stack-label />
-        </div>
-        <div class="col-12 col-md-3">
-          <div class="row q-gutter-xs justify-end no-wrap">
-            <q-btn outline color="primary" icon="refresh" no-caps rounded dense @click="loadData" :loading="loading">
-              <q-tooltip>Sincronizar</q-tooltip>
-            </q-btn>
-            <q-btn outline color="primary" icon="clear_all" no-caps rounded dense @click="clearFilter">
-              <q-tooltip>Limpar filtros</q-tooltip>
-            </q-btn>
-            <q-btn outline color="primary" icon="picture_as_pdf" no-caps rounded dense @click="downloadPDF" :disable="filteredInstallments.length === 0">
-              <q-tooltip>Baixar PDF</q-tooltip>
-            </q-btn>
-            <q-btn outline color="primary" icon="table_chart" no-caps rounded dense @click="downloadExcel" :disable="filteredInstallments.length === 0">
-              <q-tooltip>Baixar Excel</q-tooltip>
-            </q-btn>
+      </div>
+
+      <div class="row items-center q-gutter-xs">
+        <q-btn
+          outline
+          color="grey-8"
+          icon="picture_as_pdf"
+          label="PDF"
+          no-caps
+          rounded
+          size="sm"
+          :disable="filteredInstallments.length === 0"
+          @click="downloadPDF"
+        />
+        <q-btn
+          outline
+          color="green-8"
+          icon="table_view"
+          label="Excel"
+          no-caps
+          rounded
+          size="sm"
+          :disable="filteredInstallments.length === 0"
+          @click="downloadExcel"
+        />
+        <q-btn
+          outline
+          color="primary"
+          icon="refresh"
+          label="Actualizar"
+          no-caps
+          rounded
+          size="sm"
+          :loading="loading"
+          @click="loadData"
+        />
+      </div>
+    </div>
+
+    <!-- ═══════════ KPI EXECUTIVE STRIP ═══════════ -->
+    <div class="row q-col-gutter-sm q-mb-md" data-tour="installments-kpis">
+      <!-- Em Atraso -->
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card" :class="{ 'kpi-alert': stats.overdue > 0 }">
+          <q-card-section class="q-pa-sm">
+            <div class="text-caption text-grey-6 text-uppercase text-weight-medium">Prestações em Atraso</div>
+            <div class="row items-baseline justify-between q-mt-xs">
+              <span class="text-h6 text-weight-bold" :class="stats.overdue > 0 ? 'text-negative' : 'text-slate-800'">
+                {{ stats.overdue }}
+              </span>
+              <span class="text-caption text-negative font-mono text-weight-bold">
+                {{ formatMoney(stats.overdueRiskAmount) }}
+              </span>
+            </div>
+            <div class="text-caption text-grey-5 q-mt-xs">Capital + mora em risco</div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <!-- A Vencer nos Próximos 30 Dias -->
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="q-pa-sm">
+            <div class="text-caption text-grey-6 text-uppercase text-weight-medium">A Vencer (30 Dias)</div>
+            <div class="row items-baseline justify-between q-mt-xs">
+              <span class="text-h6 text-weight-bold text-warning">{{ stats.upcomingCount }}</span>
+              <span class="text-caption text-slate-800 font-mono text-weight-bold">
+                {{ formatMoney(stats.upcomingAmount) }}
+              </span>
+            </div>
+            <div class="text-caption text-grey-5 q-mt-xs">Previsão de cobrança regular</div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <!-- Mora Total Acumulada -->
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="q-pa-sm">
+            <div class="text-caption text-grey-6 text-uppercase text-weight-medium">Juros de Mora Gerados</div>
+            <div class="row items-baseline justify-between q-mt-xs">
+              <span class="text-h6 text-weight-bold font-mono text-negative">
+                {{ formatMoney(stats.totalLateFee) }}
+              </span>
+              <q-badge color="negative" outline size="sm">Calculada</q-badge>
+            </div>
+            <div class="text-caption text-grey-5 q-mt-xs">Penalizações acumuladas</div>
+          </q-card-section>
+        </q-card>
+      </div>
+
+      <!-- Prestações Liquidadas -->
+      <div class="col-12 col-sm-6 col-md-3">
+        <q-card flat bordered class="kpi-card">
+          <q-card-section class="q-pa-sm">
+            <div class="text-caption text-grey-6 text-uppercase text-weight-medium">Liquidadas / Pagas</div>
+            <div class="row items-baseline justify-between q-mt-xs">
+              <span class="text-h6 text-weight-bold text-positive">{{ stats.paid }}</span>
+              <span class="text-caption text-positive font-mono text-weight-bold">
+                {{ formatMoney(stats.paidAmount) }}
+              </span>
+            </div>
+            <div class="text-caption text-grey-5 q-mt-xs">Montante total amortizado</div>
+          </q-card-section>
+        </q-card>
+      </div>
+    </div>
+
+    <!-- ═══════════ BARRA DE FILTROS & PRESETS ═══════════ -->
+    <q-card flat bordered class="q-mb-md filters-card" data-tour="installments-body">
+      <q-card-section class="q-py-sm">
+        <div class="row q-col-gutter-sm items-center">
+          <!-- Pesquisa de Texto -->
+          <div class="col-12 col-sm-4 col-md-3">
+            <q-input
+              v-model="filter.search"
+              dense
+              outlined
+              clearable
+              placeholder="Pesquisar mutuário, telefone ou conta..."
+              input-style="font-size: 12px"
+            >
+              <template v-slot:prepend><q-icon name="search" size="16px" /></template>
+            </q-input>
+          </div>
+
+          <!-- Filtro de Estado -->
+          <div class="col-12 col-sm-3 col-md-2">
+            <q-select
+              v-model="filter.status"
+              :options="statusOptions"
+              dense
+              outlined
+              clearable
+              emit-value
+              map-options
+              label="Estado"
+              options-dense
+              input-style="font-size: 12px"
+            />
+          </div>
+
+          <!-- Atalhos Rápidos por Situação -->
+          <div class="col-12 col-md-auto q-gutter-xs">
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activePreset === 'default' ? 'primary' : 'grey-2'"
+              :text-color="activePreset === 'default' ? 'white' : 'grey-8'"
+              label="Vencidas & 30 Dias"
+              @click="applyPreset('default')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activePreset === 'overdue' ? 'negative' : 'grey-2'"
+              :text-color="activePreset === 'overdue' ? 'white' : 'grey-8'"
+              label="Em Atraso"
+              @click="applyPreset('overdue')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activePreset === 'today' ? 'warning' : 'grey-2'"
+              :text-color="activePreset === 'today' ? 'white' : 'grey-8'"
+              label="Vencem Hoje"
+              @click="applyPreset('today')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activePreset === 'paid' ? 'positive' : 'grey-2'"
+              :text-color="activePreset === 'paid' ? 'white' : 'grey-8'"
+              label="Liquidadas"
+              @click="applyPreset('paid')"
+            />
+            <q-btn
+              unelevated
+              rounded
+              dense
+              size="sm"
+              class="q-px-sm"
+              :color="activePreset === 'all' ? 'primary' : 'grey-2'"
+              :text-color="activePreset === 'all' ? 'white' : 'grey-8'"
+              label="Todas"
+              @click="applyPreset('all')"
+            />
+          </div>
+
+          <!-- Datas De / Até -->
+          <div class="col-6 col-sm-3 col-md-1">
+            <q-input v-model="filter.from" dense outlined label="De" type="date" stack-label input-style="font-size: 12px" />
+          </div>
+          <div class="col-6 col-sm-3 col-md-1">
+            <q-input v-model="filter.to" dense outlined label="Até" type="date" stack-label input-style="font-size: 12px" />
+          </div>
+
+          <div class="col-auto">
+            <q-btn
+              v-if="isFiltering"
+              flat
+              dense
+              color="grey-7"
+              icon="filter_alt_off"
+              label="Limpar"
+              size="sm"
+              @click="clearFilter"
+            />
+          </div>
+
+          <q-space />
+
+          <div class="col-auto text-caption text-grey-6">
+            Apresentando <strong>{{ filteredInstallments.length }}</strong> de {{ installments.length }}
           </div>
         </div>
       </q-card-section>
     </q-card>
 
-    <!-- KPIs -->
-    <div class="row q-col-gutter-md q-mb-md" data-tour="installments-kpis">
-      <div class="col-12 col-sm-3">
-        <q-card flat bordered class="kpi-card">
-          <q-card-section class="row items-center">
-            <q-avatar size="40px" color="blue" text-color="white" class="q-mr-sm">
-              <q-icon name="event" size="20px" />
-            </q-avatar>
-            <div>
-              <div class="text-h5 text-weight-bold">{{ stats.total }}</div>
-              <div class="text-caption text-grey-6">Total Prestações</div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-      <div class="col-12 col-sm-3">
-        <q-card flat bordered class="kpi-card">
-          <q-card-section class="row items-center">
-            <q-avatar size="40px" color="positive" text-color="white" class="q-mr-sm">
-              <q-icon name="check_circle" size="20px" />
-            </q-avatar>
-            <div>
-              <div class="text-h5 text-weight-bold text-positive">{{ stats.paid }}</div>
-              <div class="text-caption text-grey-6">Pagas</div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-      <div class="col-12 col-sm-3">
-        <q-card flat bordered class="kpi-card">
-          <q-card-section class="row items-center">
-            <q-avatar size="40px" color="orange" text-color="white" class="q-mr-sm">
-              <q-icon name="schedule" size="20px" />
-            </q-avatar>
-            <div>
-              <div class="text-h5 text-weight-bold text-warning">{{ stats.pending }}</div>
-              <div class="text-caption text-grey-6">Pendentes</div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-      <div class="col-12 col-sm-3">
-        <q-card flat bordered class="kpi-card">
-          <q-card-section class="row items-center">
-            <q-avatar size="40px" color="negative" text-color="white" class="q-mr-sm">
-              <q-icon name="warning" size="20px" />
-            </q-avatar>
-            <div>
-              <div class="text-h5 text-weight-bold text-negative">{{ stats.overdue }}</div>
-              <div class="text-caption text-grey-6">Em Atraso</div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </div>
-
-    <!-- Loading -->
+    <!-- ═══════════ CARREGAMENTO ═══════════ -->
     <div v-if="loading" class="text-center q-pa-xl">
       <q-spinner-dots size="40px" color="primary" />
-      <div class="text-caption text-grey-5 q-mt-sm">A carregar prestações...</div>
+      <div class="text-caption text-grey-6 q-mt-sm">A carregar agenda de prestações...</div>
     </div>
 
-    <!-- Tabela de Prestações -->
-    <q-card v-else flat bordered>
-      <q-card-section class="installments-header">
-        <div class="row items-center q-col-gutter-sm full-width">
-          <q-icon name="table_chart" size="20px" color="primary" />
-          <div class="col">
-            <div class="text-subtitle1 text-weight-bold" style="line-height: 1.2">Prestações</div>
-            <div v-if="usingDefaultWindow" class="text-caption text-orange text-weight-medium" style="font-size: 10px; line-height: 1.2">
-              <q-icon name="event_upcoming" size="12px" class="q-mr-xs" style="vertical-align: -1px" />Vencidas + próximos {{ DEFAULT_UPCOMING_DAYS }} dias
-            </div>
-          </div>
-          <q-badge color="primary" rounded class="q-px-sm q-py-xs">{{ filteredInstallments.length }} registos</q-badge>
+    <!-- ═══════════ ESTADO VAZIO ═══════════ -->
+    <q-card v-else-if="filteredInstallments.length === 0" flat bordered class="empty-card text-center q-pa-xl">
+      <q-card-section>
+        <q-icon name="event_available" size="56px" color="primary" />
+        <div class="text-subtitle1 text-weight-bold text-slate-800 q-mt-md">Nenhuma prestação encontrada</div>
+        <div class="text-caption text-grey-6 q-mt-xs">
+          {{ isFiltering ? 'Nenhum registo corresponde aos filtros de pesquisa.' : 'Não há prestações pendentes para o período seleccionado.' }}
         </div>
+        <q-btn
+          v-if="isFiltering"
+          outline
+          color="primary"
+          no-caps
+          rounded
+          size="sm"
+          icon="filter_alt_off"
+          label="Limpar Filtros"
+          class="q-mt-md"
+          @click="clearFilter"
+        />
       </q-card-section>
+    </q-card>
 
+    <!-- ═══════════ TABELA DE PRESTAÇÕES ═══════════ -->
+    <q-card v-else flat bordered class="table-card">
       <q-table
         data-tour="installments-table"
         :rows="filteredInstallments"
         :columns="columns"
         row-key="id"
         flat
-        dense
         v-model:pagination="pagination"
-        :rows-per-page-options="[10, 15, 25, 50]"
+        :rows-per-page-options="[15, 25, 50, 100]"
         class="installments-table"
       >
+        <!-- Mutuário -->
         <template v-slot:body-cell-customer="props">
           <q-td :props="props">
-            <div class="table-borrower-name" style="font-size: 12px">{{ displayCustomerName(props.row) }}</div>
+            <div class="text-weight-bold text-slate-800" style="font-size: 13px">
+              {{ displayCustomerName(props.row) }}
+            </div>
+            <div class="row items-center no-wrap text-caption text-grey-6">
+              <span>Conta {{ props.row.accountNumber || '—' }}</span>
+              <span v-if="props.row.customerPhone" class="q-ml-xs font-mono">· {{ props.row.customerPhone }}</span>
+            </div>
             <q-badge v-if="!props.row.hasCustomer" color="warning" text-color="dark" rounded class="q-mt-xs">
               <q-icon name="person_off" size="10px" class="q-mr-xs" />Sem cadastro
             </q-badge>
           </q-td>
         </template>
 
+        <!-- Prestação -->
         <template v-slot:body-cell-installment="props">
           <q-td :props="props">
-            <span class="text-weight-bold" style="font-size: 12px">{{ formatMoney(props.row.installment) }}</span>
+            <div class="font-mono text-weight-bold text-slate-800" style="font-size: 13px">
+              {{ formatMoney(props.row.installment) }}
+            </div>
+            <div class="text-caption text-grey-6">
+              {{ props.row.installmentOrder ? `Prestação ${props.row.installmentOrder}` : 'Amortização' }}
+            </div>
           </q-td>
         </template>
 
+        <!-- Vencimento -->
         <template v-slot:body-cell-dueDate="props">
           <q-td :props="props">
-            <div style="font-size: 12px">{{ formatDate(props.row.dueDate) }}</div>
+            <div class="font-mono text-weight-bold" style="font-size: 12.5px">
+              {{ formatDate(props.row.dueDate) }}
+            </div>
           </q-td>
         </template>
 
+        <!-- Situação / Observações (Português de Moçambique profissional) -->
         <template v-slot:body-cell-observations="props">
           <q-td :props="props">
-            <q-badge v-if="props.row.status === 1" color="positive" rounded>
-              <q-icon name="check" size="10px" class="q-mr-xs" />Liquidado
-            </q-badge>
-            <div v-else-if="props.row.daysOverdue > 0" class="text-negative">
-              <q-icon name="warning" size="12px" class="q-mr-xs" />
-              {{ props.row.daysOverdue }} dias vencido
-            </div>
-            <div v-else-if="props.row.daysUntilDue > 0" class="text-orange">
-              <q-icon name="schedule" size="12px" class="q-mr-xs" />
-              {{ props.row.daysUntilDue }} dias pra vencer
-            </div>
-            <div v-else class="text-dark">Vence hoje</div>
+            <q-chip v-if="props.row.status === 1" color="positive" text-color="white" size="xs" dense>
+              <q-icon name="check_circle" size="12px" class="q-mr-xs" />Liquidado
+            </q-chip>
+            <q-chip v-else-if="props.row.daysOverdue > 0" color="negative" text-color="white" size="xs" dense>
+              <q-icon name="warning" size="12px" class="q-mr-xs" />{{ props.row.daysOverdue }} dias em atraso
+            </q-chip>
+            <q-chip v-else-if="props.row.daysUntilDue === 0" color="amber-9" text-color="white" size="xs" dense>
+              <q-icon name="alarm" size="12px" class="q-mr-xs" />Vence hoje
+            </q-chip>
+            <q-chip v-else color="teal-7" text-color="white" size="xs" dense>
+              <q-icon name="schedule" size="12px" class="q-mr-xs" />{{ props.row.daysUntilDue }} dias para vencer
+            </q-chip>
           </q-td>
         </template>
 
+        <!-- Juros de Mora -->
         <template v-slot:body-cell-lateFee="props">
           <q-td :props="props">
-            <span :class="props.row.lateFee > 0 ? 'text-negative text-weight-bold' : ''" style="font-size: 12px">
+            <span
+              class="font-mono"
+              :class="props.row.lateFee > 0 ? 'text-negative text-weight-bold' : 'text-grey-6'"
+              style="font-size: 12.5px"
+            >
               {{ formatMoney(props.row.lateFee) }}
             </span>
           </q-td>
         </template>
 
+        <!-- Total a Pagar -->
         <template v-slot:body-cell-totalToPay="props">
           <q-td :props="props">
-            <span class="text-weight-bold" :class="props.row.status === 1 ? 'text-positive' : 'text-primary'" style="font-size: 12px">
+            <span
+              class="font-mono text-weight-bold"
+              :class="props.row.status === 1 ? 'text-positive' : (props.row.daysOverdue > 0 ? 'text-negative' : 'text-slate-800')"
+              style="font-size: 13px"
+            >
               {{ formatMoney(props.row.totalToPay) }}
             </span>
           </q-td>
         </template>
 
+        <!-- Acções Rápidas -->
         <template v-slot:body-cell-actions="props">
           <q-td :props="props" data-tour="installments-actions">
-            <div class="row no-wrap q-gutter-xs">
-              <q-btn flat round dense icon="sms" size="sm" color="blue" @click="sendSMS(props.row)">
-                <q-tooltip>Enviar SMS</q-tooltip>
+            <div class="row no-wrap items-center justify-center q-gutter-xs">
+              <!-- Botão Alerta SMS -->
+              <q-btn
+                flat
+                round
+                dense
+                icon="sms"
+                size="sm"
+                color="primary"
+                @click="openSendMessageModal(props.row, 'sms')"
+              >
+                <q-tooltip>Enviar Alerta SMS</q-tooltip>
               </q-btn>
-              <!-- WhatsApp inabilitado por enquanto (decisão de negócio) -->
-              <q-btn flat round dense icon="chat" size="sm" color="grey-5" disable>
-                <q-tooltip>WhatsApp indisponível por enquanto</q-tooltip>
+
+              <!-- Botão WhatsApp Directo -->
+              <q-btn
+                flat
+                round
+                dense
+                icon="chat"
+                size="sm"
+                color="positive"
+                @click="openSendMessageModal(props.row, 'whatsapp')"
+              >
+                <q-tooltip>Enviar via WhatsApp Directo</q-tooltip>
               </q-btn>
-              <!-- Eye: abre a página do mutuário -->
-              <q-btn flat round dense icon="visibility" size="sm" color="grey-7" @click="openCustomerPage(props.row)">
-                <q-tooltip>Abrir página do cliente</q-tooltip>
+
+              <!-- Detalhes do Mutuário / Ficha -->
+              <q-btn
+                flat
+                round
+                dense
+                icon="visibility"
+                size="sm"
+                color="grey-7"
+                @click="openCustomerPage(props.row)"
+              >
+                <q-tooltip>Abrir ficha do mutuário</q-tooltip>
               </q-btn>
             </div>
           </q-td>
         </template>
-
-        <template v-slot:no-data>
-          <div class="full-width text-center q-pa-lg text-grey-5">
-            <q-icon name="info" size="40px" />
-            <div class="q-mt-sm">Nenhuma prestação encontrada</div>
-          </div>
-        </template>
       </q-table>
     </q-card>
 
-    <!-- Dialog de Detalhes -->
-    <q-dialog v-model="showDetails" position="right" full-height>
-      <q-card v-if="selectedInstallment" style="width: 400px; max-width: 90vw; border-radius: 12px 0 0 12px">
-        <q-card-section class="bg-primary text-white row items-center" style="border-radius: 12px 0 0 0">
-          <q-icon name="receipt" size="20px" class="q-mr-sm" />
-          <div class="text-h6">Detalhes da Prestação</div>
-          <q-space />
-          <q-btn flat round dense icon="close" @click="showDetails = false" />
-        </q-card-section>
-
-        <q-card-section>
-          <div class="q-mb-md">
-            <div class="text-caption text-grey-5">Mutuário</div>
-            <div class="text-weight-bold">{{ displayCustomerName(selectedInstallment) }}</div>
-            <div class="text-caption text-grey-6">Conta {{ selectedInstallment.accountNumber }}</div>
-            <q-badge v-if="!selectedInstallment.hasCustomer" color="warning" text-color="dark" rounded class="q-mt-xs">
-              <q-icon name="person_off" size="10px" class="q-mr-xs" />Sem cadastro
-            </q-badge>
-          </div>
-          <q-separator class="q-mb-md" />
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-6">
-              <div class="text-caption text-grey-5">Prestação</div>
-              <div class="text-weight-bold text-primary">{{ formatMoney(selectedInstallment.installment) }}</div>
-            </div>
-            <div class="col-6">
-              <div class="text-caption text-grey-5">Pago</div>
-              <div class="text-weight-bold text-positive">{{ formatMoney(selectedInstallment.paidAmount || 0) }}</div>
-            </div>
-          </div>
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-6">
-              <div class="text-caption text-grey-5">Vencimento</div>
-              <div>{{ formatDate(selectedInstallment.dueDate) }}</div>
-            </div>
-            <div class="col-6">
-              <div class="text-caption text-grey-5">Estado</div>
-              <q-badge :color="getStatusColor(selectedInstallment.status)">
-                {{ getStatusLabel(selectedInstallment.status) }}
-              </q-badge>
-            </div>
-          </div>
-          <div class="row q-col-gutter-sm q-mb-md">
-            <div class="col-6">
-              <div class="text-caption text-grey-5">Juros de Mora</div>
-              <div class="text-weight-bold text-negative">{{ formatMoney(selectedInstallment.lateFee) }}</div>
-            </div>
-            <div class="col-6">
-              <div class="text-caption text-grey-5">Total a Pagar</div>
-              <div class="text-weight-bold text-primary">{{ formatMoney(selectedInstallment.totalToPay) }}</div>
-            </div>
-          </div>
-          <q-separator class="q-mb-md" />
-          <div class="text-subtitle2 text-primary q-mb-sm">
-            <q-icon name="send" size="16px" class="q-mr-xs" />
-            Enviar Alerta
-          </div>
-          <div class="row q-gutter-sm">
-            <q-btn outline color="blue" icon="sms" label="SMS" no-caps rounded class="col" @click="sendSMS(selectedInstallment)" />
-            <!-- WhatsApp inabilitado por enquanto -->
-            <q-btn outline color="grey-5" icon="chat" label="WhatsApp" no-caps rounded class="col" disable>
-              <q-tooltip>WhatsApp indisponível por enquanto</q-tooltip>
-            </q-btn>
-          </div>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
-
-    <!-- Modal de envio SMS/WhatsApp com mensagem de aviso/alerta de vencimento pré-preenchida -->
+    <!-- ═══════════ MODAL PROFISSIONAL DE ENVIO DE ALERTAS ═══════════ -->
     <SendMessageModal
       v-model="showMessageModal"
       :phone="messagePhone"
       :account-number="messageAccountNumber"
       :customer-name="messageCustomerName"
       :channel="messageChannel"
-      :initial-message="messageInitial"
+      :installment-data="messageInstallmentData"
     />
   </div>
 </template>
@@ -292,7 +435,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { api } from '@/boot/axios'
-import { formatMoney as formatMoneyValue, formatMznPlain, formatPeriod, getInitials } from '@/utils/formatters'
+import { formatMoney as formatMoneyValue, formatMznPlain } from '@/utils/formatters'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
@@ -302,21 +445,17 @@ const companyStore = useCompanyStore()
 
 const loading = ref(false)
 const installments = ref([])
-const showDetails = ref(false)
-const selectedInstallment = ref(null)
 const showMessageModal = ref(false)
 const messageChannel = ref('sms')
 const messagePhone = ref('')
 const messageAccountNumber = ref('')
 const messageCustomerName = ref('')
-const messageInitial = ref('')
+const messageInstallmentData = ref({})
 
+const activePreset = ref('default')
 const filter = ref({ status: null, search: '', from: '', to: '' })
-// Janela de "prestes a vencer" por padrão (dias a partir de hoje). Vencidas são
-// sempre incluídas. O utilizador alarga/recua com os filtros De/Até.
 const DEFAULT_UPCOMING_DAYS = 30
-// Normaliza para YYYY-MM-DD — aceita ISO, dd/mm/yyyy e Date, para os filtros
-// De/Até funcionarem quer o input devolva "2026-09-08" quer "08/09/2026".
+
 function normDate(v) {
   if (!v) return ''
   const s = String(v).trim()
@@ -327,74 +466,112 @@ function normDate(v) {
   const d = new Date(s)
   return !isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : ''
 }
+
 function addDaysISO(days) {
-  const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days)
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + days)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-function todayISO() { return addDaysISO(0) }
+
+function todayISO() {
+  return addDaysISO(0)
+}
+
 const statusOptions = [
   { label: 'Pendente', value: 0 },
-  { label: 'Pago', value: 1 },
+  { label: 'Pago / Liquidado', value: 1 },
   { label: 'Pago Parcial', value: -1 }
 ]
+
 const pagination = ref({ rowsPerPage: 15, sortBy: null, descending: false })
+
 const columns = [
   { name: 'customer', label: 'Mutuário', field: 'customerName', align: 'left', sortable: true },
   { name: 'installment', label: 'Prestação', field: 'installment', align: 'right', sortable: true },
   { name: 'dueDate', label: 'Vencimento', field: 'dueDate', align: 'center', sortable: true },
-  { name: 'observations', label: 'Observações', field: 'observations', align: 'left', sortable: false },
-  { name: 'lateFee', label: 'Mora', field: 'lateFee', align: 'right', sortable: true },
+  { name: 'observations', label: 'Situação / Observações', field: 'observations', align: 'left', sortable: false },
+  { name: 'lateFee', label: 'Mora Calculada', field: 'lateFee', align: 'right', sortable: true },
   { name: 'totalToPay', label: 'Total a Pagar', field: 'totalToPay', align: 'right', sortable: true },
   { name: 'actions', label: 'Acções', field: 'actions', align: 'center' }
 ]
 
-const stats = computed(() => ({
-  total: installments.value.length,
-  paid: installments.value.filter(i => i.status === 1).length,
-  pending: installments.value.filter(i => i.status === 0).length,
-  overdue: installments.value.filter(i => i.status !== 1 && i.daysOverdue > 0).length
-}))
+// ==================== KPIS EXECUTIVOS ====================
+const stats = computed(() => {
+  const all = installments.value
+  const paid = all.filter(i => i.status === 1)
+  const pending = all.filter(i => i.status === 0)
+  const overdue = all.filter(i => i.status !== 1 && i.daysOverdue > 0)
 
-// Indica se está activa a janela padrão "prestes a vencer" (sem De/Até definidos)
-const usingDefaultWindow = computed(() => !filter.value.from && !filter.value.to)
+  const overdueRiskAmount = overdue.reduce((sum, i) => sum + (Number(i.totalToPay) || (Number(i.installment || 0) + Number(i.lateFee || 0))), 0)
+  const upcomingAmount = pending.filter(i => i.daysUntilDue <= 30 && i.daysOverdue <= 0).reduce((sum, i) => sum + (Number(i.installment) || 0), 0)
+  const paidAmount = paid.reduce((sum, i) => sum + (Number(i.paidAmount) || Number(i.installment) || 0), 0)
+  const totalLateFee = all.reduce((sum, i) => sum + (Number(i.lateFee) || 0), 0)
+
+  return {
+    total: all.length,
+    paid: paid.length,
+    paidAmount,
+    pending: pending.length,
+    upcomingCount: pending.filter(i => i.daysUntilDue <= 30 && i.daysOverdue <= 0).length,
+    upcomingAmount,
+    overdue: overdue.length,
+    overdueRiskAmount,
+    totalLateFee
+  }
+})
+
+const isFiltering = computed(() => {
+  return activePreset.value !== 'default' || !!filter.value.search || filter.value.status !== null || !!filter.value.from || !!filter.value.to
+})
 
 const filteredInstallments = computed(() => {
   let result = [...installments.value]
-  // NOTA: linhas sem cliente correspondente NUNCA são escondidas — este ecrã é
-  // de controlo financeiro. Mostram-se com o selo "Sem cadastro" (ver template).
-  // Por padrão, excluir pagas (status=1) — só mostrar quando usuário seleciona no filtro
-  if (filter.value.status === null) {
-    result = result.filter(i => i.status !== 1)
-  } else {
+
+  // Filtro por preset rápido
+  if (activePreset.value === 'overdue') {
+    result = result.filter(i => i.status !== 1 && i.daysOverdue > 0)
+  } else if (activePreset.value === 'today') {
+    result = result.filter(i => i.status !== 1 && i.daysUntilDue === 0)
+  } else if (activePreset.value === 'paid') {
+    result = result.filter(i => i.status === 1)
+  } else if (activePreset.value === 'default') {
+    // Vencidas + próximas 30 dias (exclui liquidadas a menos que haja filtro explícito)
+    const limit = addDaysISO(DEFAULT_UPCOMING_DAYS)
+    result = result.filter(i => i.status !== 1 && i.dueDate && i.dueDate <= limit)
+  }
+
+  // Filtro explícito de estado
+  if (filter.value.status !== null) {
     result = result.filter(i => i.status === filter.value.status)
   }
+
+  // Pesquisa de texto livre
   if (filter.value.search) {
     const s = filter.value.search.toLowerCase()
-    result = result.filter(i => displayCustomerName(i).toLowerCase().includes(s) || i.accountNumber?.toString().includes(s))
+    result = result.filter(i =>
+      displayCustomerName(i).toLowerCase().includes(s) ||
+      String(i.accountNumber || '').includes(s) ||
+      String(i.customerPhone || '').includes(s)
+    )
   }
-  // Janela padrão "prestes a vencer": só quando o utilizador NÃO definiu De/Até.
-  // Mostra vencidas (e a vencer hoje) + as que vencem nos próximos N dias.
-  const usingDefault = !filter.value.from && !filter.value.to
-  if (usingDefault) {
-    const limit = addDaysISO(DEFAULT_UPCOMING_DAYS)
-    result = result.filter(i => i.dueDate && i.dueDate <= limit)
-  }
+
+  // Filtro por intervalo de datas
   const from = normDate(filter.value.from)
   const to = normDate(filter.value.to)
   if (from) result = result.filter(i => i.dueDate && normDate(i.dueDate) >= from)
   if (to) result = result.filter(i => i.dueDate && normDate(i.dueDate) <= to)
+
   return sortInstallments(result)
 })
 
-// Ordem: Vencidas → Prestes (a vencer) → Mais distantes, cronológica (mais
-// antiga/próxima primeiro) dentro de cada grupo.
 function sortInstallments(rows) {
   const today = todayISO()
   const groupRank = (row) => {
     const d = normDate(row.dueDate)
     if (!d) return 3
-    if (d < today) return 0   // vencidas
-    if (d === today) return 1 // vence hoje (tratada como "prestes")
+    if (d < today) return 0   // vencidas primeiro
+    if (d === today) return 1 // vence hoje
     return 2                  // futuras
   }
   return [...rows].sort((a, b) => {
@@ -404,38 +581,55 @@ function sortInstallments(rows) {
   })
 }
 
-// Voltar à 1ª página quando o conjunto filtrado muda
-watch(filteredInstallments, () => { pagination.value.page = 1 })
+watch(filteredInstallments, () => {
+  pagination.value.page = 1
+})
 
-function clearFilter() { filter.value = { status: null, search: '', from: '', to: '' } }
-function formatMoney(val) { return formatMoneyValue(val) }
-// Nome de apresentação: nome real ou placeholder identificável (nunca vazio)
-function displayCustomerName(row) { return row.customerName || `Conta ${row.accountNumber}` }
+function applyPreset(preset) {
+  activePreset.value = preset
+  if (preset === 'paid') {
+    filter.value.status = 1
+  } else if (filter.value.status === 1) {
+    filter.value.status = null
+  }
+}
+
+function clearFilter() {
+  activePreset.value = 'default'
+  filter.value = { status: null, search: '', from: '', to: '' }
+}
+
+function formatMoney(val) {
+  return formatMoneyValue(val)
+}
+
+function formatMoneyRaw(val) {
+  return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0)
+}
+
+function displayCustomerName(row) {
+  return row.customerName || `Conta ${row.accountNumber}`
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
   if (isNaN(d.getTime())) return '-'
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yyyy = d.getFullYear()
+  return `${dd}/${mm}/${yyyy}`
 }
-function getAvatarColor(row) {
-  const colors = ['primary', 'secondary', 'teal', 'orange', 'purple', 'blue']
-  return colors[row.customerName ? row.customerName.charCodeAt(0) % colors.length : 0]
-}
-function getStatusColor(s) { return { 1: 'positive', 0: 'orange', '-1': 'warning' }[s] || 'grey' }
-function getStatusLabel(s) { return { 1: 'Pago', 0: 'Pendente', '-1': 'Parcial' }[s] || '?' }
-function sendSMS(row) {
-  messageChannel.value = 'sms'
+
+function openSendMessageModal(row, channelType = 'sms') {
+  messageChannel.value = channelType
   messagePhone.value = row.customerPhone || ''
   messageAccountNumber.value = row.accountNumber || ''
   messageCustomerName.value = displayCustomerName(row)
-  messageInitial.value = buildDueAlertMessage(row)
+  messageInstallmentData.value = row
   showMessageModal.value = true
 }
 
-// WhatsApp inabilitado por decisão de negócio — canal bloqueado por enquanto.
-// function sendWhatsApp(row) { ... } (removido; o modal também bloqueia o canal)
-
-// Abre a página do mutuário (ícone eye da grelha) — navegação na mesma aba.
 function openCustomerPage(row) {
   if (!row?.accountNumber) {
     $q.notify({ type: 'warning', message: 'Esta prestação não tem conta de mutuário associada.', position: 'top' })
@@ -443,76 +637,25 @@ function openCustomerPage(row) {
   }
   router.push(`/mutuarios/${row.accountNumber}`)
 }
-function viewDetails(row) { selectedInstallment.value = row; showDetails.value = true }
-function formatMoneyRaw(val) { return new Intl.NumberFormat('pt-MZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val || 0) }
 
-// Mensagem automática de alerta de prestação — 2 templates distintos conforme
-// o texto de "Observações" (vencida vs. a vencer), cada um com as variáveis
-// obrigatórias do respectivo caso. Sempre <= 160 caracteres quando possível.
-function buildDueAlertMessage(row) {
-  // Texto de Observações tal como exibido na grelha (fonte da decisão do template)
-  const observacoes_dias_texto = row.status === 1
-    ? 'Liquidado'
-    : row.daysOverdue > 0
-      ? `${row.daysOverdue} dias vencido`
-      : row.daysUntilDue > 0
-        ? `${row.daysUntilDue} dias pra vencer`
-        : 'Vence hoje'
-
-  // Formato exigido para SMS: "11.021,74 MZN" — Intl pt-MZ usa espaço de
-  // não-quebra (U+00A0/U+202F) como separador de milhares; formatMznPlain
-  // troca-o por ponto normal, sem espaços estranhos na mensagem.
-  const money = (v) => formatMznPlain(Number(v) || 0).replace(/ MZN$/, '')
-  const moneyMzn = (v) => formatMznPlain(Number(v) || 0)
-
-  const mutuario_nome = displayCustomerName(row)
-  const prestacao_numero = row.installmentOrder ? String(row.installmentOrder).replace(/[ºª]/g, '') : '-'
-  const prestacao_valor = money(row.installment)
-  const vencimento_data = formatDate(row.dueDate)
-  const mora_valor = money(row.lateFee)
-  const total_a_pagar = money(row.totalToPay)
-  // moneyMzn inclui o sufixo " MZN" já no formato correcto (não usado nos
-  // templates abaixo porque estes escrevem "MZN" explicitamente).
-  const company = (companyStore.company?.companyName || 'Clack Microcredito, EI').replace(/[^a-zA-Z0-9 .,&-]/g, '')
-
-  // Regex: decide o template pelo texto de Observações e extrai a quantidade de dias
-  const isVencida = /vencido/i.test(observacoes_dias_texto)
-  const isAVencer = /pra vencer/i.test(observacoes_dias_texto)
-  const diasMatch = observacoes_dias_texto.match(/(\d+)\s*dias/i)
-  const dias = diasMatch ? diasMatch[1] : String(isVencida ? (row.daysOverdue || 0) : (row.daysUntilDue || 0))
-
-  let base
-  if (isVencida) {
-    // (a) VENCIDA — obrigatório: nome, nº prestação, valor, vencimento, dias em atraso, mora, total. Tom firme/urgente.
-    base = `Ola ${mutuario_nome}, prestacao ${prestacao_numero} de ${prestacao_valor} MZN venceu em ${vencimento_data} (${dias}d atraso). Mora: ${mora_valor} MZN. Total a pagar: ${total_a_pagar} MZN. Regularize urgente.`
-  } else if (isAVencer) {
-    // (b) A VENCER — apenas: nome, valor, dias para vencer, vencimento. Sem mora/total. Tom amigável/preventivo.
-    base = `Ola ${mutuario_nome}, sua prestacao de ${prestacao_valor} MZN vence em ${dias} dia(s), no dia ${vencimento_data}. Fique atento para evitar mora.`
-  } else {
-    // Vence hoje — variante do lembrete preventivo (sem mora/total)
-    base = `Ola ${mutuario_nome}, sua prestacao de ${prestacao_valor} MZN vence hoje (${vencimento_data}). Pague ainda hoje para evitar mora.`
-  }
-
-  const suffix = ` ${company}`
-  if (base.length + suffix.length <= 160) return base + suffix
-  // Não coube com a assinatura completa — tenta a forma curta antes de cortar o texto
-  const shortSuffix = ' Clack Microcredito'
-  if (base.length + shortSuffix.length <= 160) return base + shortSuffix
-  if (base.length >= 160) return `${base.slice(0, 159)}.`
-  return `${base}${shortSuffix.slice(0, 160 - base.length)}`
-}
-
-// ==================== EXCEL ====================
-// Gerado no backend (exceljs) com bordas/fontes reais — mesmo padrão do relatório BM.
+// ==================== EXPORTAÇÕES EXCEL & PDF ====================
 async function downloadExcel() {
   if (filteredInstallments.value.length === 0) return
   try {
-    $q.loading.show({ message: 'A gerar Excel...' })
+    $q.loading.show({ message: 'A gerar folha de cálculo Excel...' })
     const { downloadExcelFromBackend } = await import('@/utils/excelDownload')
     const rows = filteredInstallments.value.map(row => {
-      const obs = row.status === 1 ? 'Liquidado' : row.daysOverdue > 0 ? `${row.daysOverdue} dias vencido` : row.daysUntilDue > 0 ? `${row.daysUntilDue} dias pra vencer` : 'Vence hoje'
+      const obs = row.status === 1
+        ? 'Liquidado'
+        : row.daysOverdue > 0
+          ? `${row.daysOverdue} dias em atraso`
+          : row.daysUntilDue > 0
+            ? `${row.daysUntilDue} dias para vencer`
+            : 'Vence hoje'
       return {
         customerName: displayCustomerName(row),
+        accountNumber: row.accountNumber || '—',
+        phone: row.customerPhone || '—',
         installment: Number(row.installment) || 0,
         dueDate: formatDate(row.dueDate),
         observations: obs,
@@ -534,18 +677,21 @@ async function downloadExcel() {
   }
 }
 
-// ==================== PDF (BACKEND) ====================
-// POST /api/reports/table-pdf — pdfkit no servidor, nada de PDF no browser.
 async function downloadPDF() {
   if (filteredInstallments.value.length === 0) return
   try {
-    const { openTablePdf, tablePdfError } = await import('@/utils/tablePdf')
-    // Tabela única — ordenar por vencimento (recente → antigo)
+    const { openTablePdf } = await import('@/utils/tablePdf')
     const sorted = sortInstallments(filteredInstallments.value)
-    const dateStr = `${String(new Date().getDate()).padStart(2, '0')}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
+    const dateStr = formatDate(new Date().toISOString())
 
     const rows = sorted.map(row => {
-      const obs = row.status === 1 ? 'Liquidado' : row.daysOverdue > 0 ? `${row.daysOverdue} dias vencido` : row.daysUntilDue > 0 ? `${row.daysUntilDue} dias pra vencer` : 'Vence hoje'
+      const obs = row.status === 1
+        ? 'Liquidado'
+        : row.daysOverdue > 0
+          ? `${row.daysOverdue} dias em atraso`
+          : row.daysUntilDue > 0
+            ? `${row.daysUntilDue} dias para vencer`
+            : 'Vence hoje'
       return [
         displayCustomerName(row),
         formatMoneyRaw(row.installment),
@@ -556,60 +702,109 @@ async function downloadPDF() {
       ]
     })
 
-    const tm = sorted.reduce((s, r) => s + (r.lateFee || 0), 0)
-    const tg = sorted.reduce((s, r) => s + (r.totalToPay || 0), 0)
+    const tMora = sorted.reduce((s, r) => s + (Number(r.lateFee) || 0), 0)
+    const tTotal = sorted.reduce((s, r) => s + (Number(r.totalToPay) || 0), 0)
 
     await openTablePdf({
-      title: 'CONTROLE DE PRESTAÇÕES POR VENCIMENTO',
+      title: 'CONTROLO DE PRESTAÇÕES E COBRANÇA',
       meta: [`DATA: ${dateStr}`, `Registos: ${filteredInstallments.value.length}`],
       orientation: 'landscape',
-      filename: 'controle-prestacoes',
+      filename: `controle-prestacoes-${new Date().toISOString().slice(0, 10)}`,
       columns: [
         { label: 'Mutuário' },
         { label: 'Prestação', width: 70, align: 'right' },
         { label: 'Vencimento', width: 65, align: 'center' },
-        { label: 'Observações', width: 95 },
+        { label: 'Situação / Observações', width: 95 },
         { label: 'Mora', width: 60, align: 'right' },
         { label: 'Total a Pagar', width: 75, align: 'right' }
       ],
       rows,
-      totalsRow: [`TOTAL (${sorted.length} prestações)`, '', '', '', formatMoneyRaw(tm), formatMoneyRaw(tg)]
+      totalsRow: [`TOTAL (${sorted.length} prestações)`, '', '', '', formatMoneyRaw(tMora), formatMoneyRaw(tTotal)]
     })
     $q.notify({ type: 'positive', message: 'PDF gerado com sucesso!', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar PDF:', e)
-    $q.notify({ type: 'negative', message: await (await import('@/utils/tablePdf')).tablePdfError(e, 'Erro ao gerar PDF'), position: 'top' })
+    $q.notify({ type: 'negative', message: 'Erro ao gerar PDF', position: 'top' })
   }
 }
 
-// ==================== LOAD DATA ====================
 async function loadData() {
   loading.value = true
   try {
     const companyId = authStore.companyId
     if (!companyId) return
-    // Endpoint consolidado: nomes de mutuários, mora e dias de atraso são
-    // resolvidos no servidor (lista completa de clientes, sem paginação, e sem
-    // o padrão N+1 de uma chamada /amortization por crédito).
     const { data } = await api.get(`/api/installments/control/${companyId}`)
     installments.value = Array.isArray(data?.result) ? data.result : []
-  } catch (error) { console.error('Erro:', error); $q.notify({ type: 'negative', message: 'Erro ao carregar prestações', position: 'top' }) } finally { loading.value = false }
+  } catch (error) {
+    console.error('Erro ao carregar prestações:', error)
+    $q.notify({ type: 'negative', message: 'Erro ao carregar prestações', position: 'top' })
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => {
   const companyId = authStore.companyId
-  if (companyId && !companyStore.hasCompany) companyStore.fetchCompany(companyId)
+  if (companyId && !companyStore.hasCompany) {
+    companyStore.fetchCompany(companyId)
+  }
   loadData()
 })
 </script>
 
 <style lang="scss" scoped>
-.text-dark { color: #f59e0b !important; font-weight: 600; }
-body.body--dark .text-dark { color: #fbbf24 !important; }
-.kpi-card { border-radius: 12px; transition: transform 0.2s; &:hover { transform: translateY(-2px); } }
-.filter-card { border-radius: 12px; }
-.installments-header { background-color: $grey-1; border-bottom: 1px solid rgba(0, 0, 0, 0.06); }
-.installments-table { th { font-weight: 600; font-size: 11px; text-transform: uppercase; color: #6B7280; letter-spacing: 0.4px; } td { font-size: 12px; padding: 8px 12px; } }
-body.body--dark .kpi-card { background-color: $dark-page; }
-body.body--dark .installments-header { background-color: #252d42; border-bottom-color: rgba(255, 255, 255, 0.08); }
+.installments-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.kpi-card {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  transition: all 0.2s ease;
+
+  &.kpi-alert {
+    border-color: #fca5a5;
+    background: #fef2f2;
+  }
+}
+
+.filters-card {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.table-card {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+body.body--dark {
+  .kpi-card {
+    background: #1e293b;
+    border-color: #334155;
+
+    &.kpi-alert {
+      background: #450a0a;
+      border-color: #7f1d1d;
+    }
+  }
+
+  .filters-card {
+    background: #1e293b;
+    border-color: #334155;
+  }
+
+  .table-card {
+    background: #1e293b;
+    border-color: #334155;
+  }
+}
 </style>

@@ -9,6 +9,7 @@ const isCompiled = __dirname.includes(path.sep + "build" + path.sep) || __dirnam
 const projectRoot = isCompiled
   ? path.join(__dirname, "..", "..")
   : path.join(__dirname, "..");
+const uploadsDir = process.env.UPLOADS_DIR || path.join(projectRoot, "uploads");
 
 import {
   create,
@@ -136,7 +137,7 @@ import { addTranzactionBulk } from "./controllers/TranzactionBulkController";
 
 import { getAllLoanGuarantees, createGuarantee, deleteGuarantee } from "./controllers/GuaranteesController"
 
-import { b2Customer, c2Business } from "./controllers/MpesaPaymentController";
+import { b2Customer, c2Business, initiateC2B, mpesaCallbackWebhook, getTransactionStatus, queryVodacomStatus } from "./controllers/MpesaPaymentController";
 
 import { multerConfig } from "./config/multer";
 import { auth } from "./middlewares/auth";
@@ -313,8 +314,8 @@ routes.get("/logo/:image", (req: Request, res: Response) => {
   const raw = req.params.image || '';
   const fileName = path.basename(raw);
   // Primeiro tenta uploads/img, depois uploads/documents
-  const imgPath = path.join(projectRoot, 'uploads', 'img', fileName);
-  const docPath = path.join(projectRoot, 'uploads', 'documents', fileName);
+  const imgPath = path.join(uploadsDir, 'img', fileName);
+  const docPath = path.join(uploadsDir, 'documents', fileName);
   if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
   if (fs.existsSync(docPath)) return res.sendFile(docPath);
   return res.status(404).json({ success: false, message: 'Logo não encontrado.' });
@@ -323,7 +324,7 @@ routes.get("/logo/:image", (req: Request, res: Response) => {
 // Rota para servir documentos (fotos de garantias, logotipos, etc.)
 routes.get("/documents/:fileName", (req: Request, res: Response) => {
   const safeFileName = path.basename(req.params.fileName);
-  const filePath = path.join(projectRoot, 'uploads', 'documents', safeFileName);
+  const filePath = path.join(uploadsDir, 'documents', safeFileName);
   if (fs.existsSync(filePath)) return res.sendFile(filePath);
   return res.status(404).json({ success: false, message: 'Ficheiro não encontrado.' });
 });
@@ -368,6 +369,10 @@ routes.delete("/api/debt", deleteDebtp);
 
 routes.put("/api/mpesa/receive", c2Business);
 routes.post("/api/mpesa/send", b2Customer);
+routes.post("/api/mpesa/c2b/initiate", isStaff, initiateC2B);
+routes.post("/api/mpesa/c2b/callback", mpesaCallbackWebhook);
+routes.get("/api/mpesa/c2b/status/:mpesaTxId", isStaff, getTransactionStatus);
+routes.post("/api/mpesa/c2b/query-vodacom/:mpesaTxId", isStaff, queryVodacomStatus);
 
 // Notification Routes (públicas para o portal do cliente)
 routes.get("/api/notifications/customer/:companyId/:customerId", getCustomerNotifications);
@@ -409,7 +414,7 @@ routes.get("/api/download/:id", (req: Request, res: Response) => {
   const fileName = req.params.id;
 
   return fileName != null
-    ? res.sendFile(path.join(projectRoot, "uploads", fileName))
+    ? res.sendFile(path.join(uploadsDir, fileName))
     : res.json({
       success: false,
       message: "Arquivo não encontrado.",
@@ -419,7 +424,7 @@ routes.get("/api/download/:id", (req: Request, res: Response) => {
 // Documento público para abertura em nova aba sem header Authorization
 routes.get("/api/document/file/:fileName", (req: Request, res: Response) => {
   const safeFileName = path.basename(req.params.fileName);
-  return res.sendFile(path.join(projectRoot, "uploads", "documents", safeFileName));
+  return res.sendFile(path.join(uploadsDir, "documents", safeFileName));
 });
 
 // FLUXO DE SUBSCRIÇÃO — cadastro público (antes do middleware auth)
@@ -776,5 +781,10 @@ routes.get("/api/partner/recibos", partnerRecibos);
 // "RESETAR" + senha do Admin (bcrypt). O preview mostra o que será apagado.
 routes.get("/api/admin/system/reset-status", isAdmin, resetStatus);
 routes.post("/api/admin/system/reset-operational-data", isAdmin, resetOperationalData);
+
+// ==================== RELATÓRIOS FINANCEIROS E BALANCETE (PGC) ====================
+import { getBalancete, getDRE } from "./controllers/FinancialReportsController";
+routes.get("/api/financeiro/balancete", auth, getBalancete);
+routes.get("/api/financeiro/dre", auth, getDRE);
 
 export { routes };

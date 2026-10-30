@@ -1,27 +1,4 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -46,6 +23,8 @@ const UserModel_1 = require("../database/models/UserModel");
 const CustomerModel_1 = require("../database/models/CustomerModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const lateInterestService_1 = require("../services/lateInterestService");
+const financingWalletService_1 = require("../services/financingWalletService");
+const treasuryService_1 = require("../services/treasuryService");
 const parseDateSafe = (value) => {
     if (!value)
         return null;
@@ -71,36 +50,20 @@ const toNumber = (value) => {
     const n = Number(value);
     return Number.isFinite(n) ? n : 0;
 };
-const calculateTotalWithInterest = (loan) => {
-    const principal = toNumber(loan === null || loan === void 0 ? void 0 : loan.amount);
-    const rate = toNumber(loan === null || loan === void 0 ? void 0 : loan.interestRate);
-    const installments = Math.max(1, parseInt(String((loan === null || loan === void 0 ? void 0 : loan.numberOfInstallments) || 1), 10));
-    if (principal <= 0)
-        return 0;
-    if (rate <= 0)
-        return principal;
-    // Fórmula Price: PMT = P * i / (1 - (1 + i)^-n)
-    const denominator = 1 - Math.pow(1 + rate, -installments);
-    if (denominator <= 0)
-        return principal;
-    const pmt = (principal * rate) / denominator;
-    return pmt * installments;
-};
+const round2 = (value) => Math.round(toNumber(value) * 100) / 100;
 const isValidDateInput = (value) => {
     if (value === undefined || value === null || value === "")
         return true;
     return (0, moment_1.default)(String(value), "YYYY-MM-DD", true).isValid();
 };
 const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
         const { companyId } = req.params;
         const { from, to, creditManager, status } = req.query;
         const companyIdNum = parseInt(String(companyId), 10);
         if (Number.isNaN(companyIdNum) || companyIdNum <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "companyId inválido.",
-            });
+            return res.status(400).json({ success: false, message: "companyId inválido." });
         }
         if (!isValidDateInput(from) || !isValidDateInput(to)) {
             return res.status(400).json({
@@ -108,55 +71,22 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 message: "Parâmetros de data inválidos. Use o formato YYYY-MM-DD.",
             });
         }
-        if (from && to && (0, moment_1.default)(String(from)).isAfter((0, moment_1.default)(String(to)))) {
-            return res.status(400).json({
-                success: false,
-                message: "Intervalo de datas inválido: 'from' não pode ser maior que 'to'.",
-            });
-        }
-        if (creditManager !== undefined && creditManager !== "all") {
-            const managerNum = parseInt(String(creditManager), 10);
-            if (Number.isNaN(managerNum) || managerNum <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: "creditManager inválido.",
-                });
-            }
-        }
-        if (status !== undefined && status !== "" && status !== "all") {
-            const statusNum = parseInt(String(status), 10);
-            if (Number.isNaN(statusNum)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "status inválido.",
-                });
-            }
-        }
-        const loanWhere = { companyId: companyIdNum };
+        const now = (0, moment_1.default)();
+        // Período filtrado para métricas de FLUXO (desembolsos e cobranças)
+        const fromMoment = from ? (0, moment_1.default)(String(from)).startOf("day") : (0, moment_1.default)().startOf("month");
+        const toMoment = to ? (0, moment_1.default)(String(to)).endOf("day") : (0, moment_1.default)().endOf("month");
+        const fromStr = fromMoment.format("YYYY-MM-DD");
+        const toStr = toMoment.format("YYYY-MM-DD");
+        // 1. Buscar TODOS os créditos da empresa para compor métricas de STOCK e PIPELINE
+        const allLoansWhere = { companyId: companyIdNum };
         if (creditManager && creditManager !== "all") {
-            loanWhere.creditManager = parseInt(String(creditManager), 10);
+            allLoansWhere.creditManager = parseInt(String(creditManager), 10);
         }
         if (status !== undefined && status !== "" && status !== "all") {
-            loanWhere.status = parseInt(String(status), 10);
+            allLoansWhere.status = parseInt(String(status), 10);
         }
-        // dateCreated é string (YYYY-MM-DD). Filtrar no SQL para reduzir custo.
-        if (from && to) {
-            loanWhere.dateCreated = {
-                [sequelize_1.Op.between]: [String(from), String(to)],
-            };
-        }
-        else if (from) {
-            loanWhere.dateCreated = {
-                [sequelize_1.Op.gte]: String(from),
-            };
-        }
-        else if (to) {
-            loanWhere.dateCreated = {
-                [sequelize_1.Op.lte]: String(to),
-            };
-        }
-        const loans = yield LoanModel_1.LoanModel.findAll({
-            where: loanWhere,
+        const allLoans = yield LoanModel_1.LoanModel.findAll({
+            where: allLoansWhere,
             attributes: [
                 "id",
                 "companyId",
@@ -168,54 +98,41 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 "dateCreated",
                 "disbursementDate",
                 "status",
+                "approvalState",
+                "walletId",
             ],
             order: [["id", "DESC"]],
         });
-        // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
-        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
-        const fromMoment = from ? (0, moment_1.default)(String(from)).startOf("day") : null;
-        const toMoment = to ? (0, moment_1.default)(String(to)).endOf("day") : null;
-        const loanIds = loans.map((l) => l.id);
-        const loanIdSet = new Set(loanIds);
-        let transactions = [];
-        if (loanIds.length > 0) {
-            const txWhere = {
-                companyId: companyIdNum,
-                loanId: { [sequelize_1.Op.in]: loanIds },
-            };
-            if (fromMoment && toMoment) {
-                txWhere.createdAt = {
-                    [sequelize_1.Op.between]: [fromMoment.toDate(), toMoment.toDate()],
+        const loanIds = allLoans.map((l) => l.id);
+        const loanMap = {};
+        allLoans.forEach((l) => { loanMap[l.id] = l; });
+        // 2. Clientes (Nomes e Telefones para atalhos de cobrança)
+        const accountNumbers = [...new Set(allLoans.map((l) => l.accountNumber).filter(Boolean))];
+        const customerMap = {};
+        if (accountNumbers.length > 0) {
+            const customers = yield CustomerModel_1.CustomerModel.findAll({
+                where: { companyId: companyIdNum, accountNumber: { [sequelize_1.Op.in]: accountNumbers } },
+                attributes: ["accountNumber", "customerName", "customerPhone"],
+            });
+            customers.forEach((c) => {
+                customerMap[c.accountNumber] = {
+                    name: c.customerName || `Conta ${c.accountNumber}`,
+                    phone: c.customerPhone || "",
                 };
-            }
-            else if (fromMoment) {
-                txWhere.createdAt = { [sequelize_1.Op.gte]: fromMoment.toDate() };
-            }
-            else if (toMoment) {
-                txWhere.createdAt = { [sequelize_1.Op.lte]: toMoment.toDate() };
-            }
-            transactions = yield TranzactionModel_1.TranzactionModel.findAll({
-                where: txWhere,
-                attributes: [
-                    "loanId",
-                    "amount",
-                    "latePaymentInterest",
-                    "interestRateAmount",
-                    "discountAmount",
-                    "createdAt",
-                ],
             });
         }
+        // 3. Gestores
+        const managers = yield UserModel_1.UserModel.findAll({
+            where: { companyId: companyIdNum },
+            attributes: ["id", "name", "userRole"],
+        });
+        const managerNameMap = {};
+        managers.forEach((m) => { managerNameMap[m.id] = m.name; });
+        // 4. Prestações de todos os créditos (para Carteira Activa, Atrasos e PAR)
         let amortizations = [];
         if (loanIds.length > 0) {
             amortizations = yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
-                where: {
-                    companyId: companyIdNum,
-                    loanId: { [sequelize_1.Op.in]: loanIds },
-                },
-                // paidAmount é OBRIGATÓRIO: a mora é calculada sobre o saldo devedor
-                // (installment − paidAmount). Sem ele, prestações parcialmente pagas
-                // eram penalizadas como se estivessem por pagar na totalidade.
+                where: { companyId: companyIdNum, loanId: { [sequelize_1.Op.in]: loanIds } },
                 attributes: [
                     "id",
                     "loanId",
@@ -227,6 +144,7 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                     "amortization",
                     "rateAmount",
                 ],
+                order: [["dueDate", "ASC"], ["id", "ASC"]],
             });
         }
         const partialInstallments = amortizations
@@ -242,38 +160,6 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
                 debtMap[d.amortisationId] = toNumber(d.debtAmount);
             });
         }
-        const managers = yield UserModel_1.UserModel.findAll({
-            where: { companyId: companyIdNum },
-            attributes: ["id", "name", "userRole"],
-        });
-        const managerNameMap = {};
-        managers.forEach((m) => {
-            managerNameMap[m.id] = m.name;
-        });
-        const loanMap = {};
-        loans.forEach((l) => {
-            loanMap[l.id] = l;
-        });
-        // Fetch customer names for upcoming installments
-        const accountNumbers = [...new Set(loans.map((l) => l.accountNumber).filter(Boolean))];
-        const customerNameMap = {};
-        if (accountNumbers.length > 0) {
-            const customers = yield CustomerModel_1.CustomerModel.findAll({
-                where: {
-                    companyId: companyIdNum,
-                    accountNumber: { [sequelize_1.Op.in]: accountNumbers },
-                },
-                attributes: ['accountNumber', 'customerName'],
-            });
-            customers.forEach((c) => {
-                customerNameMap[c.accountNumber] = c.customerName;
-            });
-        }
-        const now = (0, moment_1.default)();
-        const openInstallments = amortizations.filter((a) => [0, -1].includes(Number(a.status)));
-        // Exposição = SALDO DEVEDOR da prestação (installment − paidAmount).
-        // A dívida registada (DebtModel) é a fonte preferida quando existe, mas
-        // nunca se volta ao valor integral se há pagamento parcial conhecido.
         const installmentExposure = (a) => {
             var _a;
             const remaining = Math.max(0, toNumber(a.installment) - toNumber(a.paidAmount));
@@ -282,10 +168,12 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             }
             return remaining;
         };
-        // Só prestações EM ABERTO (0 = pendente, -1 = parcial) entram na carteira
-        // em aberto, na mora e nos rácios PAR. Prestações liquidadas (status 1) não
-        // têm saldo nem mora — incluí-las inflacionava carteira, atraso e PAR.
+        // Parâmetros de penalização de mora da empresa
+        const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyIdNum);
+        // Prestações em aberto (0 = pendente, -1 = parcial)
+        const openInstallments = amortizations.filter((a) => [0, -1].includes(Number(a.status)));
         const calculatedInstallments = (0, calculateLateAmount_1.installmentPanification)(openInstallments, forfeit, undefined, { maxLateDays, capPercent });
+        // Identificar atrasos e escalões de mora (Aging)
         const overdueRows = calculatedInstallments
             .map((a) => {
             const due = parseDateSafe(a.dueDate);
@@ -293,325 +181,405 @@ const getDashboardOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
             return Object.assign(Object.assign({}, a), { daysOverdue: daysOverdue > 0 ? daysOverdue : 0, amountDue: installmentExposure(a) + toNumber(a.latePaymentInterest) });
         })
             .filter((a) => a.daysOverdue > 0);
-        const outstandingPortfolio = calculatedInstallments.reduce((sum, a) => sum + installmentExposure(a), 0);
-        const overdueAmount = overdueRows.reduce((sum, a) => sum + toNumber(a.amountDue), 0);
-        const par30Amount = overdueRows
-            .filter((a) => a.daysOverdue > 30)
-            .reduce((sum, a) => sum + toNumber(a.amountDue), 0);
-        const par60Amount = overdueRows
-            .filter((a) => a.daysOverdue > 60)
-            .reduce((sum, a) => sum + toNumber(a.amountDue), 0);
-        const par90Amount = overdueRows
-            .filter((a) => a.daysOverdue > 90)
-            .reduce((sum, a) => sum + toNumber(a.amountDue), 0);
-        const activeLoansList = loans.filter((l) => Number(l.status) === 1);
-        const pendingLoansList = loans.filter((l) => Number(l.status) === 0);
-        const liquidatedLoansList = loans.filter((l) => Number(l.status) === 3);
-        const rejectedLoansList = loans.filter((l) => [2, -1].includes(Number(l.status)));
-        // "Desembolsado" corresponde ao montante total de créditos efectivamente desembolsados (activos + liquidados).
-        const disbursedLoansList = loans.filter((l) => [1, 3].includes(Number(l.status)));
-        const totalDisbursed = disbursedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
-        const pendingAmount = pendingLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
-        const liquidatedAmount = liquidatedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
-        const rejectedAmount = rejectedLoansList.reduce((sum, l) => sum + toNumber(l.amount), 0);
-        // Capital recuperado: soma do capital das prestações pagas (valor pago - juros normais - juros de mora)
-        const totalCollected = transactions.reduce((sum, t) => sum + toNumber(t.amount), 0);
-        const capitalRecovered = transactions.reduce((sum, t) => sum + Math.max(0, toNumber(t.amount) - toNumber(t.interestRateAmount)), 0);
-        const totalLateInterest = transactions.reduce((sum, t) => sum + toNumber(t.latePaymentInterest), 0);
-        const totalInterestCollected = transactions.reduce((sum, t) => sum + toNumber(t.interestRateAmount), 0);
-        // Total de descontos aplicados (pagamento antecipado)
-        const totalDiscount = transactions.reduce((sum, t) => sum + toNumber(t.discountAmount), 0);
-        // Juros recebidos: juros normais + juros de mora - descontos
-        const totalInterestReceived = totalInterestCollected + totalLateInterest - totalDiscount;
-        const totalRecoveryCollected = totalCollected + totalLateInterest;
-        // Base da recuperação: créditos efetivamente desembolsados (ativos + liquidados).
-        const disbursedRecoveryLoans = loans.filter((l) => [1, 3].includes(Number(l.status)));
-        const recoveryBaseAmount = disbursedRecoveryLoans.reduce((sum, l) => sum + calculateTotalWithInterest(l), 0);
-        const recoveryRatePct = recoveryBaseAmount > 0
-            ? Number(((totalRecoveryCollected / recoveryBaseAmount) * 100).toFixed(2))
+        // =========================================================================
+        // 1. CARTEIRA ACTIVA BRUTA (Gross Loan Portfolio - GLP) & RISCO (PAR30)
+        // =========================================================================
+        const activeLoansList = allLoans.filter((l) => Number(l.status) === 1);
+        const pendingLoansList = allLoans.filter((l) => Number(l.status) === 0);
+        const liquidatedLoansList = allLoans.filter((l) => Number(l.status) === 3);
+        // Saldo Devedor Total da Carteira Activa (Stock)
+        const outstandingPortfolio = round2(calculatedInstallments.reduce((sum, a) => sum + installmentExposure(a), 0));
+        const totalContractedWithInterest = round2(amortizations.reduce((sum, a) => sum + toNumber(a.installment), 0));
+        const totalPaidSoFar = round2(amortizations.reduce((sum, a) => sum + toNumber(a.paidAmount), 0));
+        // Total de crédito em atraso (parcelas vencidas + mora acumulada)
+        const overdueAmount = round2(overdueRows.reduce((sum, a) => sum + toNumber(a.amountDue), 0));
+        const overdueRate = outstandingPortfolio > 0
+            ? round2((overdueAmount / outstandingPortfolio) * 100)
             : 0;
-        const totalLoans = loans.length;
-        const statusCount = {
-            pending: pendingLoansList.length,
-            active: activeLoansList.length,
-            rejected: rejectedLoansList.length,
-            liquidated: liquidatedLoansList.length,
+        // Padrão Internacional CGAP para PAR30:
+        // Saldo Devedor INTEGRAL dos créditos com pelo menos uma parcela em atraso > 30 dias
+        const par30LoansSet = new Set();
+        const par60LoansSet = new Set();
+        const par90LoansSet = new Set();
+        overdueRows.forEach((a) => {
+            if (a.daysOverdue > 30)
+                par30LoansSet.add(Number(a.loanId));
+            if (a.daysOverdue > 60)
+                par60LoansSet.add(Number(a.loanId));
+            if (a.daysOverdue > 90)
+                par90LoansSet.add(Number(a.loanId));
+        });
+        const calcParPortfolio = (loanSet) => {
+            const parAmorts = calculatedInstallments.filter((a) => loanSet.has(Number(a.loanId)));
+            return round2(parAmorts.reduce((sum, a) => sum + installmentExposure(a), 0));
         };
-        const riskByManagerMap = {};
-        loans.forEach((l) => {
+        const par30Portfolio = calcParPortfolio(par30LoansSet);
+        const par60Portfolio = calcParPortfolio(par60LoansSet);
+        const par90Portfolio = calcParPortfolio(par90LoansSet);
+        const par30Rate = outstandingPortfolio > 0 ? round2((par30Portfolio / outstandingPortfolio) * 100) : 0;
+        const par60Rate = outstandingPortfolio > 0 ? round2((par60Portfolio / outstandingPortfolio) * 100) : 0;
+        const par90Rate = outstandingPortfolio > 0 ? round2((par90Portfolio / outstandingPortfolio) * 100) : 0;
+        // Matriz de Envelhecimento da Carteira (Aging)
+        const currentAmort = calculatedInstallments.filter((a) => {
+            const due = parseDateSafe(a.dueDate);
+            return due && !now.isAfter(due, "day");
+        });
+        const currentAmount = round2(currentAmort.reduce((sum, a) => sum + installmentExposure(a), 0));
+        const calcAgingAmount = (minDays, maxDays) => {
+            return round2(overdueRows
+                .filter((a) => a.daysOverdue >= minDays && (maxDays ? a.daysOverdue <= maxDays : true))
+                .reduce((sum, a) => sum + toNumber(a.amountDue), 0));
+        };
+        const aging1to30 = calcAgingAmount(1, 30);
+        const aging31to60 = calcAgingAmount(31, 60);
+        const aging61to90 = calcAgingAmount(61, 90);
+        const agingOver90 = calcAgingAmount(91, 0);
+        const totalAgingBase = Math.max(1, currentAmount + aging1to30 + aging31to60 + aging61to90 + agingOver90);
+        // =========================================================================
+        // 2. FLUXO DO PERÍODO SELECCIONADO (Desembolsos & Cobranças)
+        // =========================================================================
+        // Desembolsos no período
+        const periodDisbursedLoans = allLoans.filter((l) => {
+            if (![1, 3].includes(Number(l.status)))
+                return false;
+            const disbDate = l.disbursementDate || l.dateCreated;
+            if (!disbDate)
+                return false;
+            return disbDate >= fromStr && disbDate <= toStr;
+        });
+        const periodDisbursedAmount = round2(periodDisbursedLoans.reduce((sum, l) => sum + toNumber(l.amount), 0));
+        const periodDisbursedCount = periodDisbursedLoans.length;
+        // Transações no período (pagamentos recebidos)
+        const txWhere = {
+            companyId: companyIdNum,
+            createdAt: {
+                [sequelize_1.Op.between]: [fromMoment.toDate(), toMoment.toDate()],
+            },
+        };
+        if (loanIds.length > 0) {
+            txWhere.loanId = { [sequelize_1.Op.in]: loanIds };
+        }
+        const periodTransactions = yield TranzactionModel_1.TranzactionModel.findAll({
+            where: txWhere,
+            attributes: [
+                "id",
+                "loanId",
+                "amount",
+                "latePaymentInterest",
+                "interestRateAmount",
+                "discountAmount",
+                "createdAt",
+            ],
+        });
+        const periodCollectedTotal = round2(periodTransactions.reduce((sum, t) => sum + toNumber(t.amount), 0));
+        const periodPrincipalCollected = round2(periodTransactions.reduce((sum, t) => sum + Math.max(0, toNumber(t.amount) - toNumber(t.interestRateAmount)), 0));
+        const periodInterestCollected = round2(periodTransactions.reduce((sum, t) => sum + toNumber(t.interestRateAmount), 0));
+        const periodMoraCollected = round2(periodTransactions.reduce((sum, t) => sum + toNumber(t.latePaymentInterest), 0));
+        // Prestações que venceram no período seleccionado (para calcular Taxa de Eficácia de Cobrança)
+        const dueInPeriodAmorts = amortizations.filter((a) => {
+            const d = parseDateSafe(a.dueDate);
+            if (!d)
+                return false;
+            const dStr = d.format("YYYY-MM-DD");
+            return dStr >= fromStr && dStr <= toStr;
+        });
+        const dueInPeriodExpectedAmount = round2(dueInPeriodAmorts.reduce((sum, a) => sum + toNumber(a.installment), 0));
+        const collectionEfficiencyRate = dueInPeriodExpectedAmount > 0
+            ? round2(Math.min(100, (periodCollectedTotal / dueInPeriodExpectedAmount) * 100))
+            : 100;
+        // =========================================================================
+        // 3. LIQUIDEZ REAL & TESOURARIA
+        // =========================================================================
+        let realLiquidity = { available: 0, accounts: [] };
+        try {
+            realLiquidity = yield (0, financingWalletService_1.getRealDisbursementBalance)(companyIdNum);
+        }
+        catch (_b) { }
+        let treasuryTotals = { total: 0, bank: 0, mobile: 0, cash: 0 };
+        try {
+            treasuryTotals = yield (0, treasuryService_1.getWalletTotals)(companyIdNum);
+        }
+        catch (_c) { }
+        // =========================================================================
+        // 4. FUNIL OPERACIONAL (Pipeline de Concessão)
+        // =========================================================================
+        const sevenDaysFromNow = (0, moment_1.default)().add(7, "days").format("YYYY-MM-DD");
+        const todayStr = (0, moment_1.default)().format("YYYY-MM-DD");
+        const dueThisWeekAmorts = amortizations.filter((a) => {
+            if (![0, -1].includes(Number(a.status)))
+                return false;
+            const d = parseDateSafe(a.dueDate);
+            if (!d)
+                return false;
+            const dStr = d.format("YYYY-MM-DD");
+            return dStr >= todayStr && dStr <= sevenDaysFromNow;
+        });
+        const pipeline = {
+            pendingRequestsCount: pendingLoansList.length,
+            pendingRequestsAmount: round2(pendingLoansList.reduce((s, l) => s + toNumber(l.amount), 0)),
+            approvedWaitingDisbursementCount: allLoans.filter((l) => String(l.approvalState).toUpperCase() === "APPROVED" && Number(l.status) === 0).length,
+            approvedWaitingDisbursementAmount: round2(allLoans
+                .filter((l) => String(l.approvalState).toUpperCase() === "APPROVED" && Number(l.status) === 0)
+                .reduce((s, l) => s + toNumber(l.amount), 0)),
+            dueThisWeekCount: dueThisWeekAmorts.length,
+            dueThisWeekAmount: round2(dueThisWeekAmorts.reduce((s, a) => s + installmentExposure(a), 0)),
+            criticalOverdueCount: par30LoansSet.size,
+            criticalOverdueAmount: par30Portfolio,
+        };
+        // =========================================================================
+        // 5. DESEMPENHO E RISCO POR GESTOR DE CRÉDITO
+        // =========================================================================
+        const managerStatsMap = {};
+        allLoans.forEach((l) => {
             const managerId = Number(l.creditManager) || 0;
-            if (!riskByManagerMap[managerId]) {
-                riskByManagerMap[managerId] = {
+            if (!managerStatsMap[managerId]) {
+                managerStatsMap[managerId] = {
                     managerId,
                     managerName: managerNameMap[managerId] || `Gestor #${managerId}`,
                     loansCount: 0,
-                    principal: 0,
-                    collected: 0,
+                    activeLoansCount: 0,
+                    portfolioAmount: 0,
+                    collectedInPeriod: 0,
                     overdueExposure: 0,
-                    overdueLoansSet: new Set(),
+                    par30LoansCount: 0,
                 };
             }
-            riskByManagerMap[managerId].loansCount += 1;
-            riskByManagerMap[managerId].principal += toNumber(l.amount);
+            managerStatsMap[managerId].loansCount += 1;
+            if (Number(l.status) === 1) {
+                managerStatsMap[managerId].activeLoansCount += 1;
+            }
         });
-        transactions.forEach((t) => {
+        calculatedInstallments.forEach((a) => {
+            const loan = loanMap[toNumber(a.loanId)];
+            if (!loan)
+                return;
+            const managerId = Number(loan.creditManager) || 0;
+            if (!managerStatsMap[managerId])
+                return;
+            managerStatsMap[managerId].portfolioAmount += installmentExposure(a);
+        });
+        periodTransactions.forEach((t) => {
             const loan = loanMap[toNumber(t.loanId)];
             if (!loan)
                 return;
             const managerId = Number(loan.creditManager) || 0;
-            if (!riskByManagerMap[managerId])
+            if (!managerStatsMap[managerId])
                 return;
-            riskByManagerMap[managerId].collected += toNumber(t.amount);
+            managerStatsMap[managerId].collectedInPeriod += toNumber(t.amount);
         });
         overdueRows.forEach((a) => {
             const loan = loanMap[toNumber(a.loanId)];
             if (!loan)
                 return;
             const managerId = Number(loan.creditManager) || 0;
-            if (!riskByManagerMap[managerId])
+            if (!managerStatsMap[managerId])
                 return;
-            riskByManagerMap[managerId].overdueExposure += toNumber(a.amountDue);
-            riskByManagerMap[managerId].overdueLoansSet.add(Number(a.loanId));
+            managerStatsMap[managerId].overdueExposure += toNumber(a.amountDue);
+            if (a.daysOverdue > 30) {
+                managerStatsMap[managerId].par30LoansCount += 1;
+            }
         });
-        const riskByManager = Object.values(riskByManagerMap)
+        const riskByManager = Object.values(managerStatsMap)
             .map((m) => ({
             managerId: m.managerId,
             managerName: m.managerName,
             loansCount: m.loansCount,
-            overdueLoans: m.overdueLoansSet.size,
-            principal: Number(m.principal.toFixed(2)),
-            collected: Number(m.collected.toFixed(2)),
-            overdueExposure: Number(m.overdueExposure.toFixed(2)),
-            overdueRate: m.principal > 0
-                ? Number(((m.overdueExposure / m.principal) * 100).toFixed(2))
-                : 0,
+            activeLoansCount: m.activeLoansCount,
+            portfolioAmount: round2(m.portfolioAmount),
+            collectedInPeriod: round2(m.collectedInPeriod),
+            overdueExposure: round2(m.overdueExposure),
+            overdueRate: m.portfolioAmount > 0 ? round2((m.overdueExposure / m.portfolioAmount) * 100) : 0,
+            par30LoansCount: m.par30LoansCount,
         }))
-            .sort((a, b) => b.overdueExposure - a.overdueExposure);
+            .sort((a, b) => b.portfolioAmount - a.portfolioAmount);
+        // =========================================================================
+        // 6. ALERTAS URGENTES DE COBRANÇA
+        // =========================================================================
         const alerts = overdueRows
             .sort((a, b) => b.daysOverdue - a.daysOverdue)
             .slice(0, 10)
             .map((a) => {
             const loan = loanMap[toNumber(a.loanId)];
             const managerId = loan ? Number(loan.creditManager) : 0;
+            const cust = customerMap[a.accountNumber] || { name: `Conta ${a.accountNumber}`, phone: "" };
             return {
                 loanId: a.loanId,
                 accountNumber: a.accountNumber,
+                customerName: cust.name,
+                customerPhone: cust.phone,
                 dueDate: a.dueDate,
                 daysOverdue: a.daysOverdue,
-                latePaymentInterest: Number(toNumber(a.latePaymentInterest).toFixed(2)),
-                amountDue: Number(toNumber(a.amountDue).toFixed(2)),
-                managerId,
+                latePaymentInterest: round2(a.latePaymentInterest),
+                amountDue: round2(a.amountDue),
                 managerName: managerNameMap[managerId] || `Gestor #${managerId}`,
             };
         });
-        // ── CAIXA CENTRAL: totais do mês corrente a partir do cash_registers ──
-        // Best-effort: se o módulo de tesouraria não tiver dados/falhar, o
-        // dashboard continua a funcionar (treasury fica null).
-        let treasury = null;
+        // =========================================================================
+        // 7. PRÓXIMAS PRESTAÇÕES A VENCER (0 a 30 dias)
+        // =========================================================================
+        const thirtyDaysFromNow = (0, moment_1.default)().add(30, "days").toDate();
+        const upcomingInstallments = amortizations
+            .filter((a) => {
+            if (![0, -1].includes(Number(a.status)))
+                return false;
+            const d = parseDateSafe(a.dueDate);
+            if (!d)
+                return false;
+            return d.toDate() >= now.toDate() && d.toDate() <= thirtyDaysFromNow;
+        })
+            .sort((a, b) => {
+            var _a, _b;
+            const dA = ((_a = parseDateSafe(a.dueDate)) === null || _a === void 0 ? void 0 : _a.unix()) || 0;
+            const dB = ((_b = parseDateSafe(b.dueDate)) === null || _b === void 0 ? void 0 : _b.unix()) || 0;
+            return dA - dB;
+        })
+            .slice(0, 10)
+            .map((a) => {
+            const loan = loanMap[toNumber(a.loanId)];
+            const managerId = loan ? Number(loan.creditManager) : 0;
+            const cust = customerMap[a.accountNumber] || { name: `Conta ${a.accountNumber}`, phone: "" };
+            const due = parseDateSafe(a.dueDate);
+            const daysUntilDue = due ? Math.max(0, Math.ceil(due.diff(now, "days", true))) : 0;
+            return {
+                id: a.id,
+                loanId: a.loanId,
+                accountNumber: a.accountNumber,
+                customerName: cust.name,
+                customerPhone: cust.phone,
+                amount: round2(a.installment),
+                dueDate: a.dueDate,
+                daysUntilDue,
+                status: Number(a.status),
+                managerName: managerNameMap[managerId] || `Gestor #${managerId}`,
+            };
+        });
+        // =========================================================================
+        // 8. GRÁFICO HISTÓRICO COMPARATIVO (Últimos 6 meses)
+        // =========================================================================
+        const chartLabels = [];
+        const chartDisbursed = [];
+        const chartPayments = [];
+        const ptMonths = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+        for (let i = 5; i >= 0; i--) {
+            const m = (0, moment_1.default)().subtract(i, "months");
+            const mLabel = `${ptMonths[m.month()]}/${m.format("YY")}`;
+            chartLabels.push(mLabel);
+            const mStart = m.clone().startOf("month").format("YYYY-MM-DD");
+            const mEnd = m.clone().endOf("month").format("YYYY-MM-DD");
+            const monthDisb = allLoans
+                .filter((l) => [1, 3].includes(Number(l.status)) && (l.disbursementDate || l.dateCreated) >= mStart && (l.disbursementDate || l.dateCreated) <= mEnd)
+                .reduce((sum, l) => sum + toNumber(l.amount), 0);
+            chartDisbursed.push(round2(monthDisb));
+            // As transações do mês são buscadas sob procura
+            const mStartDate = m.clone().startOf("month").toDate();
+            const mEndDate = m.clone().endOf("month").toDate();
+            const monthTx = yield TranzactionModel_1.TranzactionModel.sum("amount", {
+                where: {
+                    companyId: companyIdNum,
+                    createdAt: { [sequelize_1.Op.between]: [mStartDate, mEndDate] },
+                },
+            });
+            chartPayments.push(round2(monthTx || 0));
+        }
+        // =========================================================================
+        // 9. RESUMO COMPACTO DAS CARTEIRAS DE FINANCIADORES
+        // =========================================================================
+        let walletsSummary = null;
         try {
-            const { CashRegisterModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/CashRegisterModel")));
-            const monthStart = (0, moment_1.default)().startOf("month").format("YYYY-MM-DD");
-            const monthRegisters = (yield CashRegisterModel.findAll({
-                where: { companyId: companyIdNum, opening_date: { [sequelize_1.Op.gte]: monthStart } },
-                attributes: [
-                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_in")), "monthIn"],
-                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_out")), "monthOut"],
-                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_bank_in")), "monthBankIn"],
-                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_bank_out")), "monthBankOut"],
-                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_cash_in")), "monthCashIn"],
-                    [CashRegisterModel.sequelize.fn("SUM", CashRegisterModel.sequelize.col("total_cash_out")), "monthCashOut"],
-                ],
-                raw: true,
-            }));
-            const monthRow = monthRegisters[0] || {};
-            const { getWalletTotals } = yield Promise.resolve().then(() => __importStar(require("../services/treasuryService")));
-            const wallet = yield getWalletTotals(companyIdNum);
-            treasury = {
-                monthIn: Number(monthRow.monthIn) || 0,
-                monthOut: Number(monthRow.monthOut) || 0,
-                monthBankIn: Number(monthRow.monthBankIn) || 0,
-                monthBankOut: Number(monthRow.monthBankOut) || 0,
-                monthCashIn: Number(monthRow.monthCashIn) || 0,
-                monthCashOut: Number(monthRow.monthCashOut) || 0,
-                bankBalance: wallet.bank,
-                mobileBalance: wallet.mobile,
-                cashBalance: wallet.cash,
-                totalBalance: wallet.total,
+            const ws = yield (0, financingWalletService_1.getWalletsWithAnalytics)(companyIdNum, { onlyActive: true });
+            const wSum = yield (0, financingWalletService_1.getWalletTotalsSummary)(companyIdNum);
+            walletsSummary = {
+                summary: wSum,
+                items: ws.map((w) => ({
+                    id: w.id,
+                    codigo: w.codigo,
+                    nome: w.nome,
+                    parceiro_nome: w.parceiro_nome,
+                    allocated_amount: w.allocated_amount,
+                    disbursed: w.disbursed,
+                    saldo_analitico: w.saldo_analitico,
+                    utilizacao: w.utilizacao,
+                    num_creditos: w.num_creditos,
+                    taxa_juro: w.taxa_juro,
+                    cor_badge: w.cor_badge,
+                })),
             };
         }
-        catch (treasuryError) {
-            console.error("[Dashboard] Tesouraria indisponível:", (treasuryError === null || treasuryError === void 0 ? void 0 : treasuryError.message) || treasuryError);
-        }
+        catch (_d) { }
+        // Resposta final completa e compatível com microcrédito bancário
         return res.status(200).json({
             success: true,
-            filters: {
-                companyId: Number(companyId),
-                from: from ? String(from) : null,
-                to: to ? String(to) : null,
-                creditManager: creditManager ? Number(creditManager) : null,
-                status: status !== undefined && status !== "" ? Number(status) : null,
+            period: {
+                from: fromStr,
+                to: toStr,
+                label: `${fromMoment.format("DD/MM/YYYY")} a ${toMoment.format("DD/MM/YYYY")}`,
             },
-            treasury,
             kpis: {
-                loans: Object.assign({ total: totalLoans }, statusCount),
-                financial: {
-                    totalDisbursed: Number(totalDisbursed.toFixed(2)),
-                    pendingAmount: Number(pendingAmount.toFixed(2)),
-                    liquidatedAmount: Number(liquidatedAmount.toFixed(2)),
-                    rejectedAmount: Number(rejectedAmount.toFixed(2)),
-                    totalCollected: Number(totalCollected.toFixed(2)),
-                    // Reconciliação: dinheiro efectivamente recebido na tesouraria.
-                    cashReceived: Number(totalCollected.toFixed(2)),
-                    // Capital recuperado: soma do capital das prestações pagas (valor pago - juros)
-                    capitalRecovered: Number(capitalRecovered.toFixed(2)),
-                    // Total com Juros: crédito desembolsado com seus juros (base de recuperação)
-                    totalWithInterest: Number(recoveryBaseAmount.toFixed(2)),
-                    totalInterestCollected: Number(totalInterestCollected.toFixed(2)),
-                    // Total de descontos aplicados (pagamento antecipado)
-                    totalDiscount: Number(totalDiscount.toFixed(2)),
-                    // Total de juros recebidos: juros normais + juros de mora - descontos aplicados
-                    totalInterestReceived: Number(totalInterestReceived.toFixed(2)),
-                    // Total Reembolsado: capital + juros normais + mora aplicada.
-                    totalReimbursed: Number((capitalRecovered + totalInterestCollected + totalLateInterest - totalDiscount).toFixed(2)),
-                    totalLateInterest: Number(totalLateInterest.toFixed(2)),
-                    recoveryBaseAmount: Number(recoveryBaseAmount.toFixed(2)),
-                    recoveryCollectedAmount: Number(totalRecoveryCollected.toFixed(2)),
-                    recoveryRatePct,
-                    avgTicket: disbursedLoansList.length > 0
-                        ? Number((totalDisbursed / disbursedLoansList.length).toFixed(2))
-                        : 0,
-                    roiPct: totalDisbursed > 0
-                        ? Number((((totalInterestCollected + totalLateInterest) / totalDisbursed) * 100).toFixed(2))
-                        : 0,
+                portfolio: {
+                    activeLoansCount: activeLoansList.length,
+                    outstandingPortfolio,
+                    totalContractedWithInterest,
+                    totalPaidSoFar,
+                    activeBorrowersCount: new Set(activeLoansList.map((l) => l.accountNumber)).size,
                 },
                 delinquency: {
-                    outstandingPortfolio: Number(outstandingPortfolio.toFixed(2)),
-                    overdueAmount: Number(overdueAmount.toFixed(2)),
-                    overdueRate: outstandingPortfolio > 0
-                        ? Number(((overdueAmount / outstandingPortfolio) * 100).toFixed(2))
-                        : 0,
-                    par30Amount: Number(par30Amount.toFixed(2)),
-                    par60Amount: Number(par60Amount.toFixed(2)),
-                    par90Amount: Number(par90Amount.toFixed(2)),
-                    par30Rate: outstandingPortfolio > 0
-                        ? Number(((par30Amount / outstandingPortfolio) * 100).toFixed(2))
-                        : 0,
-                    par60Rate: outstandingPortfolio > 0
-                        ? Number(((par60Amount / outstandingPortfolio) * 100).toFixed(2))
-                        : 0,
-                    par90Rate: outstandingPortfolio > 0
-                        ? Number(((par90Amount / outstandingPortfolio) * 100).toFixed(2))
-                        : 0,
+                    overdueAmount,
+                    overdueRate,
+                    par30Amount: par30Portfolio,
+                    par30Rate,
+                    par60Amount: par60Portfolio,
+                    par60Rate,
+                    par90Amount: par90Portfolio,
+                    par90Rate,
+                    overdueLoansCount: overdueRows.length > 0 ? new Set(overdueRows.map((r) => r.loanId)).size : 0,
                     overdueInstallmentsCount: overdueRows.length,
+                    aging: {
+                        current: currentAmount,
+                        currentRate: round2((currentAmount / totalAgingBase) * 100),
+                        days1to30: aging1to30,
+                        days1to30Rate: round2((aging1to30 / totalAgingBase) * 100),
+                        days31to60: aging31to60,
+                        days31to60Rate: round2((aging31to60 / totalAgingBase) * 100),
+                        days61to90: aging61to90,
+                        days61to90Rate: round2((aging61to90 / totalAgingBase) * 100),
+                        daysOver90: agingOver90,
+                        daysOver90Rate: round2((agingOver90 / totalAgingBase) * 100),
+                    },
                 },
+                movement: {
+                    disbursedAmount: periodDisbursedAmount,
+                    disbursedCount: periodDisbursedCount,
+                    collectedAmount: periodCollectedTotal,
+                    principalCollected: periodPrincipalCollected,
+                    interestCollected: periodInterestCollected,
+                    moraCollected: periodMoraCollected,
+                    paymentsCount: periodTransactions.length,
+                    expectedDueAmount: dueInPeriodExpectedAmount,
+                    collectionEfficiencyRate,
+                },
+                liquidity: {
+                    availableForDisbursement: round2(realLiquidity.available),
+                    disbursementAccountsCount: ((_a = realLiquidity.accounts) === null || _a === void 0 ? void 0 : _a.length) || 0,
+                    totalBankBalance: round2(treasuryTotals.bank),
+                    totalCashBalance: round2(treasuryTotals.cash),
+                    totalTreasury: round2(treasuryTotals.total),
+                },
+                pipeline,
             },
             riskByManager,
             alerts,
-            // Chart data: monthly breakdown of disbursements and payments
-            chartData: generateChartData(loans.filter((l) => [1, 3].includes(Number(l.status))), transactions),
-            // Upcoming installments (next 30 days)
-            upcomingInstallments: generateUpcomingInstallments(amortizations, loanMap, managerNameMap, customerNameMap),
+            upcomingInstallments,
+            chartData: {
+                labels: chartLabels,
+                disbursed: chartDisbursed,
+                payments: chartPayments,
+            },
+            walletsSummary,
         });
     }
     catch (error) {
-        console.error("Erro ao obter visão agregada do dashboard:", error);
-        return res.status(500).json({
-            success: false,
-            message: error.message || "Erro interno ao obter dashboard.",
-        });
+        console.error("Erro ao obter visão do dashboard:", error);
+        return res.status(500).json({ success: false, message: error.message || "Erro interno no dashboard." });
     }
 });
 exports.getDashboardOverview = getDashboardOverview;
-function generateChartData(loans, transactions) {
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    // Find the earliest month with data in the current year
-    let earliestMonth = currentMonth; // default: current month
-    loans.forEach((loan) => {
-        const date = new Date(loan.disbursementDate || loan.dateCreated);
-        if (date.getFullYear() === currentYear) {
-            const m = date.getMonth();
-            if (m < earliestMonth)
-                earliestMonth = m;
-        }
-    });
-    transactions.forEach((tx) => {
-        const date = new Date(tx.createdAt);
-        if (date.getFullYear() === currentYear) {
-            const m = date.getMonth();
-            if (m < earliestMonth)
-                earliestMonth = m;
-        }
-    });
-    // Build arrays only from earliest month to current month
-    const monthCount = currentMonth - earliestMonth + 1;
-    const disbursed = new Array(monthCount).fill(0);
-    const payments = new Array(monthCount).fill(0);
-    const labels = months.slice(earliestMonth, currentMonth + 1);
-    // Aggregate disbursements by month (using disbursement date)
-    loans.forEach((loan) => {
-        const date = new Date(loan.disbursementDate || loan.dateCreated);
-        if (date.getFullYear() === currentYear) {
-            const month = date.getMonth();
-            if (month >= earliestMonth && month <= currentMonth) {
-                disbursed[month - earliestMonth] += toNumber(loan.amount);
-            }
-        }
-    });
-    // Aggregate payments by month
-    transactions.forEach((tx) => {
-        const date = new Date(tx.createdAt);
-        if (date.getFullYear() === currentYear) {
-            const month = date.getMonth();
-            if (month >= earliestMonth && month <= currentMonth) {
-                payments[month - earliestMonth] += toNumber(tx.amount);
-            }
-        }
-    });
-    return {
-        labels,
-        disbursed: disbursed.map(v => Math.round(v * 100) / 100),
-        payments: payments.map(v => Math.round(v * 100) / 100)
-    };
-}
-function generateUpcomingInstallments(amortizations, loanMap, managerNameMap, customerNameMap) {
-    const now = (0, moment_1.default)();
-    const thirtyDaysFromNow = (0, moment_1.default)().add(30, 'days');
-    return amortizations
-        .filter((a) => {
-        const status = Number(a.status);
-        // Only pending (0) or partial (-1)
-        if (status !== 0 && status !== -1)
-            return false;
-        const due = parseDateSafe(a.dueDate);
-        if (!due)
-            return false;
-        // Due date is between now and 30 days from now
-        return due.isAfter(now) && due.isBefore(thirtyDaysFromNow);
-    })
-        .sort((a, b) => {
-        const dateA = parseDateSafe(a.dueDate);
-        const dateB = parseDateSafe(b.dueDate);
-        return ((dateA === null || dateA === void 0 ? void 0 : dateA.unix()) || 0) - ((dateB === null || dateB === void 0 ? void 0 : dateB.unix()) || 0);
-    })
-        .slice(0, 10)
-        .map((a) => {
-        const loan = loanMap[toNumber(a.loanId)];
-        const managerId = loan ? Number(loan.creditManager) : 0;
-        const due = parseDateSafe(a.dueDate);
-        const daysUntilDue = due ? Math.ceil(due.diff(now, 'milliseconds') / (1000 * 60 * 60 * 24)) : 0;
-        return {
-            id: a.id,
-            loanId: a.loanId,
-            accountNumber: a.accountNumber,
-            customerName: customerNameMap[a.accountNumber] || `Conta ${a.accountNumber}`,
-            amount: toNumber(a.installment),
-            dueDate: a.dueDate,
-            daysUntilDue,
-            status: Number(a.status),
-            managerName: managerNameMap[managerId] || `Gestor #${managerId}`
-        };
-    });
-}

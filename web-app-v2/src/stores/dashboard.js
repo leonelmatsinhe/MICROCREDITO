@@ -3,37 +3,96 @@ import { api } from '@/boot/axios'
 
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
-    kpis: {
-      totalCustomers: 0,
-      activeLoans: 0,
-      finishedLoans: 0,
-      totalDisbursed: 0,
-      pendingAmount: 0,
-      rejectedAmount: 0,
-      capitalRecovered: 0,
-      totalWithInterest: 0,
-      totalInterestReceived: 0,
-      totalLateInterest: 0,
-      cashReceived: 0,
-      totalReimbursed: 0
+    // 1. CARTEIRA ACTIVA BRUTA (Gross Loan Portfolio - Stock)
+    portfolio: {
+      activeLoansCount: 0,
+      outstandingPortfolio: 0,
+      totalContractedWithInterest: 0,
+      totalPaidSoFar: 0,
+      activeBorrowersCount: 0
     },
+    // 2. RISCO E INCUMPRIMENTO (PAR - CGAP Standard)
+    delinquency: {
+      overdueAmount: 0,
+      overdueRate: 0,
+      par30Amount: 0,
+      par30Rate: 0,
+      par60Amount: 0,
+      par60Rate: 0,
+      par90Amount: 0,
+      par90Rate: 0,
+      overdueLoansCount: 0,
+      overdueInstallmentsCount: 0,
+      aging: {
+        current: 0,
+        currentRate: 100,
+        days1to30: 0,
+        days1to30Rate: 0,
+        days31to60: 0,
+        days31to60Rate: 0,
+        days61to90: 0,
+        days61to90Rate: 0,
+        daysOver90: 0,
+        daysOver90Rate: 0
+      }
+    },
+    // 3. FLUXO DO PERÍODO FILTRADO (Desembolsos & Cobranças)
+    movement: {
+      disbursedAmount: 0,
+      disbursedCount: 0,
+      collectedAmount: 0,
+      principalCollected: 0,
+      interestCollected: 0,
+      moraCollected: 0,
+      paymentsCount: 0,
+      expectedDueAmount: 0,
+      collectionEfficiencyRate: 100
+    },
+    // 4. LIQUIDEZ E TESOURARIA
+    liquidity: {
+      availableForDisbursement: 0,
+      disbursementAccountsCount: 0,
+      totalBankBalance: 0,
+      totalCashBalance: 0,
+      totalTreasury: 0
+    },
+    // 5. FUNIL OPERACIONAL (Pipeline de Concessão)
+    pipeline: {
+      pendingRequestsCount: 0,
+      pendingRequestsAmount: 0,
+      approvedWaitingDisbursementCount: 0,
+      approvedWaitingDisbursementAmount: 0,
+      dueThisWeekCount: 0,
+      dueThisWeekAmount: 0,
+      criticalOverdueCount: 0,
+      criticalOverdueAmount: 0
+    },
+    // Risco e produtividade por gestor
+    riskByManager: [],
+    // Alertas de atraso (com telefone e dados de cobrança)
+    alerts: [],
+    // Próximas parcelas a vencer
+    upcomingInstallments: [],
+    // Gráficos comparativos (últimos 6 meses)
     chartData: {
       labels: [],
       disbursed: [],
       payments: []
     },
-    overdueInstallments: [],
-    upcomingInstallments: [],
-    recentActivity: [],
-    riskByManager: [],
+    // Resumo compacto de carteiras de financiadores
+    walletsSummary: null,
+    // Período
+    period: null,
     loading: false,
     error: null,
-    rawKpis: null,
-    treasury: null
+    rawKpis: null
   }),
 
   getters: {
-    hasData: (state) => state.kpis.totalDisbursed > 0 || state.kpis.totalCustomers > 0
+    hasData: (state) =>
+      Number(state.portfolio?.outstandingPortfolio || 0) > 0 ||
+      Number(state.movement?.disbursedAmount || 0) > 0 ||
+      Number(state.movement?.collectedAmount || 0) > 0
   },
 
   actions: {
@@ -45,109 +104,119 @@ export const useDashboardStore = defineStore('dashboard', {
         const params = {}
         if (filters.from) params.from = filters.from
         if (filters.to) params.to = filters.to
+        if (filters.creditManager) params.creditManager = filters.creditManager
+        if (filters.status) params.status = filters.status
 
         const { data } = await api.get(`/api/dashboard/${companyId}`, { params })
 
         if (data && data.success) {
-          // Store raw KPIs for reference
           this.rawKpis = data.kpis
-          // CAIXA CENTRAL: totais do mês + saldos reais da carteira
-          this.treasury = data.treasury || null
+          this.period = data.period || null
 
-          // Map KPIs from API response structure
-          const loans = data.kpis?.loans || {}
-          const financial = data.kpis?.financial || {}
-
-          this.kpis = {
-            totalCustomers: (loans.active || 0) + (loans.liquidated || 0),
-            activeLoans: loans.active || 0,
-            finishedLoans: loans.liquidated || 0,
-            totalDisbursed: financial.totalDisbursed || 0,
-            pendingAmount: financial.pendingAmount || 0,
-            rejectedAmount: financial.rejectedAmount || 0,
-            // Capital recuperado: soma dos pagamentos efectivos
-            capitalRecovered: financial.capitalRecovered || financial.totalCollected || 0,
-            // Total com Juros: crédito desembolsado com seus juros
-            totalWithInterest: financial.totalWithInterest || 0,
-            // Juros recebidos: juros normais + juros de mora (inclui descontos de pagamento antecipado)
-            totalInterestReceived: financial.totalInterestReceived || 0,
-            totalLateInterest: financial.totalLateInterest || 0,
-            cashReceived: financial.cashReceived || financial.totalCollected || 0,
-            // Capital + juros normais recebidos; a mora fica discriminada abaixo.
-            totalReimbursed: (financial.capitalRecovered || 0) + (financial.totalInterestCollected || 0)
+          // 1. Portfolio
+          this.portfolio = data.kpis?.portfolio || {
+            activeLoansCount: 0,
+            outstandingPortfolio: 0,
+            totalContractedWithInterest: 0,
+            totalPaidSoFar: 0,
+            activeBorrowersCount: 0
           }
 
-          // Map alerts to overdue installments
-          if (data.alerts && Array.isArray(data.alerts)) {
-            this.overdueInstallments = data.alerts.map(alert => ({
-              id: alert.loanId,
-              loanId: alert.loanId,
-              accountNumber: alert.accountNumber,
-              customerName: alert.customerName || `Conta ${alert.accountNumber}`,
-              amount: alert.amountDue || 0,
-              daysOverdue: alert.daysOverdue || 0,
-              dueDate: alert.dueDate,
-              managerName: alert.managerName
-            }))
+          // 2. Delinquency (PAR & Aging)
+          this.delinquency = data.kpis?.delinquency || {
+            overdueAmount: 0,
+            overdueRate: 0,
+            par30Amount: 0,
+            par30Rate: 0,
+            par60Amount: 0,
+            par60Rate: 0,
+            par90Amount: 0,
+            par90Rate: 0,
+            overdueLoansCount: 0,
+            overdueInstallmentsCount: 0,
+            aging: {
+              current: 0,
+              currentRate: 100,
+              days1to30: 0,
+              days1to30Rate: 0,
+              days31to60: 0,
+              days31to60Rate: 0,
+              days61to90: 0,
+              days61to90Rate: 0,
+              daysOver90: 0,
+              daysOver90Rate: 0
+            }
           }
 
-          // Risk by manager
-          if (data.riskByManager && Array.isArray(data.riskByManager)) {
-            this.riskByManager = data.riskByManager
+          // 3. Movement
+          this.movement = data.kpis?.movement || {
+            disbursedAmount: 0,
+            disbursedCount: 0,
+            collectedAmount: 0,
+            principalCollected: 0,
+            interestCollected: 0,
+            moraCollected: 0,
+            paymentsCount: 0,
+            expectedDueAmount: 0,
+            collectionEfficiencyRate: 100
           }
 
-          // Map chart data from API
-          if (data.chartData) {
-            this.chartData = data.chartData
-          } else if (!this.chartData.labels.length) {
-            this.generateDefaultChartData()
+          // 4. Liquidity
+          this.liquidity = data.kpis?.liquidity || {
+            availableForDisbursement: 0,
+            disbursementAccountsCount: 0,
+            totalBankBalance: 0,
+            totalCashBalance: 0,
+            totalTreasury: 0
           }
 
-          // Map upcoming installments
-          if (data.upcomingInstallments && Array.isArray(data.upcomingInstallments)) {
-            this.upcomingInstallments = data.upcomingInstallments
+          // 5. Pipeline
+          this.pipeline = data.kpis?.pipeline || {
+            pendingRequestsCount: 0,
+            pendingRequestsAmount: 0,
+            approvedWaitingDisbursementCount: 0,
+            approvedWaitingDisbursementAmount: 0,
+            dueThisWeekCount: 0,
+            dueThisWeekAmount: 0,
+            criticalOverdueCount: 0,
+            criticalOverdueAmount: 0
           }
+
+          // Gestores
+          this.riskByManager = data.riskByManager || []
+
+          // Alertas
+          this.alerts = data.alerts || []
+
+          // Próximas prestações
+          this.upcomingInstallments = data.upcomingInstallments || []
+
+          // Gráfico
+          this.chartData = data.chartData || { labels: [], disbursed: [], payments: [] }
+
+          // Carteiras
+          this.walletsSummary = data.walletsSummary || null
         }
       } catch (error) {
         console.error('Erro ao carregar dashboard:', error)
-        this.error = error.message
+        this.error = error.response?.data?.message || error.message || 'Erro ao carregar dashboard'
       } finally {
         this.loading = false
       }
     },
 
-    generateDefaultChartData() {
-      const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
-      const now = new Date()
-      const currentMonth = now.getMonth()
-      
-      this.chartData = {
-        labels: months.slice(0, currentMonth + 1),
-        disbursed: new Array(currentMonth + 1).fill(0),
-        payments: new Array(currentMonth + 1).fill(0)
-      }
-    },
-
     clearData() {
-      this.kpis = {
-        totalCustomers: 0,
-        activeLoans: 0,
-        finishedLoans: 0,
-        totalDisbursed: 0,
-        pendingAmount: 0,
-        rejectedAmount: 0,
-        capitalRecovered: 0,
-        totalWithInterest: 0,
-        totalInterestReceived: 0,
-        totalLateInterest: 0,
-        totalReimbursed: 0
-      }
-      this.chartData = { labels: [], disbursed: [], payments: [] }
-      this.overdueInstallments = []
-      this.upcomingInstallments = []
+      this.portfolio = { activeLoansCount: 0, outstandingPortfolio: 0, totalContractedWithInterest: 0, totalPaidSoFar: 0, activeBorrowersCount: 0 }
+      this.delinquency = { overdueAmount: 0, overdueRate: 0, par30Amount: 0, par30Rate: 0, par60Amount: 0, par60Rate: 0, par90Amount: 0, par90Rate: 0, overdueLoansCount: 0, overdueInstallmentsCount: 0, aging: { current: 0, currentRate: 100, days1to30: 0, days1to30Rate: 0, days31to60: 0, days31to60Rate: 0, days61to90: 0, days61to90Rate: 0, daysOver90: 0, daysOver90Rate: 0 } }
+      this.movement = { disbursedAmount: 0, disbursedCount: 0, collectedAmount: 0, principalCollected: 0, interestCollected: 0, moraCollected: 0, paymentsCount: 0, expectedDueAmount: 0, collectionEfficiencyRate: 100 }
+      this.liquidity = { availableForDisbursement: 0, disbursementAccountsCount: 0, totalBankBalance: 0, totalCashBalance: 0, totalTreasury: 0 }
+      this.pipeline = { pendingRequestsCount: 0, pendingRequestsAmount: 0, approvedWaitingDisbursementCount: 0, approvedWaitingDisbursementAmount: 0, dueThisWeekCount: 0, dueThisWeekAmount: 0, criticalOverdueCount: 0, criticalOverdueAmount: 0 }
       this.riskByManager = []
-      this.rawKpis = null
-      this.treasury = null
+      this.alerts = []
+      this.upcomingInstallments = []
+      this.chartData = { labels: [], disbursed: [], payments: [] }
+      this.walletsSummary = null
+      this.period = null
     }
   }
 })

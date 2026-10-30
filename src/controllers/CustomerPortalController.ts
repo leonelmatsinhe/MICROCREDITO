@@ -14,8 +14,7 @@ import { DebtModel } from "../database/models/DebtModel";
 import { UserModel } from "../database/models/UserModel";
 import { NotificationModel } from "../database/models/NotificationModel";
 import { checkAndLiquidateLoan } from "./TranzactionController";
-import mpesa from "mpesa-node-api";
-import { MpesaResponse } from "../interfaces/Simulator";
+import { initiateC2BPayment } from "../services/MpesaOpenApiService";
 import { installmentPanification } from "../utils/calculateLateAmount";
 import { getLegacyPenaltyParams } from "../services/lateInterestService";
 import { CompanyModel } from "../database/models/CompanyModel";
@@ -61,6 +60,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
     let totalDisbursed = 0;
     let totalPaid = 0;
     let totalDebt = 0;
+    let globalTotalLateFee = 0;
 
     for (const loan of loans) {
       const loanData = loan.toJSON() as any;
@@ -111,23 +111,24 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
 
       // Calcular totais
       const loanTotal = installmentList.reduce((sum: number, a: any) => sum + (Number(a.installment) || 0), 0);
-      const loanPaid = installmentList
-        .filter((a: any) => Number(a.status) === 1)
-        .reduce((sum: number, a: any) => sum + (Number(a.paidAmount) || Number(a.installment) || 0), 0);
+      const loanPaid = installmentList.reduce((sum: number, a: any) => sum + (Number(a.paidAmount) || (Number(a.status) === 1 ? Number(a.installment) : 0)), 0);
+
+
 
       // Juros de mora pendentes — soma da mora calculada pela fonte de verdade
-      const totalLateFee = installmentList.reduce(
+      const totalLateFee = installmentList.filter((a: any) => Number(a.status) !== 1).reduce(
         (sum: number, a: any) => sum + (Number(a.latePaymentInterest) || 0),
         0
       );
 
-      const loanDebt = loanTotal - loanPaid;
+      const loanDebt = Math.max(0, loanTotal - loanPaid);
 
       if (status === 1 || status === 3) {
         totalDisbursed += Number(loanData.amount) || 0;
       }
       totalPaid += loanPaid;
       totalDebt += Math.max(0, loanDebt);
+      globalTotalLateFee += totalLateFee;
 
       loanList.push({
         id: loanData.id,
@@ -139,7 +140,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
         loanDescription: loanData.loanDescription,
         totalPaid: loanPaid,
         totalDebt: Math.max(0, loanDebt),
-        totalLateFee,
+        totalLateFee: globalTotalLateFee,
         paidCount: paidInstallments.length,
         pendingCount: pendingInstallments.length,
         installments: installmentList.map((a: any) => ({
@@ -201,6 +202,8 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
       return {
         id: tx.id,
         amount: toNumber(tx.amount),
+        totalAmount: toNumber(tx.totalAmount) || (toNumber(tx.amount) + (toNumber(tx.latePaymentInterest) || toNumber(tx.mora_amount))),
+        principalAmount: toNumber(tx.amount),
         // Comprovativo do pagamento (recibo com numeração sequencial legal)
         reciboId: recibo ? Number(recibo.id) : null,
         reciboNumero: recibo ? recibo.numero : null,
@@ -213,7 +216,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
         amortizationLoanId: tx.amortizationLoanId || null,
         installmentOrder: installmentOrderById[Number(tx.amortizationLoanId)] || null,
         paymentDate: tx.paymentDate || null,
-        latePaymentInterest: toNumber(tx.latePaymentInterest),
+        latePaymentInterest: toNumber(tx.latePaymentInterest) || toNumber(tx.mora_amount),
         createdAt: tx.createdAt,
       };
     });
@@ -246,6 +249,7 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
         phone: customerData.customerPhone,
         email: customerData.customerEmail || null,
         accountNumber: customerData.accountNumber,
+        nuit: customerData.customerNuit || null,
         isSelfRegistered: customerData.isSelfRegistered || 0,
         registrationDate: customerData.createdAt || customerData.dateCreated || null,
         monthlySalary: customerData.customerMonthlySalary
@@ -272,6 +276,8 @@ export const getCustomerDashboard = async (req: Request, res: Response) => {
         totalDisbursed,
         totalPaid,
         totalDebt,
+        totalLateFee: globalTotalLateFee,
+        totalMoraPaid: transactions.reduce((sum: number, tx: any) => sum + (toNumber(tx.latePaymentInterest) || toNumber(tx.mora_amount)), 0),
       },
       loans: loanList,
       payments,
@@ -331,17 +337,12 @@ export const getCustomerLoanDetail = async (req: Request, res: Response) => {
 
 // ============================================================
 // Pagamento de prestação a partir do portal do mutuário.
-// Métodos: M-Pesa (paymentMethod 7) e Transferência bancária (3).
-// Regras:
-//  - M-Pesa: telemóvel com exactamente 12 dígitos iniciados por 25884/25885;
-//  - Valor entre 15% e 100% da prestação (ou do saldo em falta, se menor).
-// Regista a transacção concluída e actualiza a prestação (total ou parcial),
-// com a mesma semântica usada no registo interno de pagamentos.
+// MÉTODO EXCLUSIVO: M-Pesa Open API (C2B assíncrono com webhook e polling).
+// Assegura robustez total, eliminação de risco de timeout e emissão
+// imediata do recibo oficial com QR Code.
 // ============================================================
 
-const MPESA_PHONE_REGEX = /^258(84|85)\d{7}$/;
-
-const round2 = (value: number) => Math.round(value * 100) / 100;
+const round2 = (value: any): number => Math.round(Number(value || 0) * 100) / 100;
 
 export const registerPortalPayment = async (req: Request, res: Response) => {
   try {
@@ -350,10 +351,8 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       installmentId,
       loanId,
       amount,
-      method, // 'mpesa' | 'transfer'
-      phone, // obrigatório p/ M-Pesa
-      account: bankAccountInput, // conta bancária da empresa (transferência)
-      reference, // referência opcional
+      method,
+      phone,
     } = req.body;
 
     const companyIdNum = parseInt(String(companyId), 10);
@@ -370,394 +369,70 @@ export const registerPortalPayment = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Parâmetros inválidos." });
     }
 
+    const payMethod = String(method || "mpesa").toLowerCase();
+    if (payMethod !== "mpesa") {
+      return res.status(400).json({
+        success: false,
+        message: "Os pagamentos de prestações são processados exclusivamente via M-Pesa Open API.",
+      });
+    }
+
+    const payerPhone = String(phone || "").trim();
+    if (!payerPhone) {
+      return res.status(400).json({
+        success: false,
+        message: "Indique o número de telemóvel M-Pesa (ex.: 25884xxxxxxx).",
+      });
+    }
+
     const paymentAmount = round2(toNumber(amount));
-    const payMethod = String(method || "").toLowerCase();
-
     if (!(paymentAmount > 0)) {
-      return res.status(400).json({ success: false, message: "Indique um valor de pagamento maior que 0." });
-    }
-    if (payMethod !== "mpesa" && payMethod !== "transfer") {
-      return res.status(400).json({ success: false, message: "Método de pagamento inválido." });
+      return res.status(400).json({ success: false, message: "Indique um valor de pagamento superior a 0 MZN." });
     }
 
-    // Cliente
-    const customer = await CustomerModel.findOne({
-      where: { id: customerIdNum, companyId: companyIdNum },
-    });
-    if (!customer) {
-      return res.status(404).json({ success: false, message: "Cliente não encontrado." });
-    }
-    const customerData = customer.toJSON() as any;
-    // Crédito do cliente
-    const loan = await LoanModel.findOne({
-      where: {
-        id: loanIdNum,
-        companyId: companyIdNum,
-        customerId: customerIdNum,
-      },
-    });
-    if (!loan) {
-      return res.status(404).json({ success: false, message: "Crédito não encontrado." });
-    }
-
-    // Prestação
-    const installment = await AmorizationLoanModel.findOne({
-      where: { id: installmentIdNum, loanId: loanIdNum },
-    });
-    if (!installment) {
-      return res.status(404).json({ success: false, message: "Prestação não encontrada." });
-    }
-    const installmentData = installment.toJSON() as any;
-    if (Number(installmentData.status) === 1) {
-      return res.status(400).json({ success: false, message: "Esta prestação já se encontra paga." });
-    }
-
-    const installmentValue = round2(toNumber(installmentData.installment));
-    const alreadyPaid = round2(toNumber(installmentData.paidAmount));
-    const remaining = round2(Math.max(0, installmentValue - alreadyPaid));
-
-    if (remaining <= 0) {
-      return res.status(400).json({ success: false, message: "Não existe saldo em falta nesta prestação." });
-    }
-    // Motor V2 (company_penalty_rules) — invalidação/limitação propagada
-    const { forfeit, maxLateDays, capPercent } = await getLegacyPenaltyParams(companyIdNum);
-    const calculatedInstallment = installmentPanification(
-      [{ ...installmentData, paidAmount: alreadyPaid }],
-      forfeit,
-      undefined,
-      { maxLateDays, capPercent }
-    )[0];
-    const currentLateInterest = round2(Number(calculatedInstallment?.latePaymentInterest || 0));
-    const currentTotalDue = round2(remaining + currentLateInterest);
-    const nextInstallment = await AmorizationLoanModel.findOne({
-      where: { loanId: loanIdNum, status: { [Op.ne]: 1 }, id: { [Op.gt]: installmentIdNum } },
-      order: [["dueDate", "ASC"], ["id", "ASC"]],
-    });
-    const nextData = nextInstallment?.toJSON() as any;
-    const nextRemaining = nextData
-      ? round2(Math.max(0, toNumber(nextData.installment) - toNumber(nextData.paidAmount)))
-      : 0;
-    const minAllowed = Math.min(remaining, round2(installmentValue * 0.15));
-    if (paymentAmount < minAllowed - 0.001) {
-      return res.status(400).json({
-        success: false,
-        message: `O valor a pagar deve ser no mínimo ${minAllowed.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN.`,
-      });
-    }
-    const excess = round2(Math.max(0, paymentAmount - currentTotalDue));
-    if (excess > 0 && (!nextInstallment || excess > nextRemaining + 0.001)) {
-      return res.status(400).json({
-        success: false,
-        message: nextInstallment
-          ? `Pagamento rejeitado: o troco de ${excess.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN excede o saldo da prestação seguinte.`
-          : "Pagamento rejeitado: não existe prestação seguinte para receber o troco.",
-      });
-    }
-
-    // Número M-Pesa (25884/25885 + 7 dígitos)
-    let payerPhone = String(customerData.customerPhone || "").replace(/\D/g, "");
-    let bankAccount = "";
-    if (payMethod === "mpesa") {
-      const normalizedPhone = String(phone || "").replace(/\D/g, "");
-      if (!MPESA_PHONE_REGEX.test(normalizedPhone)) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Número M-Pesa inválido. Deve ter exactamente 12 dígitos e começar por 25884 ou 25885 (ex.: 258840000000).",
-        });
-      }
-      payerPhone = normalizedPhone;
-    } else {
-      bankAccount = String(bankAccountInput || "").trim();
-      if (!bankAccount) {
-        return res.status(400).json({ success: false, message: "Seleccione a conta bancária da empresa para a transferência." });
-      }
-    }
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const suffix = Date.now().toString().slice(-8);
-
-    // M-Pesa: iniciar o pagamento no servidor M-Pesa (Open API) ANTES de registar
-    // na base de dados — mesmo fluxo do sistema legado (PUT /api/mpesa/receive →
-    // só depois POST /api/tranzaction com o output_TransactionID como referência).
-    let mpesaReceipt: string | null = null;
-    if (payMethod === "mpesa") {
-      const mpesaAmount = String(paymentAmount);
-      const mpesaTransactionRef = `PY${loanIdNum}${installmentIdNum}${suffix}`;
-      const mpesaThirdPartyRef = String(customerData.accountNumber);
-      let result: MpesaResponse;
-      try {
-        result = await mpesa.initiate_c2b(
-          mpesaAmount,
-          payerPhone,
-          mpesaTransactionRef,
-          mpesaThirdPartyRef
-        );
-      } catch (err: any) {
-        const apiErr = err && err.output_ResponseDesc ? err : null;
-        return res.status(502).json({
-          success: false,
-          message: apiErr
-            ? `Pagamento não concluído no servidor M-Pesa: ${apiErr.output_ResponseDesc}`
-            : "Não foi possível comunicar com o servidor M-Pesa. Tente novamente mais tarde.",
-          details: apiErr
-            ? {
-                output_ResponseCode: apiErr.output_ResponseCode,
-                output_ResponseDesc: apiErr.output_ResponseDesc,
-              }
-            : undefined,
-        });
-      }
-
-      const respCode = String((result as any)?.output_ResponseCode || "");
-      const respDesc = String((result as any)?.output_ResponseDesc || "");
-      const processed =
-        respCode === "INS-000000" || respDesc === "Request processed successfully";
-      if (!processed) {
-        return res.status(400).json({
-          success: false,
-          message:
-            respDesc === "Duplicate Transaction"
-              ? "Transacção duplicada no M-Pesa. Tente novamente com outra referência."
-              : `Pagamento não concluído no servidor M-Pesa: ${respDesc || "resposta desconhecida"}`,
-          details: { output_ResponseCode: respCode, output_ResponseDesc: respDesc },
-        });
-      }
-      mpesaReceipt = String((result as any)?.output_TransactionID || "").toUpperCase();
-    }
-
-    const txReference =
-      payMethod === "mpesa"
-        ? mpesaReceipt || `MPESA-${loanIdNum}-${installmentIdNum}-${suffix}`
-        : `TRF-${loanIdNum}-${installmentIdNum}-${suffix}`;
-    const paymentMethodNum = payMethod === "mpesa" ? 7 : 3;
-
-    const description =
-      payMethod === "mpesa"
-        ? `Pagamento via M-Pesa (${payerPhone}) — Prestação ${installmentData.installmentOrder || installmentIdNum} do crédito ${loanIdNum}${mpesaReceipt ? ` (referência M-Pesa: ${mpesaReceipt})` : ""}`
-        : `Transferência bancária para a conta ${bankAccount} — Prestação ${installmentData.installmentOrder || installmentIdNum} do crédito ${loanIdNum}${reference ? ` (referência: ${reference})` : ""}`;
-
-    const currentPaymentAmount = round2(Math.min(remaining, Math.max(0, paymentAmount - currentLateInterest)));
-    const newTotalPaid = round2(alreadyPaid + currentPaymentAmount);
-    const isFullPayment = newTotalPaid >= installmentValue - 0.01;
-    const newStatus = isFullPayment ? 1 : -1;
-    const finalPaidAmount = Math.min(newTotalPaid, installmentValue);
-    const debtAmount = isFullPayment ? 0 : round2(Math.max(0, installmentValue - finalPaidAmount));
-    const tranzaction = await TranzactionModel.create({
+    const result = await initiateC2BPayment({
       companyId: companyIdNum,
-      amortizationLoanId: installmentIdNum,
-      loanId: loanIdNum,
-      accountNumber: customerData.accountNumber,
       customerId: customerIdNum,
-      amount: currentPaymentAmount,
-      totalAmount: round2(currentPaymentAmount + currentLateInterest),
-      latePaymentInterest: currentLateInterest,
-      interestRateAmount: 0,
-      phoneNumber: payerPhone,
-      paymentDate: todayStr,
-      tranzactionReference: txReference,
-      paymentMethod: paymentMethodNum,
-      description,
-      receiptUrl: null,
-      staffName: "Portal do Mutuário",
-      notes: reference ? String(reference) : null,
-      discountApplied: false,
-      discountAmount: 0,
+      loanId: loanIdNum,
+      amortizationLoanId: installmentIdNum,
+      amount: paymentAmount,
+      phone: payerPhone,
     });
 
-    // Actualizar a prestação (status: 1=pago, -1=parcial)
-    await AmorizationLoanModel.update(
-      {
-        status: newStatus,
-        paidAmount: finalPaidAmount,
-        remainingBalance: isFullPayment ? 0 : debtAmount,
-      },
-      { where: { id: installmentIdNum } }
-    );
-
-    // Pagamento parcial — registar/actualizar dívida da prestação
-    if (!isFullPayment) {
-      try {
-        const existingDebt = await DebtModel.findOne({
-          where: { amortisationId: installmentIdNum },
-        });
-        if (existingDebt) {
-          await DebtModel.update(
-            { debtAmount },
-            { where: { id: (existingDebt as any).id } }
-          );
-        } else {
-          await DebtModel.create({
-            companyId: companyIdNum,
-            accountNumber: String(customerData.accountNumber),
-            loanId: loanIdNum,
-            amortisationId: installmentIdNum,
-            debtAmount,
-            updatedBy: "Portal do Mutuário",
-            dateInserted: todayStr,
-          });
-        }
-      } catch (debtErr) {
-        console.error("Erro ao registar dívida parcial (portal):", debtErr);
-      }
-    } else {
-      try {
-        await DebtModel.destroy({ where: { amortisationId: installmentIdNum } });
-      } catch { /* sem dívida */ }
-    }
-
-    if (excess > 0 && nextInstallment && nextData) {
-      const nextPaymentAmount = excess;
-      const nextPaid = round2(toNumber(nextData.paidAmount));
-      const nextValue = round2(toNumber(nextData.installment));
-      const nextTotalPaid = round2(nextPaid + nextPaymentAmount);
-      const nextFull = nextTotalPaid >= nextValue - 0.01;
-      await TranzactionModel.create({
-        companyId: companyIdNum,
-        amortizationLoanId: nextData.id,
-        loanId: loanIdNum,
-        accountNumber: customerData.accountNumber,
-        customerId: customerIdNum,
-        amount: nextPaymentAmount,
-        totalAmount: nextPaymentAmount,
-        latePaymentInterest: 0,
-        interestRateAmount: 0,
-        phoneNumber: payerPhone,
-        paymentDate: todayStr,
-        tranzactionReference: txReference,
-        paymentMethod: paymentMethodNum,
-        description: `Troco aplicado na prestação ${nextData.installmentOrder || nextData.id}`,
-        receiptUrl: null,
-        staffName: "Portal do Mutuário",
-        notes: reference ? String(reference) : null,
-        discountApplied: false,
-        discountAmount: 0,
+    if (result.status === "SUCCESS") {
+      return res.status(201).json({
+        success: true,
+        status: "SUCCESS",
+        message: result.message,
+        reference: result.transactionReference,
+        mpesaReceipt: (result as any).mpesaReceipt,
+        tranzactionId: result.tranzactionId,
+        recibo: result.recibo,
+        isPartial: result.isPartial,
       });
-      await AmorizationLoanModel.update(
-        {
-          status: nextFull ? 1 : -1,
-          paidAmount: Math.min(nextTotalPaid, nextValue),
-          remainingBalance: nextFull ? 0 : round2(nextValue - nextTotalPaid),
-        },
-        { where: { id: nextData.id } }
-      );
     }
 
-    // Notificar o cliente
-    try {
-      await NotificationModel.create({
-        companyId: companyIdNum,
-        recipientType: "customer",
-        recipientId: customerData.id,
-        title: isFullPayment ? "Prestação paga" : "Pagamento parcial registado",
-        message: `O seu pagamento de ${paymentAmount.toLocaleString("pt-MZ")} MZN (${payMethod === "mpesa" ? "M-Pesa" : "transferência bancária"}) foi registado.${excess > 0 ? ` Troco de ${excess.toLocaleString("pt-MZ")} MZN aplicado à prestação seguinte.` : isFullPayment ? "" : ` Saldo em falta: ${debtAmount.toLocaleString("pt-MZ")} MZN.`}`,
-        type: "payment_received",
-        referenceId: (tranzaction as any).id,
-        isRead: false,
+    if (result.status === "PENDING_PIN") {
+      return res.status(200).json({
+        success: true,
+        status: "PENDING_PIN",
+        mpesaTxId: result.mpesaTxId,
+        reference: result.transactionReference,
+        message: result.message,
       });
-    } catch (err) {
-      console.error("Erro ao notificar pagamento do portal:", err);
     }
 
-    // Se o crédito ficou totalmente liquidado, marcar como Liquidado (3)
-    try {
-      await checkAndLiquidateLoan(loanIdNum, companyIdNum, customerData.accountNumber);
-    } catch (err) {
-      console.error("Erro ao verificar liquidação do crédito:", err);
-    }
-
-    // ── CAIXA CENTRAL: entrada automática na conta de colecta da empresa ──
-    // Pagamentos do portal entram por defeito na conta M-Pesa (MOBILE_MONEY)
-    // da empresa — ou na conta default de reembolso, para transferências.
-    // Best-effort: se falhar (ex.: sem caixa aberto), o pagamento mantém-se.
-    try {
-      const { getDefaultCollectAccount } = await import("../services/bankAccountService");
-      const collectAccount = await getDefaultCollectAccount(companyIdNum);
-      if (collectAccount) {
-        const { registerMovement } = await import("../services/treasuryService");
-        const paymentMethodTreasury = payMethod === "mpesa" ? "MPESA" : "BANK";
-        await registerMovement({
-          companyId: companyIdNum,
-          userId: null, // portal: sem utilizador interno; aceita qualquer caixa aberto da empresa
-          type: "ENTRADA",
-          category: "REEMBOLSO",
-          amount: paymentAmount,
-          paymentMethod: paymentMethodTreasury as any,
-          bankAccountId: collectAccount.id,
-          description: `Pagamento via portal do mutuário — conta ${customerData.accountNumber}${mpesaReceipt ? ` (recibo M-Pesa: ${mpesaReceipt})` : ""}`,
-          loanId: loanIdNum,
-          amortizationLoanId: installmentIdNum,
-          tranzactionId: Number((tranzaction as any).id) || null,
-          customerId: customerIdNum,
-          reference: { type: "customer_portal", id: Number((tranzaction as any).id) || null },
-          automatic: true,
-          // PAGAMENTOS DO PORTAL NUNCA SÃO REJEITADOS: se não houver caixa
-          // aberto (noite/fim-de-semana), caem no "Caixa do Sistema" do dia
-          // para reconciliação no próximo expediente.
-          allowWithoutOpenRegister: true,
-        });
-      }
-    } catch (cashError: any) {
-      console.error("[CAIXA] Falha ao registar pagamento do portal no caixa (pagamento mantido):", cashError?.message || cashError);
-    }
-
-    // ── RECIBO: emite o comprovativo do pagamento (numeração legal AT) ──
-    // Best-effort: uma falha na emissão não desfaz o pagamento; o portal do
-    // mutuário emite o recibo à primeira abertura do comprovativo.
-    let recibo: any = null;
-    try {
-      const { generateReciboForTranzaction } = await import("../services/reciboService");
-      recibo = await generateReciboForTranzaction({
-        tranzactionId: Number((tranzaction as any).id),
-        companyId: companyIdNum,
-        createdBy: null,
-      });
-    } catch (reciboError: any) {
-      console.error("[Recibo] Falha ao emitir o recibo do pagamento do portal:", reciboError?.message || reciboError);
-    }
-
-    // ── SMS DO RECIBO: envio automático ao mutuário (best-effort) ──
-    // Mesmo canal dos pagamentos internos: a mensagem leva o número do recibo
-    // e o link de validação. Falha de SMS nunca desfaz o pagamento.
-    try {
-      const { enqueuePaymentSms } = await import("../services/SmsGatewayService");
-      await enqueuePaymentSms({
-        companyId: companyIdNum,
-        transactionId: Number((tranzaction as any).id),
-        loanId: loanIdNum,
-        amortizationLoanId: installmentIdNum,
-        accountNumber: customerData.accountNumber,
-        paidAmount: paymentAmount,
-        latePaymentInterest: currentLateInterest,
-        paymentDate: todayStr,
-        reference: txReference,
-        reciboNumeros: recibo?.numero ? [String(recibo.numero)] : null,
-      });
-    } catch (smsError) {
-      console.error("Erro ao enfileirar SMS do pagamento do portal:", smsError);
-    }
-
-    return res.status(201).json({
-      success: true,
-      message: isFullPayment
-        ? `Pagamento de ${paymentAmount.toLocaleString("pt-MZ")} MZN registado.${excess > 0 ? ` Troco de ${excess.toLocaleString("pt-MZ")} MZN aplicado à prestação seguinte.` : " Prestação liquidada."}`
-        : `Pagamento parcial de ${paymentAmount.toLocaleString("pt-MZ")} MZN registado. Saldo em falta: ${debtAmount.toLocaleString("pt-MZ")} MZN.`,
-      reference: txReference,
-      isPartial: !isFullPayment,
-      tranzactionId: Number((tranzaction as any).id) || null,
-      recibo: recibo
-        ? { id: Number(recibo.id), numero: recibo.numero, pdf_url: recibo.pdf_url || null }
-        : null,
+    return res.status(400).json({
+      success: false,
+      status: "FAILED",
+      message: result.message,
     });
   } catch (error: any) {
-    console.error("Erro ao registar pagamento do portal:", error);
-    return res.status(500).json({ success: false, message: error.message || "Erro interno." });
+    console.error("[Portal Mutuário] Erro no pagamento M-Pesa:", error?.message || error);
+    return res.status(400).json({ success: false, message: error?.message || "Erro interno ao processar pagamento." });
   }
 };
 
-// Solicitar um novo empréstimo a partir do portal do mutuário.
-// O pedido é registado como crédito pendente (status 0) e notifica os
-// administradores/gestores da empresa para análise e aprovação.
 export const requestCustomerLoan = async (req: Request, res: Response) => {
   try {
     const { companyId, customerId } = req.params;

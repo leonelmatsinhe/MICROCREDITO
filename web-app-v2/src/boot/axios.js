@@ -31,7 +31,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     // Erro 401 - Não autorizado (token expirado/inválido)
-    if (error.response?.status === 401 && !isRedirecting) {
+    const reqUrl = String(error.config?.url || '')
+    const isLoginEndpoint = reqUrl.includes('/login') || reqUrl.includes('/customer/login')
+    const isNonCritical = reqUrl.includes('/api/logs') || reqUrl.includes('/api/notifications')
+
+    if (error.response?.status === 401 && !isRedirecting && !isLoginEndpoint && !isNonCritical) {
       isRedirecting = true
 
       // Limpar TODOS os dados de autenticação (localStorage + Pinia)

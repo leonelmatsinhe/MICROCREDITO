@@ -6,10 +6,24 @@
       <div class="text-caption text-grey-5 q-mt-sm">A carregar caixa do dia...</div>
     </div>
 
-    <!-- ═══════════ MODO ELECTRÓNICO MANUAL ═══════════ -->
-    <!-- Reconciliação por conta bancária já existente: sem folha de contagem
-         nem conferência cega de numerário. -->
-    <ElectronicCashPanel v-else-if="cashMode === 'ELECTRONIC'" />
+    <!-- ═══════════ SELECÇÃO DE VISTA (se modo ELECTRÓNICO) ═══════════ -->
+    <div v-if="cashMode === 'ELECTRONIC'" class="row items-center justify-between q-mb-md">
+      <q-btn-toggle
+        v-model="activeView"
+        no-caps
+        unelevated
+        toggle-color="primary"
+        color="grey-2"
+        text-color="grey-8"
+        :options="[
+          { label: 'Guichê Operacional', value: 'balcao', icon: 'point_of_sale' },
+          { label: 'Reconciliação por Conta', value: 'reconciliacao', icon: 'account_balance' }
+        ]"
+      />
+    </div>
+
+    <!-- Reconciliação manual por conta bancária -->
+    <ElectronicCashPanel v-if="cashMode === 'ELECTRONIC' && activeView === 'reconciliacao'" />
 
     <template v-else>
       <!-- ═══════════ SEM CAIXA HOJE: BANNER + BOTÃO ABRIR ═══════════ -->
@@ -46,7 +60,7 @@
             />
             <div class="col">
               <div class="text-subtitle1 text-weight-bold">
-                Caixa de {{ formatDay(register.opening_date) }}
+                Caixa de Balcão (Guichê) — {{ formatDay(register.opening_date) }}
                 <q-badge :color="isOpen ? 'positive' : 'grey'" class="q-ml-sm" align="middle">
                   {{ isOpen ? 'ABERTO' : 'FECHADO' }}
                 </q-badge>
@@ -385,32 +399,86 @@
 
     <!-- ═══════════ DIALOG: ABRIR CAIXA ═══════════ -->
     <q-dialog v-model="openDialog" persistent>
-      <q-card style="min-width: 380px; border-radius: 12px">
-        <q-card-section class="text-h6">Abertura de Caixa - Fundo de Maneio</q-card-section>
-        <q-card-section class="q-pt-none">
-          <div class="text-caption text-grey-7 q-mb-sm">
-            <q-icon name="info" size="14px" class="q-mr-xs" />
-            Conte o <strong>fundo de troco</strong> nota a nota e moeda a moeda — o total é
-            calculado pelo sistema.
-          </div>
-          <!-- Folha de Contagem de Caixa (MT): Denominação | Quantidade | Subtotal -->
-          <FolhaContagem
-            v-model="openForm.denominations"
-            title="Folha de Contagem de Caixa"
-            total-label="Total calculado automaticamente"
-            hint="Conte o fundo de maneio nota a nota e moeda a moeda — o total é calculado automaticamente."
+      <q-card style="min-width: 420px; max-width: 520px; border-radius: 12px">
+        <q-card-section class="row items-center q-pb-none">
+          <q-icon
+            :name="cashMode === 'ELECTRONIC' ? 'devices' : 'point_of_sale'"
+            size="24px"
+            color="primary"
+            class="q-mr-sm"
           />
-          <div class="text-caption text-grey-6 q-mt-xs">
-            <q-icon name="info" size="13px" class="q-mr-xs" />O caixa abre sempre com saldo ZERO disponível — o valor contado é apenas o fundo de maneio (memorando da gaveta, não é saldo nem arrasta para o dia seguinte).
+          <div class="text-h6">
+            {{ cashMode === 'ELECTRONIC' ? 'Abertura de Caixa — Modo Electrónico' : 'Abertura de Caixa — Fundo de Maneio' }}
           </div>
+          <q-space />
+          <q-badge
+            :color="cashMode === 'ELECTRONIC' ? 'teal' : 'primary'"
+            class="q-pa-xs text-weight-bold"
+          >
+            {{ cashMode === 'ELECTRONIC' ? 'DIGITAL / BANCOS' : 'NUMERÁRIO FÍSICO' }}
+          </q-badge>
         </q-card-section>
-        <q-card-actions align="right">
+
+        <q-card-section>
+          <!-- Modo ELECTRÓNICO: explica o fluxo digital e dispensa a contagem física obrigatória -->
+          <template v-if="cashMode === 'ELECTRONIC'">
+            <div class="q-pa-sm rounded-borders bg-blue-1 text-blue-9 q-mb-md">
+              <div class="text-caption" style="line-height: 1.4">
+                <q-icon name="info" size="16px" class="q-mr-xs" />
+                A empresa opera predominantemente com <strong>dinheiro electrónico</strong> (M-Pesa, e-Mola, contas bancárias). A sessão diária do guichê será aberta sem necessidade de contagem física.
+              </div>
+            </div>
+
+            <div class="row items-center justify-between q-pa-sm rounded-borders bg-grey-2 q-mb-md">
+              <div class="text-caption text-grey-8">Fundo de numerário físico inicial:</div>
+              <div class="text-subtitle2 text-weight-bold">0,00 MTn</div>
+            </div>
+
+            <q-expansion-item
+              v-model="openForm.hasPhysicalCash"
+              icon="payments"
+              label="Possui numerário físico inicial na gaveta? (Opcional)"
+              header-class="text-caption text-primary q-pa-none"
+              class="q-mb-sm"
+            >
+              <div class="q-pt-sm">
+                <FolhaContagem
+                  v-model="openForm.denominations"
+                  title="Contagem de Fundo Físico (Opcional)"
+                  total-label="Total em numerário"
+                  hint="Preencha apenas se houver notas ou moedas físicas no início do dia."
+                />
+              </div>
+            </q-expansion-item>
+          </template>
+
+          <!-- Modo FÍSICO: folha de contagem clássica obrigatória -->
+          <template v-else>
+            <div class="text-caption text-grey-7 q-mb-sm">
+              <q-icon name="info" size="14px" class="q-mr-xs" />
+              Conte o <strong>fundo de troco</strong> nota a nota e moeda a moeda — o total é
+              calculado pelo sistema.
+            </div>
+            <FolhaContagem
+              v-model="openForm.denominations"
+              title="Folha de Contagem de Caixa"
+              total-label="Total calculado automaticamente"
+              hint="Conte o fundo de maneio nota a nota e moeda a moeda — o total é calculado automaticamente."
+            />
+            <div class="text-caption text-grey-6 q-mt-xs">
+              <q-icon name="info" size="13px" class="q-mr-xs" />O caixa abre sempre com saldo ZERO disponível — o valor contado é apenas o fundo de maneio (memorando da gaveta, não é saldo nem arrasta para o dia seguinte).
+            </div>
+          </template>
+        </q-card-section>
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
           <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
           <q-btn
             unelevated
             no-caps
             color="primary"
-            label="Confirmar Abertura"
+            :icon="cashMode === 'ELECTRONIC' ? 'lock_open' : 'check'"
+            :label="cashMode === 'ELECTRONIC' ? 'Abrir Caixa Electrónico' : 'Confirmar Abertura'"
             :loading="saving"
             @click="submitOpen"
           />
@@ -469,28 +537,94 @@
       </q-card>
     </q-dialog>
 
-    <!-- ═══════════ DIALOG: FECHAR CAIXA (contagem por denominação) ═══════════ -->
+    <!-- ═══════════ DIALOG: FECHAR CAIXA ═══════════ -->
     <q-dialog v-model="closeDialog" persistent>
-      <q-card style="min-width: 420px; border-radius: 12px">
-        <q-card-section class="text-h6">Folha de Contagem de Fecho - Conferência Cega</q-card-section>
-        <q-card-section class="q-pt-none">
-          <div class="q-pa-sm rounded-borders bg-blue-1 q-mb-sm">
-            <div class="text-caption text-grey-8">
-              <q-icon name="info" size="14px" class="q-mr-xs" />
-              Conte apenas o <strong>dinheiro físico na gaveta</strong>, nota a nota e moeda a
-              moeda. O sistema apura a diferença no fecho — não lhe mostramos o valor
-              esperado, para a contagem ser sua.
-            </div>
-          </div>
-
-          <!-- Folha de Contagem de Fecho (MT): Denominação | Quantidade | Subtotal.
-               Só o TOTAL contado é mostrado — nunca a diferença nem o saldo. -->
-          <FolhaContagem
-            v-model="closeForm.denominations"
-            title="Folha de Contagem de Fecho"
-            total-label="Total contado"
-            hint="Conferência cega: conte apenas o dinheiro físico da gaveta, nota a nota e moeda a moeda."
+      <q-card style="min-width: 420px; max-width: 520px; border-radius: 12px">
+        <q-card-section class="row items-center q-pb-none">
+          <q-icon
+            :name="cashMode === 'ELECTRONIC' ? 'devices' : 'lock'"
+            size="24px"
+            color="negative"
+            class="q-mr-sm"
           />
+          <div class="text-h6">
+            {{ cashMode === 'ELECTRONIC' ? 'Fecho de Caixa — Modo Electrónico' : 'Folha de Contagem de Fecho - Conferência Cega' }}
+          </div>
+          <q-space />
+          <q-badge
+            :color="cashMode === 'ELECTRONIC' ? 'teal' : 'primary'"
+            class="q-pa-xs text-weight-bold"
+          >
+            {{ cashMode === 'ELECTRONIC' ? 'DIGITAL / BANCOS' : 'NUMERÁRIO FÍSICO' }}
+          </q-badge>
+        </q-card-section>
+
+        <q-card-section class="q-pt-sm">
+          <!-- Modo ELECTRÓNICO: resumo de movimentação digital sem forçar contagem física -->
+          <template v-if="cashMode === 'ELECTRONIC'">
+            <div class="q-pa-sm rounded-borders bg-blue-1 text-blue-9 q-mb-md">
+              <div class="text-caption" style="line-height: 1.4">
+                <q-icon name="info" size="16px" class="q-mr-xs" />
+                O fecho da sessão do guichê consolidará todas as movimentações digitais do dia.
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-sm q-mb-md">
+              <div class="col-6">
+                <div class="q-pa-sm rounded-borders bg-grey-2">
+                  <div class="text-caption text-grey-7">Entradas Digitais</div>
+                  <div class="text-subtitle2 text-weight-bold text-positive">{{ formatMZN(register?.total_bank_in || 0) }}</div>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="q-pa-sm rounded-borders bg-grey-2">
+                  <div class="text-caption text-grey-7">Saídas Digitais</div>
+                  <div class="text-subtitle2 text-weight-bold text-negative">{{ formatMZN(register?.total_bank_out || 0) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row items-center justify-between q-pa-sm rounded-borders bg-grey-1 q-mb-md">
+              <div class="text-caption text-grey-8">Numerário Físico em Gaveta:</div>
+              <div class="text-subtitle2 text-weight-bold">{{ formatMZN(displayCash) }}</div>
+            </div>
+
+            <q-expansion-item
+              v-model="closeForm.hasPhysicalCash"
+              icon="payments"
+              label="Efectuar contagem de numerário físico (Opcional)"
+              header-class="text-caption text-primary q-pa-none"
+              class="q-mb-sm"
+            >
+              <div class="q-pt-sm">
+                <FolhaContagem
+                  v-model="closeForm.denominations"
+                  title="Folha de Contagem de Fecho"
+                  total-label="Total contado"
+                  hint="Preencha apenas se tiver recebido dinheiro físico durante o dia."
+                />
+              </div>
+            </q-expansion-item>
+          </template>
+
+          <!-- Modo FÍSICO: folha de contagem clássica obrigatória -->
+          <template v-else>
+            <div class="q-pa-sm rounded-borders bg-blue-1 q-mb-sm">
+              <div class="text-caption text-grey-8">
+                <q-icon name="info" size="14px" class="q-mr-xs" />
+                Conte apenas o <strong>dinheiro físico na gaveta</strong>, nota a nota e moeda a
+                moeda. O sistema apura a diferença no fecho — não lhe mostramos o valor
+                esperado, para a contagem ser sua.
+              </div>
+            </div>
+
+            <FolhaContagem
+              v-model="closeForm.denominations"
+              title="Folha de Contagem de Fecho"
+              total-label="Total contado"
+              hint="Conferência cega: conte apenas o dinheiro físico da gaveta, nota a nota e moeda a moeda."
+            />
+          </template>
 
           <q-select
             v-model="closeForm.tipo_fechamento"
@@ -513,22 +647,16 @@
             hint="Ex.: quebra confirmada com o operador do balcão"
             class="q-mt-sm"
           />
-
-          <div class="q-mt-sm text-caption text-grey-7">
-            <q-icon name="savings" size="13px" class="q-mr-xs" />
-            Use <strong>Fecho com entrega do excedente ao Cofre</strong> ou
-            <strong>com depósito do excedente no banco</strong> depois de registar a
-            entrega/depósito correspondente.
-          </div>
         </q-card-section>
-        <q-card-actions align="right">
+
+        <q-card-actions align="right" class="q-px-md q-pb-md">
           <q-btn flat no-caps label="Cancelar" :disable="saving" v-close-popup />
           <q-btn
             unelevated
             no-caps
             color="negative"
             icon="lock"
-            label="Confirmar Fecho"
+            :label="cashMode === 'ELECTRONIC' ? 'Confirmar Fecho da Sessão' : 'Confirmar Fecho'"
             :loading="saving"
             @click="submitClose"
           />
@@ -851,12 +979,18 @@ async function fetchToday() {
   }
 }
 
+// ─── Vista activa (quando em modo ELECTRÓNICO): 'balcao' ou 'reconciliacao' ───
+const activeView = ref('balcao')
+
 // ─── Dialog: abrir caixa ───
 // O caixa abre sempre com SALDO ZERO DISPONÍVEL. O fundo de maneio é CONTADO
 // por denominação; o backend soma a grelha e guarda-o como memorando físico
 // (não é saldo, não arrasta e não gera sobras/quebras no fecho).
 const openDialog = ref(false)
-const openForm = ref({ denominations: emptyDenominationCount() })
+const openForm = ref({
+  denominations: emptyDenominationCount(),
+  hasPhysicalCash: false
+})
 const openCountedTotal = computed(() => sumDenominations(openForm.value.denominations))
 
 // Limite de numerário em caixa + rótulos dos tipos de fecho (vêm do /today).
@@ -866,12 +1000,15 @@ const closingTypeLabels = ref(null)
 // O arrasto de saldo foi invalidado ("saldo zero na abertura"): não há
 // sugestão de saldo inicial — o valor do fecho anterior não é arrastado.
 function openOpenDialog() {
-  openForm.value = { denominations: emptyDenominationCount() }
+  openForm.value = {
+    denominations: emptyDenominationCount(),
+    hasPhysicalCash: false
+  }
   openDialog.value = true
 }
 
 async function submitOpen() {
-  if (isEmptyDenominations(openForm.value.denominations)) {
+  if (cashMode.value === 'PHYSICAL' && isEmptyDenominations(openForm.value.denominations)) {
     $q.notify({
       type: 'warning',
       message: 'Conte o fundo de troco por denominação (notas e moedas)',
@@ -881,9 +1018,18 @@ async function submitOpen() {
   }
   saving.value = true
   try {
-    const { data } = await api.post('/api/cash-registers/open', {
-      denominations: openForm.value.denominations
-    })
+    let payload = {}
+    if (cashMode.value === 'PHYSICAL') {
+      payload = { denominations: openForm.value.denominations }
+    } else {
+      if (openForm.value.hasPhysicalCash && !isEmptyDenominations(openForm.value.denominations)) {
+        payload = { denominations: openForm.value.denominations }
+      } else {
+        payload = { opening_balance: 0 }
+      }
+    }
+
+    const { data } = await api.post('/api/cash-registers/open', payload)
     if (data.success) {
       $q.notify({ type: 'positive', message: 'Caixa aberto com sucesso!', position: 'top' })
       openDialog.value = false
@@ -1055,13 +1201,14 @@ function openCloseDialog() {
   closeForm.value = {
     denominations: emptyDenominationCount(),
     tipo_fechamento: 'NORMAL',
-    notes: ''
+    notes: '',
+    hasPhysicalCash: false
   }
   closeDialog.value = true
 }
 
 async function submitClose() {
-  if (isEmptyDenominations(closeForm.value.denominations)) {
+  if (cashMode.value === 'PHYSICAL' && isEmptyDenominations(closeForm.value.denominations)) {
     // Gaveta vazia (ex.: fundo integralmente entregue ao Cofre): confirmar.
     $q.dialog({
       title: 'Confirmar contagem a zero',
@@ -1079,11 +1226,17 @@ async function submitClose() {
 async function postClose() {
   saving.value = true
   try {
-    const { data } = await api.post(`/api/cash-registers/${register.value.id}/close`, {
-      denominations: closeForm.value.denominations,
+    const payload = {
       tipo_fechamento: closeForm.value.tipo_fechamento,
       notes: closeForm.value.notes || undefined
-    })
+    }
+    if (cashMode.value === 'PHYSICAL' || !isEmptyDenominations(closeForm.value.denominations)) {
+      payload.denominations = closeForm.value.denominations
+    } else if (cashMode.value === 'ELECTRONIC') {
+      payload.closing_balance_informed = 0
+    }
+
+    const { data } = await api.post(`/api/cash-registers/${register.value.id}/close`, payload)
     if (data.success) {
       const diff = Number(data.result?.difference) || 0
       pendingDifference.value = data.result?.diferenca_pendente || null
@@ -1227,15 +1380,16 @@ async function exportPDF() {
   }
 }
 
+// ─── Observar alternância de vista para actualizar estado ───
+watch(activeView, (newVal) => {
+  if (newVal === 'balcao') {
+    fetchToday()
+  }
+})
+
 // ─── Mount ───
 onMounted(async () => {
-  await loadCashMode()
-  if (cashMode.value === 'ELECTRONIC') {
-    // O painel electrónico carrega o seu próprio estado (conta + reconciliação).
-    loading.value = false
-    return
-  }
-  fetchToday()
+  await Promise.all([loadCashMode(), fetchToday()])
 })
 </script>
 

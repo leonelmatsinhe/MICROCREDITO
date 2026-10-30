@@ -31,7 +31,7 @@
               </div>
 
               <div class="row justify-end q-mt-sm">
-                <q-btn unelevated label="Salvar Alterações" color="primary" type="submit" :loading="saving" icon="save" no-caps rounded size="sm" />
+                <q-btn unelevated label="Guardar Alterações" color="primary" type="submit" :loading="saving" icon="save" no-caps rounded size="sm" />
               </div>
             </q-form>
           </q-card-section>

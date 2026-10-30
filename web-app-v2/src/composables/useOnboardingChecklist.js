@@ -34,7 +34,7 @@ const STORAGE_KEY = 'mbr_onboarding_v1'
 const PARTNER_MENU_STEP = {
   el: '[data-tour="partner-menu"]',
   title: 'As suas vistas',
-  text: 'Use este menu para alternar entre as vistas da sua carteira: créditos, prestações, mora, recebimentos, extrato e recibos.',
+  text: 'Use este menu para alternar entre as vistas da sua carteira: créditos, prestações, mora, recebimentos, extracto e recibos.',
   side: 'right'
 }
 
@@ -282,14 +282,14 @@ export const CHECKLIST_TASKS = {
       },
       {
         id: 'extrato',
-        title: 'Fechar o mês com o extrato',
-        text: 'Extrato da carteira e juros de mora: o que foi desembolsado, recebido e o que está em atraso.',
+        title: 'Fechar o mês com o extracto',
+        text: 'Extracto da carteira e juros de mora: o que foi desembolsado, recebido e o que está em atraso.',
         route: '/parceiro/extrato',
-        cta: 'Abrir Extrato',
+        cta: 'Abrir Extracto',
         steps: [
           PARTNER_MENU_STEP,
           partnerPage(
-            'Extrato da carteira',
+            'Extracto da carteira',
             'Resumo do capital, dos desembolsos e dos recebimentos do fundo — é o documento que fecha o mês com a MBRM.'
           )
         ]

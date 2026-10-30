@@ -111,7 +111,18 @@ exports.getCustomerDocuments = getCustomerDocuments;
 const createDocument = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
-        const { companyId, accountNumber, documentName, uploadedBy } = req.body;
+        const rawCompanyId = Array.isArray(req.body.companyId)
+            ? req.body.companyId[0]
+            : req.body.companyId;
+        const rawAccountNumber = Array.isArray(req.body.accountNumber)
+            ? req.body.accountNumber[0]
+            : req.body.accountNumber;
+        const rawDocumentName = Array.isArray(req.body.documentName)
+            ? req.body.documentName[0]
+            : req.body.documentName;
+        const rawUploadedBy = Array.isArray(req.body.uploadedBy)
+            ? req.body.uploadedBy[0]
+            : req.body.uploadedBy;
         const uploadedFileName = (_a = req.file) === null || _a === void 0 ? void 0 : _a.filename;
         if (!uploadedFileName) {
             return res.status(400).json({
@@ -120,10 +131,13 @@ const createDocument = (req, res) => __awaiter(void 0, void 0, void 0, function*
             });
         }
         const documentFileUrl = buildStoredDocumentUrl(uploadedFileName);
-        if (!companyId || !accountNumber || !documentName || !uploadedBy || !documentFileUrl) {
+        const accountNumberNum = Number(rawAccountNumber);
+        const documentName = rawDocumentName ? String(rawDocumentName).trim() : "";
+        const uploadedBy = rawUploadedBy ? String(rawUploadedBy).trim() : "";
+        if (!accountNumberNum || !documentName || !uploadedBy || !documentFileUrl) {
             return res.status(400).send({
                 success: false,
-                message: "Campos obrigatórios: companyId, accountNumber, documentName, uploadedBy e ficheiro.",
+                message: "Campos obrigatórios: accountNumber, documentName, uploadedBy e ficheiro.",
             });
         }
         if (!isLocalDocumentUrl(String(documentFileUrl))) {
@@ -132,8 +146,9 @@ const createDocument = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 message: "documentFileUrl inválido. Apenas referências locais '/documents/<ficheiro>' são permitidas.",
             });
         }
+        const companyIdNum = Number(rawCompanyId) || Number(req.companyId) || 0;
         const customer = yield CustomerModel_1.CustomerModel.findOne({
-            where: { companyId: Number(companyId), accountNumber: String(accountNumber) },
+            where: Object.assign({ accountNumber: accountNumberNum }, (companyIdNum ? { companyId: companyIdNum } : {})),
         });
         if (!customer) {
             return res.status(409).json({
@@ -141,9 +156,10 @@ const createDocument = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 message: "A conta não existe nesta empresa.",
             });
         }
+        const effectiveCompanyId = Number(customer.getDataValue("companyId")) || companyIdNum;
         const document = yield CustomerDocumentsModel_1.CustomerDocumentsModel.create({
-            companyId: Number(companyId),
-            accountNumber: Number(accountNumber),
+            companyId: effectiveCompanyId,
+            accountNumber: accountNumberNum,
             customerId: customer.getDataValue("id"),
             documentName: String(documentName),
             documentFileUrl: String(documentFileUrl),
@@ -180,6 +196,18 @@ const updateDocument = (req, res) => __awaiter(void 0, void 0, void 0, function*
             });
         }
         const updatePayload = Object.assign({}, req.body);
+        if (Array.isArray(updatePayload.companyId)) {
+            updatePayload.companyId = updatePayload.companyId[0];
+        }
+        if (Array.isArray(updatePayload.accountNumber)) {
+            updatePayload.accountNumber = updatePayload.accountNumber[0];
+        }
+        if (updatePayload.companyId !== undefined) {
+            updatePayload.companyId = Number(updatePayload.companyId);
+        }
+        if (updatePayload.accountNumber !== undefined) {
+            updatePayload.accountNumber = Number(updatePayload.accountNumber);
+        }
         if ((_b = req.file) === null || _b === void 0 ? void 0 : _b.filename) {
             updatePayload.documentFileUrl = buildStoredDocumentUrl(req.file.filename);
         }

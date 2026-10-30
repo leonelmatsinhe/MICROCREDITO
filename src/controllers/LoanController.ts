@@ -1256,7 +1256,12 @@ const loanDetail = async (req: Request, res: Response) => {
     let emAtraso = 0;
     let moraGerada = 0;
     let proximoVencimento: string | null = null;
-    (prestacoes || []).forEach((item: any) => {
+    const penaltyParams = await getLegacyPenaltyParams(companyId);
+    const plan = installmentPanification(prestacoes || [], penaltyParams.forfeit, undefined, {
+      maxLateDays: penaltyParams.maxLateDays,
+      capPercent: penaltyParams.capPercent,
+    });
+    (plan || []).forEach((item: any) => {
       const falta = Math.max(0, toNumber(item.installment) - toNumber(item.paidAmount));
       const status = Number(item.status);
       const vencimento = item.dueDate ? new Date(String(item.dueDate).slice(0, 10)) : null;
@@ -1268,7 +1273,7 @@ const loanDetail = async (req: Request, res: Response) => {
       }
       saldoDevedor += falta;
       pendentes += 1;
-      moraGerada += toNumber(item.mora_amount);
+      moraGerada += Number(item.latePaymentInterest) || 0;
       if (vencida) emAtraso += 1;
       if (vencimento && !vencida) {
         const iso = String(item.dueDate).slice(0, 10);

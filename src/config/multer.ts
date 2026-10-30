@@ -8,7 +8,8 @@ const isCompiled =
 const projectRoot = isCompiled
   ? join(__dirname, "..", "..", "..")
   : join(__dirname, "..", "..");
-const documentsUploadDir = join(projectRoot, "uploads", "documents");
+const baseUploadsDir = process.env.UPLOADS_DIR || join(projectRoot, "uploads");
+const documentsUploadDir = join(baseUploadsDir, "documents");
 
 mkdirSync(documentsUploadDir, { recursive: true });
 

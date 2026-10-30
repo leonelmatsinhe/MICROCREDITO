@@ -8,13 +8,19 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getWalletByCode = exports.buildClassificationProposals = exports.resolveWalletFromRate = exports.validateDisbursement = exports.getRealDisbursementBalance = exports.getWalletPeriodMovement = exports.getWalletTotalsSummary = exports.getWalletWithAnalytics = exports.getWalletsWithAnalytics = exports.getWalletsMonthlySeries = void 0;
 const sequelize_1 = require("sequelize");
+const moment_1 = __importDefault(require("moment"));
 const db_1 = require("../database/db");
 const FinancingWalletModel_1 = require("../database/models/FinancingWalletModel");
 const AccountModel_1 = require("../database/models/AccountModel");
 const InterestRateModel_1 = require("../database/models/InterestRateModel");
+const calculateLateAmount_1 = require("../utils/calculateLateAmount");
+const lateInterestService_1 = require("./lateInterestService");
 /** Arredonda a 2 casas (meticais) — valores financeiros nunca com float sujo. */
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const num = (value) => {
@@ -72,7 +78,7 @@ const loadAggregations = (companyId, walletIds) => __awaiter(void 0, void 0, voi
            SUM(CASE WHEN status IN (0, -1) AND dueDate < ? THEN 1 ELSE 0 END) AS prestacoes_atraso,
            SUM(CASE WHEN status IN (0, -1) THEN GREATEST(installment - IFNULL(paidAmount, 0), 0) ELSE 0 END) AS saldo_a_receber,
            SUM(IFNULL(rateAmount, 0)) AS juros_gerados,
-           SUM(mora_amount) AS mora_gerada
+           0 AS mora_gerada
       FROM amortization_loans
      WHERE companyId = ? AND walletId IS NOT NULL
      GROUP BY walletId`;
@@ -94,10 +100,54 @@ const loadAggregations = (companyId, walletIds) => __awaiter(void 0, void 0, voi
                 return;
             usersMap.set(Number(row.walletId), num(row.total));
         });
+        const installmentsMap = toMap(installments);
+        // ── Cálculo dinâmico da mora gerada acumulada por carteira ──
+        try {
+            const { forfeit, maxLateDays, capPercent } = yield (0, lateInterestService_1.getLegacyPenaltyParams)(companyId);
+            if (forfeit > 0) {
+                const [overdueRows] = yield db_1.db.query(`SELECT id, loanId, walletId, installment, paidAmount, dueDate, status, amortization, rateAmount
+             FROM amortization_loans
+            WHERE companyId = ? AND walletId IS NOT NULL AND status IN (0, -1) AND dueDate < ?
+            ORDER BY loanId, dueDate ASC`, { replacements: [companyId, today] });
+                const groupedByLoan = new Map();
+                overdueRows.forEach((item) => {
+                    const loanId = Number(item.loanId);
+                    if (!groupedByLoan.has(loanId)) {
+                        groupedByLoan.set(loanId, { walletId: Number(item.walletId), list: [] });
+                    }
+                    groupedByLoan.get(loanId).list.push(item);
+                });
+                const now = (0, moment_1.default)();
+                const moraByWallet = new Map();
+                groupedByLoan.forEach(({ walletId, list }) => {
+                    const calculated = (0, calculateLateAmount_1.installmentPanification)(list, forfeit, undefined, { maxLateDays, capPercent });
+                    let loanMora = 0;
+                    calculated.forEach((inst) => {
+                        const due = (0, moment_1.default)(inst.dueDate);
+                        const mora = Number(inst.latePaymentInterest) || 0;
+                        if ([0, -1].includes(Number(inst.status)) && due.isBefore(now, "day")) {
+                            loanMora += mora;
+                        }
+                    });
+                    moraByWallet.set(walletId, round2((moraByWallet.get(walletId) || 0) + loanMora));
+                });
+                moraByWallet.forEach((mora, wId) => {
+                    if (installmentsMap.has(wId)) {
+                        installmentsMap.get(wId).mora_gerada = mora;
+                    }
+                    else {
+                        installmentsMap.set(wId, { walletId: wId, mora_gerada: mora });
+                    }
+                });
+            }
+        }
+        catch (e) {
+            console.error("[Carteiras] Erro ao calcular mora dinâmica:", (e === null || e === void 0 ? void 0 : e.message) || e);
+        }
         return {
             loans: toMap(loans),
             transactions: toMap(transactions),
-            installments: toMap(installments),
+            installments: installmentsMap,
             users: usersMap,
         };
     }

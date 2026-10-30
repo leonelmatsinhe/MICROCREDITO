@@ -101,6 +101,12 @@ export const CompanyModel = db.define("companies", {
   // ── Modo de caixa da empresa ──
   // PHYSICAL  = caixa de dinheiro físico (folha de contagem + conferência cega);
   // ELECTRONIC = reconciliação manual por conta bancária existente (accounts).
+  // ── Identificação regulamentar (Banco de Moçambique) ──
+  bairro: { type: DataTypes.STRING(100), allowNull: true },
+  cidade: { type: DataTypes.STRING(100), allowNull: true },
+  numberOfEmployees: { type: DataTypes.INTEGER, allowNull: true },
+  activityStartDate: { type: DataTypes.STRING(50), allowNull: true },
+  representedInstitutions: { type: DataTypes.STRING(255), allowNull: true },
   cash_register_mode: {
     type: DataTypes.ENUM("PHYSICAL", "ELECTRONIC"),
     allowNull: false,

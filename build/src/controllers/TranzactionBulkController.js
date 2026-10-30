@@ -46,6 +46,7 @@ const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const paymentMethodMap_1 = require("../utils/paymentMethodMap");
 const money_1 = require("../utils/money");
 const lateInterestService_1 = require("../services/lateInterestService");
+const requestActor_1 = require("../utils/requestActor");
 /**
  * POST /api/tranzaction/bulk — Liquidação Total ATÓMICA.
  *
@@ -71,6 +72,15 @@ const addTranzactionBulk = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
     if (!paymentMethod || !tranzactionReference || !staffName) {
         return res.status(400).send({ success: false, message: "Meio de pagamento, referência e funcionário são obrigatórios." });
+    }
+    // ── BLINDAGEM DE PAGAMENTOS (Alçada por Perfil) ──
+    const actor = yield (0, requestActor_1.actorFromRequest)(req);
+    if (actor.role === 3) {
+        return res.status(403).json({
+            success: false,
+            code: "GESTOR_PAYMENT_RESTRICTED",
+            message: "Operação não autorizada. O Gestor de Crédito só tem permissão para iniciar pagamentos via M-Pesa Open API. Liquidações manuais são da alçada exclusiva da Administração.",
+        });
     }
     // ── CONTA DE DESTINO OBRIGATÓRIA (bug contábil do modal antigo) ──
     // Sem conta válida não há para onde "vai" o dinheiro liquidado: nem o campo

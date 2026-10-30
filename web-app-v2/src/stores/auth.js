@@ -12,8 +12,9 @@ export const useAuthStore = defineStore('auth', {
 
   getters: {
     isLoggedIn: (state) => !!state.token && !!state.user,
+    isCustomer: (state) => !!state.user?.isCustomer || !!state.user?.customerName || localStorage.getItem('isCustomerSession') === 'true',
     userRole: (state) => state.user?.userRole ?? null,
-    userName: (state) => state.user?.name ?? '',
+    userName: (state) => state.user?.name || state.user?.customerName || '',
     companyId: (state) => state.user?.companyId ?? null,
     
     // Verificar se é admin (role 1)
@@ -28,8 +29,15 @@ export const useAuthStore = defineStore('auth', {
 
     // Rota de redirecionamento baseada no role
     defaultRoute: (state) => {
-      // Mutuário (sem userRole)
-      if (state.user?.isCustomer) return '/portal'
+      // Mutuário (se for sessão de cliente)
+      if (
+        state.user?.isCustomer ||
+        state.user?.customerName ||
+        localStorage.getItem('isCustomerSession') === 'true' ||
+        localStorage.getItem('customer')
+      ) {
+        return '/portal'
+      }
       const role = state.user?.userRole
       // Parceiro financiador: portal do financiador (nunca vê o painel MBRM)
       if (role === 4) return '/parceiro/dashboard'
@@ -112,6 +120,7 @@ export const useAuthStore = defineStore('auth', {
           // Guardar no localStorage
           localStorage.setItem('applicationMicroToken', token)
           localStorage.setItem('customer', JSON.stringify(customer))
+          localStorage.setItem('user', JSON.stringify({ ...customer, isCustomer: true }))
           localStorage.setItem('isCustomerSession', 'true')
           
           // Configurar header default do axios
@@ -138,8 +147,8 @@ export const useAuthStore = defineStore('auth', {
      * Logout
      */
     logout() {
-      // Registar log de logout antes de limpar
-      if (this.user) {
+      // Registar log de logout para staff antes de limpar
+      if (this.user && !this.user.isCustomer && localStorage.getItem('isCustomerSession') !== 'true') {
         logLogout(this.user)
       }
       
@@ -162,27 +171,32 @@ export const useAuthStore = defineStore('auth', {
      * Restaurar sessão do localStorage
      */
     restoreSession() {
-      const token = localStorage.getItem('applicationMicroToken')
+      const token = localStorage.getItem('applicationMicroToken') || this.token
       const userStr = localStorage.getItem('user')
       const customerStr = localStorage.getItem('customer')
-      const isCustomerSession = localStorage.getItem('isCustomerSession') === 'true'
-      
+      const isCustomerSession =
+        localStorage.getItem('isCustomerSession') === 'true' ||
+        !!customerStr ||
+        !!this.user?.isCustomer ||
+        !!this.user?.customerName
+
       if (token) {
         this.token = token
         api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-        
-        if (isCustomerSession && customerStr) {
+
+        if (isCustomerSession && (customerStr || this.user)) {
           try {
-            const customer = JSON.parse(customerStr)
+            const customer = customerStr ? JSON.parse(customerStr) : this.user
             this.user = { ...customer, token, isCustomer: true }
           } catch {
-            this.logout()
+            if (!this.user) this.logout()
           }
-        } else if (userStr) {
+        } else if (userStr || this.user) {
           try {
-            this.user = JSON.parse(userStr)
+            const parsedUser = userStr ? JSON.parse(userStr) : this.user
+            this.user = { ...parsedUser, token }
           } catch {
-            this.logout()
+            if (!this.user) this.logout()
           }
         }
       }

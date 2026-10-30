@@ -73,20 +73,19 @@ watch(() => route.query.tab, (value) => {
 }
 
 .tabs-card {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
 }
 
 .financing-tabs {
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.04);
+  border-radius: 8px;
+  background: #f1f5f9;
 }
 
 body.body--dark {
-  .financing-page { background: #1a1a2e; }
-  .tabs-card { background: rgba(30, 41, 59, 0.7); border-color: rgba(255, 255, 255, 0.06); }
-  .financing-tabs { background: rgba(255, 255, 255, 0.06); }
+  .financing-page { background: #0f172a; }
+  .tabs-card { background: #1e293b; border-color: #334155; }
+  .financing-tabs { background: #334155; }
 }
 </style>

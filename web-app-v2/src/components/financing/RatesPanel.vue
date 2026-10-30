@@ -228,7 +228,7 @@
 
           <div class="row justify-end q-gutter-sm">
             <q-btn flat label="Cancelar" color="grey" @click="closeForm" no-caps />
-            <q-btn unelevated rounded :label="editingRate ? 'Salvar' : 'Criar taxa'" color="primary" :loading="saving" @click="saveRate" no-caps />
+            <q-btn unelevated rounded :label="editingRate ? 'Guardar' : 'Criar taxa'" color="primary" :loading="saving" @click="saveRate" no-caps />
           </div>
         </q-card-section>
       </q-card>

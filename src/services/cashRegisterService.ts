@@ -271,23 +271,34 @@ export const openRegister = async (params: {
 }): Promise<any> => {
   const { userId, companyId } = params;
 
-  // ── MODO ELECTRÓNICO: o caixa de numerário está desactivado ──
-  // A empresa gere o dia por conta bancária; ABRIR caixa físico aqui criaria
-  // um registo paralelo que o modo electrónico não reconcilia. O operador é
-  // encaminhado para Configurações → Caixa.
-  const { isElectronicCashMode, PHYSICAL_MODE_REQUIRED_MESSAGE } = await import("./cashModeService");
-  if (await isElectronicCashMode(companyId)) {
-    throw { code: "INVALID_MODE", message: PHYSICAL_MODE_REQUIRED_MESSAGE };
-  }
+  // ── MODO DE CAIXA: ELECTRONIC vs PHYSICAL ──
+  // Em modo electrónico, operadores operam predominantemente com dinheiro digital
+  // (M-Pesa, e-Mola, Bancos). Abertura de sessão não exige contagem de numerário físico;
+  // o fundo de troco em dinheiro físico inicia a 0 por defeito a menos que informado.
+  const { isElectronicCashMode } = await import("./cashModeService");
+  const isElectronic = await isElectronicCashMode(companyId);
 
   // Uma contagem enviada é sempre autoritária (mesmo que dê 0 unidades: o
   // operador está a dizer que não há dinheiro na gaveta).
-  const hasDenominations = params.denominations !== undefined && params.denominations !== null;
-  const denominationsOpen: DenominationCount = normalizeDenominationsFull(params.denominations);
+  const hasDenominations =
+    params.denominations !== undefined &&
+    params.denominations !== null &&
+    typeof params.denominations === "object" &&
+    Object.keys(params.denominations).length > 0;
+  const denominationsOpen: DenominationCount | null = hasDenominations
+    ? normalizeDenominationsFull(params.denominations)
+    : null;
 
-  const openingBalance = hasDenominations
-    ? sumDenominations(denominationsOpen)
-    : Number(params.openingBalance);
+  let openingBalance = 0;
+  if (hasDenominations && denominationsOpen) {
+    openingBalance = sumDenominations(denominationsOpen);
+  } else if (params.openingBalance !== undefined && params.openingBalance !== null) {
+    openingBalance = Number(params.openingBalance);
+  } else if (isElectronic) {
+    openingBalance = 0;
+  } else {
+    throw { code: "INVALID_BALANCE", message: "Informe um saldo inicial válido (>= 0) ou a contagem por denominação." };
+  }
 
   if (!Number.isFinite(openingBalance) || openingBalance < 0) {
     throw { code: "INVALID_BALANCE", message: "Informe um saldo inicial válido (>= 0) ou a contagem por denominação." };
@@ -311,6 +322,7 @@ export const openRegister = async (params: {
       opening_balance: 0,
       counted_open: round2(openingBalance),
       denominations_open: hasDenominations ? denominationsOpen : null,
+      mode: isElectronic ? "ELECTRONIC" : "PHYSICAL",
       total_in: 0,
       total_out: 0,
       total_cash_in: 0,
@@ -371,44 +383,6 @@ export const closeRegister = async (params: {
 }): Promise<any> => {
   const { registerId, userId, companyId } = params;
 
-  // ── CONTAGEM POR DENOMINAÇÃO ─────────────────────────────────────────────
-  // O total contado é SEMPRE calculado no backend a partir das notas/moedas —
-  // o operador não escreve o total à mão. O valor informado directamente só é
-  // aceite quando não vem contagem (compatibilidade com clientes antigos).
-  const denominationsClose: DenominationCount = normalizeDenominationsFull(params.denominations);
-  const hasDenominations = params.denominations !== undefined && params.denominations !== null;
-
-  const closingBalanceInformed = hasDenominations
-    ? sumDenominations(denominationsClose)
-    : Number(params.closingBalanceInformed);
-
-  if (!Number.isFinite(closingBalanceInformed) || closingBalanceInformed < 0) {
-    throw {
-      code: "INVALID_BALANCE",
-      message:
-        "Informe a contagem do numerário por denominação (notas e moedas) para fechar o caixa.",
-    };
-  }
-
-  const requestedTipoFechamento = params.tipoFechamento
-    ? String(params.tipoFechamento).trim().toUpperCase()
-    : null;
-  if (
-    requestedTipoFechamento &&
-    !(CASH_CLOSING_TYPES as readonly string[]).includes(requestedTipoFechamento)
-  ) {
-    throw {
-      code: "INVALID_CLOSING_TYPE",
-      message: `Tipo de fecho inválido: ${params.tipoFechamento}. Use ${CASH_CLOSING_TYPES.join(", ")}.`,
-    };
-  }
-
-  // ── MODO ELECTRÓNICO: fecho de caixa de numerário está desactivado ──
-  const { isElectronicCashMode, PHYSICAL_MODE_REQUIRED_MESSAGE } = await import("./cashModeService");
-  if (await isElectronicCashMode(companyId)) {
-    throw { code: "INVALID_MODE", message: PHYSICAL_MODE_REQUIRED_MESSAGE };
-  }
-
   const register: any = await CashRegisterModel.findOne({
     where: { id: registerId, companyId },
   });
@@ -425,8 +399,70 @@ export const closeRegister = async (params: {
     throw { code: "FORBIDDEN", message: "Só o responsável pelo caixa o pode fechar." };
   }
 
+  const requestedTipoFechamento = params.tipoFechamento
+    ? String(params.tipoFechamento).trim().toUpperCase()
+    : null;
+  if (
+    requestedTipoFechamento &&
+    !(CASH_CLOSING_TYPES as readonly string[]).includes(requestedTipoFechamento)
+  ) {
+    throw {
+      code: "INVALID_CLOSING_TYPE",
+      message: `Tipo de fecho inválido: ${params.tipoFechamento}. Use ${CASH_CLOSING_TYPES.join(", ")}.`,
+    };
+  }
+
   // Recalcular a partir dos movimentos persistidos antes do fecho.
   let totals = await recalculateTotals(registerId);
+
+  // ── MODO ELECTRÓNICO vs FÍSICO ──
+  const { isElectronicCashMode } = await import("./cashModeService");
+  const isCompanyElectronic = await isElectronicCashMode(companyId);
+  const isElectronic = isCompanyElectronic || register.getDataValue("mode") === "ELECTRONIC";
+
+  // Saldo APURADO em dinheiro físico (fundo de maneio contado na abertura +
+  // entradas cash − saídas cash): o fundo é memorado, mas entra aqui para a
+  // gaveta bater certo com a contagem.
+  const closingCalculated = round2(
+    openingFundoMemo(register) + totals.totalCashIn - totals.totalCashOut
+  );
+
+  // ── CONTAGEM POR DENOMINAÇÃO ──
+  const hasDenominations =
+    params.denominations !== undefined &&
+    params.denominations !== null &&
+    typeof params.denominations === "object" &&
+    Object.keys(params.denominations).length > 0;
+  const denominationsClose: DenominationCount | null = hasDenominations
+    ? normalizeDenominationsFull(params.denominations)
+    : null;
+
+  let closingBalanceInformed: number;
+  if (hasDenominations && denominationsClose) {
+    closingBalanceInformed = sumDenominations(denominationsClose);
+  } else if (
+    params.closingBalanceInformed !== undefined &&
+    params.closingBalanceInformed !== null &&
+    String(params.closingBalanceInformed) !== ""
+  ) {
+    closingBalanceInformed = round2(Number(params.closingBalanceInformed) || 0);
+  } else if (isElectronic) {
+    // Em modo electrónico sem contagem física fornecida, assume o saldo físico apurado (se 0, fecha sem diferença)
+    closingBalanceInformed = closingCalculated;
+  } else {
+    throw {
+      code: "INVALID_BALANCE",
+      message:
+        "Informe a contagem do numerário por denominação (notas e moedas) para fechar o caixa.",
+    };
+  }
+
+  if (!Number.isFinite(closingBalanceInformed) || closingBalanceInformed < 0) {
+    throw {
+      code: "INVALID_BALANCE",
+      message: "Informe um valor válido (>= 0) para o numerário do fecho.",
+    };
+  }
 
   // ── RECONCILIAÇÃO V2 — divergência > 0,01 MZN bloqueia o fecho ──
   // Compara tranzactions do dia vs movimentos de caixa vs recibos emitidos.
@@ -448,14 +484,6 @@ export const closeRegister = async (params: {
     console.error("[closeRegister] Reconciliação indisponível (fecho segue):", reconError?.message || reconError);
   }
 
-  // Saldo APURADO em dinheiro físico (fundo de maneio contado na abertura +
-  // entradas cash − saídas cash): o fundo é memorado, mas entra aqui para a
-  // gaveta bater certo com a contagem — sem sobras/quebras fantasma e sem
-  // dar direito a esse valor a ninguém. Fica apenas no servidor — nunca é
-  // devolvido ao frontend.
-  const closingCalculated = round2(
-    openingFundoMemo(register) + totals.totalCashIn - totals.totalCashOut
-  );
   const difference = computeClosingDifference(closingBalanceInformed, closingCalculated);
   const hasDifference = Math.abs(difference) >= 0.01;
 

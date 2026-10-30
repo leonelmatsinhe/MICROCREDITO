@@ -63,7 +63,7 @@
               <template v-if="Number(store.quote?.customerCredit) > 0">
                 · Crédito a favor: <strong class="text-positive">−{{ formatMoney(store.quote.customerCredit) }}</strong>
               </template>
-              <template v-if="selectedBankAccount">
+              <template v-if="selectedBankAccount && !isGestor">
                 · Destino: <strong>{{ selectedBankAccount.name }}</strong> ({{ selectedBankAccount.purpose }})
               </template>
             </div>
@@ -76,6 +76,19 @@
         <div class="pm-section-title">
           <q-icon name="edit_note" size="15px" class="q-mr-xs" /> Dados do Pagamento
         </div>
+
+        <!-- ── BANNER DE BLINDAGEM DE PAGAMENTOS (GESTOR DE CRÉDITO) ── -->
+        <div class="q-mb-sm" v-if="isGestor">
+          <q-banner dense rounded class="bg-green-1 text-green-10" style="border: 1px solid #bbf7d0; border-radius: 8px;">
+            <template v-slot:avatar><q-icon name="verified_user" color="positive" size="22px" /></template>
+            <div class="text-caption text-weight-medium">
+              <strong>Blindagem de Pagamentos (Alçada: Gestor de Crédito):</strong>
+              <br/>
+              Autorizado a iniciar cobranças exclusivamente através do <strong>M-Pesa Open API (C2B)</strong>. O sistema envia a notificação STK Push diretamente para o telemóvel do cliente. Pagamentos manuais em numerário ou banco são restritos à Administração.
+            </div>
+          </q-banner>
+        </div>
+
         <q-form ref="formRef" greedy class="row q-col-gutter-sm" @submit.prevent>
           <div class="col-12 col-sm-6">
             <q-input
@@ -83,7 +96,7 @@
               :rules="[() => !!form.paymentDate || 'Obrigatório']"
             >
               <template v-slot:append>
-                <q-icon name="event" class="cursor-pointer">
+                <q-icon name="event" class="cursor-pointer" v-if="!isGestor">
                   <q-popup-proxy cover transition-show="scale" transition-hide="scale">
                     <q-date v-model="form.paymentDate" mask="YYYY-MM-DD" :options="dateOptions" @update:model-value="onDateChange" />
                   </q-popup-proxy>
@@ -91,11 +104,13 @@
               </template>
             </q-input>
           </div>
+
           <div class="col-12 col-sm-6">
             <q-select
               v-model="form.paymentMethod" dense outlined emit-value map-options
               label="Meio de pagamento *" placeholder="Seleccionar método"
-              :options="paymentMethodOptions" :rules="[v => !!v || 'Obrigatório']"
+              :options="paymentMethodOptions" :disable="isGestor"
+              :rules="[v => !!v || 'Obrigatório']"
             >
               <template v-slot:prepend><q-icon name="payments" size="18px" /></template>
               <template v-slot:option="scope">
@@ -106,7 +121,9 @@
               </template>
             </q-select>
           </div>
-          <div class="col-12">
+
+          <!-- Conta Destino: Apenas para Admin / modos manuais -->
+          <div class="col-12" v-if="!isGestor">
             <q-select
               v-model="selectedBankAccount" dense outlined use-input hide-selected fill-input
               input-debounce="0" :options="filteredAccounts"
@@ -130,17 +147,21 @@
               </template>
             </q-select>
           </div>
-          <div class="col-12 col-sm-6">
+
+          <!-- Referência: Apenas para Admin em pagamentos manuais -->
+          <div class="col-12 col-sm-6" v-if="!isGestor">
             <q-input
               v-model="form.paymentReference" dense outlined label="Referência *"
               :counter="Number(form.paymentMethod) !== 1" :maxlength="40"
-              placeholder="ID da transação M-Pesa"
+              placeholder="ID da transação / Talão"
               :rules="referenceRules"
             >
               <template v-slot:prepend><q-icon name="tag" size="18px" /></template>
             </q-input>
           </div>
-          <div class="col-12 col-sm-6">
+
+          <!-- Valor a pagar -->
+          <div class="col-12" :class="isGestor ? 'col-sm-6' : 'col-sm-6'">
             <q-input
               v-model.number="form.amountReceived" dense outlined type="number" min="0"
               label="Valor a pagar *" prefix="MZN"
@@ -155,22 +176,29 @@
               class="q-mt-xs q-mb-none"
             />
           </div>
+
+          <!-- Telefone do cliente (Destino da Cobrança M-Pesa) -->
           <div class="col-12 col-sm-6">
             <q-input
-              v-model="form.phoneNumber" dense outlined label="Telefone do cliente"
-              mask="############" hint="+258 — 12 dígitos" clearable
+              v-model="form.phoneNumber" dense outlined
+              label="Telefone M-Pesa do cliente *"
+              mask="############"
+              hint="Ex: 848353816 · Receberá o prompt para introduzir o PIN"
+              clearable
+              :rules="[v => !!v || 'Obrigatório para o pagamento M-Pesa', phoneRules]"
             >
-              <template v-slot:prepend><q-icon name="phone" size="18px" /></template>
+              <template v-slot:prepend><q-icon name="phone" size="18px" color="positive" /></template>
             </q-input>
           </div>
+
           <div class="col-12 col-sm-6">
             <q-input v-model="form.staffName" dense outlined disable label="Funcionário responsável">
               <template v-slot:prepend><q-icon name="badge" size="18px" /></template>
             </q-input>
           </div>
 
-          <!-- Desconto (apenas modo "Pagar com desconto") -->
-          <template v-if="mode === 'discount'">
+          <!-- Desconto (apenas modo "Pagar com desconto" e para Admin) -->
+          <template v-if="mode === 'discount' && !isGestor">
             <div class="col-12 col-sm-4">
               <q-select v-model="form.discountType" dense outlined :options="discountOptions" label="Tipo de desconto" emit-value map-options />
             </div>
@@ -182,7 +210,8 @@
             </div>
           </template>
 
-          <div class="col-12">
+          <!-- Comprovativo: Apenas para Admin em pagamentos manuais -->
+          <div class="col-12" v-if="!isGestor">
             <q-file
               v-model="form.receiptFile" dense outlined use-chips clearable
               label="Comprovativo de pagamento" accept=".pdf,.jpg,.jpeg,.png"
@@ -221,7 +250,19 @@
       <q-separator />
       <q-card-actions align="right" class="q-pa-md">
         <q-btn flat label="Cancelar" color="grey-7" no-caps @click="close" />
+        
+        <!-- BOTAO PARA GESTOR OU ADMIN COM M-PESA SELECCIONADO -->
         <q-btn
+          v-if="isGestor || Number(form.paymentMethod) === 7"
+          unelevated label="Iniciar Cobrança M-Pesa" icon="send_to_mobile" no-caps
+          color="positive" class="pm-confirm-btn"
+          :loading="paying || store.quoteLoading"
+          @click="submitMpesaC2B"
+        />
+
+        <!-- BOTAO PARA ADMIN EM MEIOS MANUAIS -->
+        <q-btn
+          v-else
           unelevated label="Confirmar Pagamento" icon="check_circle" no-caps
           color="primary" class="pm-confirm-btn"
           :loading="paying || store.quoteLoading"
@@ -229,11 +270,39 @@
         />
       </q-card-actions>
     </q-card>
+
+    <!-- ── MODAL DE ESPERA DO PIN M-PESA (STK PUSH) ── -->
+    <q-dialog v-model="showMpesaWaiting" persistent transition-show="scale" transition-hide="fade">
+      <q-card style="width: 440px; max-width: 95vw; border-radius: 16px;">
+        <q-card-section class="text-center q-pa-lg">
+          <q-avatar size="64px" color="green-1" text-color="positive" class="q-mb-md">
+            <q-icon name="smartphone" size="36px" />
+          </q-avatar>
+          <div class="text-h6 text-weight-bold text-slate-800 q-mb-xs">
+            A aguardar PIN M-Pesa no telemóvel...
+          </div>
+          <div class="text-body2 text-grey-8 q-mb-sm">
+            Foi enviado o pedido de pagamento de <strong>{{ formatMoney(form.amountReceived) }}</strong> para:
+            <br />
+            <span class="text-weight-bold font-mono text-positive text-subtitle1">+258 {{ normalizedPhoneForDisplay }}</span>
+          </div>
+          <q-banner rounded dense class="bg-blue-1 text-blue-10 q-mb-md text-caption text-left">
+            <template v-slot:avatar><q-icon name="info" color="primary" /></template>
+            Solicite ao cliente que consulte o ecrã do telemóvel e digite o seu <strong>PIN secreto do M-Pesa</strong> para autorizar a transação.
+          </q-banner>
+          <div class="row items-center justify-center q-gutter-sm q-mb-md">
+            <q-spinner-dots size="32px" color="positive" />
+            <span class="text-caption font-mono text-weight-bold text-grey-7">{{ mpesaCountdown }}s restantes</span>
+          </div>
+          <q-btn flat dense rounded color="negative" label="Cancelar aguardo" no-caps @click="cancelMpesaWait" />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </q-dialog>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useQuasar } from 'quasar'
 import { useMutuarioStore } from '@/stores/mutuario'
 import { useAuthStore } from '@/stores/auth'
@@ -244,16 +313,47 @@ import { api } from '@/boot/axios'
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   installment: { type: Object, default: null },
-  loan: { type: Object, default: null },
+  loan: { type: [Object, Number, String], default: null },
+  loanId: { type: [Number, String], default: null },
   customer: { type: Object, default: null },
+  customerName: { type: String, default: '' },
   mode: { type: String, default: 'full' } // full | partial | discount
 })
-const emit = defineEmits(['update:modelValue', 'pagamento-realizado'])
+const emit = defineEmits(['update:modelValue', 'pagamento-realizado', 'paid'])
 
 const $q = useQuasar()
 const store = useMutuarioStore()
 const authStore = useAuthStore()
 const bankStore = useBankStore()
+
+// ── RESOLUÇÃO RESILIENTE DE DADOS (Props com fallback à Store) ──
+const effectiveCustomer = computed(() => {
+  return props.customer || store.customer || {}
+})
+
+const effectiveLoan = computed(() => {
+  if (props.loan && typeof props.loan === 'object' && props.loan.id) return props.loan
+  const lId = props.loanId || (typeof props.loan === 'number' || typeof props.loan === 'string' ? props.loan : null) || props.installment?.loanId
+  if (lId) {
+    const fromList = store.loans?.find(l => Number(l.id) === Number(lId))
+    if (fromList) return fromList
+    if (store.activeLoan && Number(store.activeLoan.id) === Number(lId)) return store.activeLoan
+    if (store.contextLoan && Number(store.contextLoan.id) === Number(lId)) return store.contextLoan
+    return { id: Number(lId) }
+  }
+  return store.activeLoan || store.contextLoan || (store.loans && store.loans[0]) || {}
+})
+
+const effectiveCompanyId = computed(() => {
+  return effectiveCustomer.value?.companyId || authStore.companyId || effectiveLoan.value?.companyId || 1
+})
+
+const customerDisplayName = computed(() => {
+  return props.customerName || effectiveCustomer.value?.customerName || ''
+})
+
+// ── BLINDAGEM DE ALÇADA ──
+const isGestor = computed(() => Number(authStore.userRole) === 3)
 
 const show = computed({
   get: () => props.modelValue,
@@ -272,12 +372,14 @@ const localToday = () => {
 const form = ref(defaultForm())
 
 function defaultForm() {
+  const isG = Number(authStore.userRole) === 3
+  const cPhone = effectiveCustomer.value?.customerPhone || props.customer?.customerPhone || ''
   return {
     paymentDate: localToday(),
-    paymentMethod: null,
+    paymentMethod: isG ? 7 : null, // Gestor inicia fixo em M-Pesa Open API (7)
     paymentReference: '',
     amountReceived: 0,
-    phoneNumber: String(props.customer?.customerPhone || ''),
+    phoneNumber: String(cPhone || '848353816'),
     staffName: authStore.userName || '',
     bank_account_id: null,
     discountType: 'percentage',
@@ -287,14 +389,22 @@ function defaultForm() {
   }
 }
 
-// ── MÉTODOS DE PAGAMENTO (códigos legados do sistema/recebos) ──
-const paymentMethodOptions = [
-  { label: 'M-Pesa', value: 7, icon: 'smartphone' },
-  { label: 'E-Mola', value: 6, icon: 'smartphone' },
-  { label: 'Transferência Bancária', value: 3, icon: 'account_balance' },
-  { label: 'Numerário', value: 1, icon: 'payments' },
-  { label: 'Cheque', value: 2, icon: 'receipt_long' }
-]
+// ── MÉTODOS DE PAGAMENTO (BLINDADO POR ALÇADA) ──
+const paymentMethodOptions = computed(() => {
+  if (isGestor.value) {
+    return [
+      { label: 'M-Pesa Open API (C2B)', value: 7, icon: 'smartphone' }
+    ]
+  }
+  return [
+    { label: 'M-Pesa Open API (C2B)', value: 7, icon: 'smartphone' },
+    { label: 'E-Mola', value: 6, icon: 'smartphone' },
+    { label: 'Transferência Bancária', value: 3, icon: 'account_balance' },
+    { label: 'Numerário', value: 1, icon: 'payments' },
+    { label: 'Cheque', value: 2, icon: 'receipt_long' }
+  ]
+})
+
 const discountOptions = [
   { label: 'Percentual (%)', value: 'percentage' },
   { label: 'Valor Fixo (MZN)', value: 'fixed' }
@@ -302,7 +412,7 @@ const discountOptions = [
 
 // ── RESUMO (quote oficial do servidor; fallback local enquanto chega) ──
 const ordem = computed(() => props.installment?.installmentOrder ?? '—')
-const customerName = computed(() => props.customer?.customerName || '')
+const customerName = computed(() => customerDisplayName.value)
 const title = computed(() => ({
   full: 'Registar Pagamento',
   partial: 'Pagamento Parcial',
@@ -312,8 +422,6 @@ const title = computed(() => ({
 const installmentRemaining = (inst) => Math.max(0, Number(inst?.installment || 0) - Number(inst?.paidAmount || 0))
 const saldoEmFalta = computed(() => installmentRemaining(props.installment))
 const quoteLate = computed(() => Number(store.quote?.lateDue ?? 0))
-// Capital PURO da prestação (prestação − juros) — a quote devolve capitalDue =
-// saldo total em falta (inclui juros por pagar), não o capital da linha.
 const quoteCapital = computed(() =>
   Math.max(0, Number(props.installment?.installment || 0) - Number(props.installment?.rateAmount || 0)))
 const quoteJuros = computed(() => Number(store.quote?.interestDue ?? Number(props.installment?.rateAmount || 0)))
@@ -334,20 +442,18 @@ const filteredAccounts = computed(() => {
 const onAccountFilter = (val, update) => {
   update(() => { accountFilterQuery.value = val })
 }
-// Colapsado mostra nome + saldo actual (ex.: "Colecta M-Pesa (portal) — 0,00 MZN")
 const accountOptionLabel = (a) => `${a.name} — ${formatMoney(a.balance)}`
 const fetchAccounts = async () => {
   try {
-    await bankStore.fetchReembolsoAccounts(props.customer?.companyId, form.value.paymentMethod)
+    await bankStore.fetchReembolsoAccounts(effectiveCompanyId.value, form.value.paymentMethod)
     const valid = bankStore.byMethod(form.value.paymentMethod)
       .some(a => Number(a.id) === Number(selectedBankAccount.value?.id))
     if (!valid && bankStore.reembolsoAccounts.length > 0) {
       selectedBankAccount.value = bankStore.byMethod(form.value.paymentMethod)[0]
     }
-  } catch { /* falha de rede → usuário escolhe manualmente */ }
+  } catch { /* falha de rede */ }
 }
 watch(() => form.value.paymentMethod, () => {
-  // Re-ordena pela prioridade do novo método e auto-selecciona o 1.º
   const first = bankStore.byMethod(form.value.paymentMethod)[0]
   if (first) selectedBankAccount.value = first
 })
@@ -364,8 +470,6 @@ const onDateChange = () => {
   }
   fetchQuote()
 }
-// QDate fornece a data do dia como YYYY/MM/DD; comparar por segmentos evita
-// incompatibilidade de separadores e mantém a data local do sistema.
 const dateOptions = (date) => {
   const [year, month, day] = date.split('/').map(Number)
   const [todayYear, todayMonth, todayDay] = localToday().split('-').map(Number)
@@ -380,15 +484,12 @@ const checkReferenceDuplicate = async (val) => {
   if (!ref || !form.value.paymentMethod) return false
   try {
     const { data } = await api.get('/api/tranzaction/loan/reference-check', {
-      params: { companyId: props.customer?.companyId, paymentMethod: form.value.paymentMethod, reference: ref }
+      params: { companyId: effectiveCompanyId.value, paymentMethod: form.value.paymentMethod, reference: ref }
     })
     return !!data?.result?.exists
   } catch { return false }
 }
 const referenceRules = computed(() => {
-  // Numerário pode não ter referência externa (auto-gerada no submit).
-  // Só exigida quando já há um meio seleccionado — sem meio, o erro deve
-  // apontar ao campo "Meio de pagamento", não a este.
   const required = !!form.value.paymentMethod && Number(form.value.paymentMethod) !== 1
   return [
     v => (!required || !!String(v || '').trim()) || 'Obrigatório',
@@ -397,18 +498,12 @@ const referenceRules = computed(() => {
 })
 const amountRules = computed(() => [
   v => Number(v) > 0 || 'Valor inválido'
-  // Excesso é permitido: é automaticamente abatido na prestação seguinte
-  // (ou creditado ao mutuário se não houver mais prestações em aberto).
 ])
-// Excesso face ao total devido desta prestação (capital + juros + mora).
 const overpayPreview = computed(() => {
   if (props.mode === 'discount') return 0
   return Math.max(0, Math.round(((Number(form.value.amountReceived) || 0) - (maxPayable.value || 0)) * 100) / 100)
 })
-// ── AUTO-PREENCHIMENTO DO VALOR (modo "full") ──
-// Ao abrir e sempre que a quote for recalculada (ex.: mora actualizada pelo
-// servidor), o campo "Valor a pagar" segue o total devido (capital + juros +
-// mora), desde que o utilizador não o tenha alterado manualmente.
+
 const lastAutoAmount = ref(0)
 const syncAutoAmount = () => {
   if (props.mode !== 'full') return
@@ -420,15 +515,13 @@ const syncAutoAmount = () => {
 }
 watch(totalDevido, syncAutoAmount)
 
-// ── ALERTA SIMPLES: valor digitado abaixo da prestação ──
 const belowInstallmentAlert = computed(() => {
-  if (props.mode !== 'full') return false // parcial/desconto já têm o seu próprio aviso
+  if (props.mode !== 'full') return false
   const installmentValue = Number(props.installment?.installment || 0)
   const amount = Number(form.value.amountReceived) || 0
   return installmentValue > 0 && amount > 0 && amount < installmentValue
 })
 
-// ── COMPROVATIVO (máx. 5 MB) ──
 watch(() => form.value.receiptFile, (file) => {
   if (file && file.size > 5 * 1024 * 1024) {
     $q.notify({ type: 'negative', message: 'Comprovativo excede 5 MB', position: 'top' })
@@ -436,13 +529,198 @@ watch(() => form.value.receiptFile, (file) => {
   }
 })
 
+// ── M-PESA OPEN API TELEFONE & POLLING ──
+const showMpesaWaiting = ref(false)
+const mpesaCountdown = ref(60)
+const currentMpesaTxId = ref(null)
+let mpesaTimerInterval = null
+let mpesaPollInterval = null
+
+const clearMpesaTimers = () => {
+  if (mpesaTimerInterval) { clearInterval(mpesaTimerInterval); mpesaTimerInterval = null }
+  if (mpesaPollInterval) { clearInterval(mpesaPollInterval); mpesaPollInterval = null }
+}
+
+onUnmounted(() => {
+  clearMpesaTimers()
+})
+
+const normalizedPhone = computed(() => {
+  let p = String(form.value.phoneNumber || effectiveCustomer.value?.customerPhone || props.customer?.customerPhone || '').replace(/\D/g, '')
+  if (p.length === 9 && (p.startsWith('84') || p.startsWith('85'))) {
+    p = '258' + p
+  }
+  return p
+})
+
+const normalizedPhoneForDisplay = computed(() => {
+  const p = normalizedPhone.value
+  return p.startsWith('258') ? p.slice(3) : p
+})
+
+const phoneRules = (val) => {
+  const p = String(val || '').replace(/\D/g, '')
+  if (p.length === 9 && (p.startsWith('84') || p.startsWith('85'))) return true
+  if (p.length === 12 && (p.startsWith('25884') || p.startsWith('25885'))) return true
+  return 'Número M-Pesa deve ser rede Vodacom (84 ou 85 + 7 dígitos)'
+}
+
+const cancelMpesaWait = () => {
+  clearMpesaTimers()
+  showMpesaWaiting.value = false
+  $q.notify({ type: 'info', message: 'Aguarde cancelado.', position: 'top' })
+}
+
+const checkMpesaStatusOnce = async (isTimeout = false) => {
+  if (!currentMpesaTxId.value) return
+  try {
+    const { data } = await api.get(`/api/mpesa/c2b/status/${currentMpesaTxId.value}`)
+    if (data.status === 'SUCCESS') {
+      clearMpesaTimers()
+      showMpesaWaiting.value = false
+      $q.notify({
+        type: 'positive',
+        message: data.message || 'Pagamento M-Pesa confirmado e liquidado com sucesso!',
+        position: 'top',
+        timeout: 4000
+      })
+      close()
+      emit('pagamento-realizado', data)
+      emit('paid', data)
+    } else if (data.status === 'FAILED') {
+      clearMpesaTimers()
+      showMpesaWaiting.value = false
+      $q.notify({
+        type: 'negative',
+        message: data.responseDescription || data.message || 'Transação M-Pesa recusada ou cancelada pelo cliente.',
+        position: 'top'
+      })
+    } else if (isTimeout) {
+      clearMpesaTimers()
+      showMpesaWaiting.value = false
+      $q.notify({
+        type: 'warning',
+        message: 'Tempo limite excedido (60s). Se o cliente introduziu o PIN, o sistema processará a confirmação em segundo plano.',
+        position: 'top'
+      })
+    }
+  } catch { /* polling silencioso */ }
+}
+
+const submitMpesaC2B = async () => {
+  const inst = props.installment
+  const loanObj = effectiveLoan.value
+  const custObj = effectiveCustomer.value
+  const compId = effectiveCompanyId.value
+
+  if (!inst?.id) {
+    $q.notify({ type: 'warning', message: 'Selecione a prestação a liquidar.', position: 'top' })
+    return
+  }
+  if (!loanObj?.id) {
+    $q.notify({ type: 'warning', message: 'Identificador do empréstimo não encontrado.', position: 'top' })
+    return
+  }
+  if (!custObj?.id && !custObj?.accountNumber) {
+    $q.notify({ type: 'warning', message: 'Identificador do mutuário não encontrado.', position: 'top' })
+    return
+  }
+  if (!compId) {
+    $q.notify({ type: 'warning', message: 'Empresa do utilizador não identificada.', position: 'top' })
+    return
+  }
+
+  // Validação dos campos do formulário
+  if (formRef.value) {
+    const valid = await formRef.value.validate()
+    if (!valid) {
+      $q.notify({ type: 'warning', message: 'Por favor preencha os campos obrigatórios corretamente.', position: 'top' })
+      return
+    }
+  }
+
+  const p = normalizedPhone.value
+  if (!/^258(84|85)\d{7}$/.test(p)) {
+    $q.notify({
+      type: 'negative',
+      message: 'Indique um número M-Pesa válido (84 ou 85 + 7 dígitos). Ex: 848353816',
+      position: 'top'
+    })
+    return
+  }
+
+  const amount = Number(form.value.amountReceived) || 0
+  if (amount <= 0) {
+    $q.notify({ type: 'negative', message: 'Indique um valor válido para o pagamento.', position: 'top' })
+    return
+  }
+
+  paying.value = true
+  try {
+    const { data } = await api.post('/api/mpesa/c2b/initiate', {
+      companyId: Number(compId),
+      customerId: Number(custObj.id || props.customer?.id),
+      loanId: Number(loanObj.id),
+      amortizationLoanId: Number(inst.id),
+      amount: Number(amount),
+      phone: p
+    })
+
+    if (data.status === 'SUCCESS' && data.success) {
+      $q.notify({
+        type: 'positive',
+        message: data.message || 'Pagamento M-Pesa liquidado com sucesso!',
+        position: 'top',
+        timeout: 4000
+      })
+      close()
+      emit('pagamento-realizado', data)
+      emit('paid', data)
+    } else if (data.status === 'PENDING_PIN' || data.success) {
+      currentMpesaTxId.value = data.mpesaTxId
+      showMpesaWaiting.value = true
+      clearMpesaTimers()
+      mpesaCountdown.value = 60
+      mpesaTimerInterval = setInterval(() => {
+        mpesaCountdown.value--
+        if (mpesaCountdown.value <= 0) {
+          clearMpesaTimers()
+          checkMpesaStatusOnce(true)
+        }
+      }, 1000)
+      mpesaPollInterval = setInterval(async () => {
+        await checkMpesaStatusOnce(false)
+      }, 2500)
+    } else {
+      $q.notify({
+        type: 'negative',
+        message: data.message || 'M-Pesa recusou o pedido de pagamento.',
+        position: 'top'
+      })
+    }
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: err.response?.data?.message || err.message || 'Erro ao conectar à API M-Pesa da Vodacom.',
+      position: 'top'
+    })
+  } finally {
+    paying.value = false
+  }
+}
+
 // ── ABERTURA / FECHO ──
 const idempotencyKey = ref('')
 const openReset = () => {
   form.value = defaultForm()
+  if (isGestor.value) {
+    form.value.paymentMethod = 7
+  }
+  const cPhone = effectiveCustomer.value?.customerPhone || props.customer?.customerPhone
+  if (cPhone) {
+    form.value.phoneNumber = String(cPhone)
+  }
   selectedBankAccount.value = null
-  // Limpa a quote anterior ANTES de calcular o valor inicial — evita herdar
-  // a mora/total da prestação previamente aberta no modal.
   store.quote = null
   const autoAmount = props.mode === 'full'
     ? totalDevido.value
@@ -450,18 +728,31 @@ const openReset = () => {
   form.value.amountReceived = autoAmount
   lastAutoAmount.value = autoAmount
   fetchAccounts()
-  // Idempotency-Key POR TENTATIVA: o servidor devolve a resposta original em
-  // retries com a mesma chave — duplo clique nunca duplica o pagamento.
   idempotencyKey.value = (crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`)
   fetchQuote()
 }
 watch(show, (v) => { if (v) openReset() })
 
-const close = () => { emit('update:modelValue', false) }
+const close = () => {
+  clearMpesaTimers()
+  showMpesaWaiting.value = false
+  emit('update:modelValue', false)
+}
 
-// ── SUBMISSÃO ──
+// ── SUBMISSÃO MANUAL (ADMIN) ──
 const submit = async () => {
-  if (!props.installment || !props.loan) return
+  if (isGestor.value) {
+    return submitMpesaC2B()
+  }
+  const inst = props.installment
+  const loanObj = effectiveLoan.value
+  const custObj = effectiveCustomer.value
+  const compId = effectiveCompanyId.value
+
+  if (!inst?.id || !loanObj?.id) {
+    $q.notify({ type: 'warning', message: 'Dados da prestação ou empréstimo incompletos.', position: 'top' })
+    return
+  }
   if (formRef.value) {
     const valid = await formRef.value.validate()
     if (!valid) return
@@ -472,9 +763,8 @@ const submit = async () => {
   }
   paying.value = true
   try {
-    // Numerário sem referência externa → auto-gerada (backend exige referência)
     if (Number(form.value.paymentMethod) === 1 && !String(form.value.paymentReference || '').trim()) {
-      form.value.paymentReference = `NUM-${props.customer?.accountNumber || 'X'}-${Date.now().toString().slice(-8)}`
+      form.value.paymentReference = `NUM-${custObj.accountNumber || 'X'}-${Date.now().toString().slice(-8)}`
     }
 
     let receiptUrl = ''
@@ -496,25 +786,22 @@ const submit = async () => {
       amount = Math.min(amount, Math.round((remaining - discountAmount) * 100) / 100)
       discountApplied = discountAmount > 0
     }
-    // Fora do desconto, o valor pode exceder o total devido (maxPayable):
-    // o excesso é automaticamente abatido na prestação seguinte pelo servidor,
-    // ou creditado ao mutuário se não houver mais prestações em aberto.
     const acceptOverpay = props.mode !== 'discount' && amount > (maxPayable.value || saldoEmFalta.value) + 0.005
 
     const resposta = await store.payInstallment({
-      companyId: props.customer.companyId,
-      accountNumber: props.customer.accountNumber,
-      amortizationLoanId: props.installment.id,
-      loanId: props.loan.id,
+      companyId: Number(compId),
+      accountNumber: custObj.accountNumber,
+      amortizationLoanId: inst.id,
+      loanId: loanObj.id,
       amount,
-      latePaymentInterest: quoteLate.value, // @deprecated no servidor (recalculada)
+      latePaymentInterest: quoteLate.value,
       idempotencyKey: idempotencyKey.value,
       bank_account_id: selectedBankAccount.value.id,
-      interestRateAmount: props.installment.rateAmount || 0,
-      phoneNumber: form.value.phoneNumber || props.customer?.customerPhone || '',
+      interestRateAmount: inst.rateAmount || 0,
+      phoneNumber: form.value.phoneNumber || custObj.customerPhone || '',
       tranzactionReference: form.value.paymentReference,
       paymentMethod: form.value.paymentMethod,
-      description: `Pagamento prestação ${props.installment.installmentOrder}${discountApplied ? ' (com desconto)' : ''}`,
+      description: `Pagamento prestação ${inst.installmentOrder}${discountApplied ? ' (com desconto)' : ''}`,
       receiptUrl,
       staffName: form.value.staffName || '',
       paymentDate: form.value.paymentDate,
@@ -525,6 +812,7 @@ const submit = async () => {
 
     close()
     emit('pagamento-realizado', resposta)
+    emit('paid', resposta)
     const applied = resposta?.allocation?.overpayAppliedToNextInstallments || []
     const asCredit = Number(resposta?.allocation?.overpayAsCredit) || 0
     if (applied.length > 0) {

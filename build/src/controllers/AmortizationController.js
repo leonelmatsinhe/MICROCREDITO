@@ -126,7 +126,7 @@ const getPastAmortizations = (req, res) => __awaiter(void 0, void 0, void 0, fun
 });
 exports.getPastAmortizations = getPastAmortizations;
 const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d;
     try {
         const { companyId, loanId, accountNumber, interestRate, numberOfInstallments, amount, dueDate, status } = req.body;
         // Validações de entrada
@@ -360,6 +360,34 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 return res.status(400).json({ success: false, message: (feeError === null || feeError === void 0 ? void 0 : feeError.message) || "Erro ao registar a entrada da taxa administrativa." });
             }
         }
+        // ── TESOURARIA: Liquidação estrita do desembolso (obrigatória e bloqueante) ──
+        // O dinheiro sai efectivamente do caixa de balcão ou da conta bancária.
+        // Se o saldo for insuficiente ou o caixa estiver fechado, o desembolso é
+        // bloqueado sem gerar plano nem activar o crédito.
+        const jwtDisburse = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
+        const decodedDisburse = jwtDisburse.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
+        const disburseUserId = Number(decodedDisburse === null || decodedDisburse === void 0 ? void 0 : decodedDisburse.id) || undefined;
+        try {
+            const { recordDisbursement } = yield Promise.resolve().then(() => __importStar(require("../services/cashRegisterService")));
+            yield recordDisbursement({
+                companyId: Number(companyId),
+                userId: disburseUserId,
+                loanId: Number(loanId),
+                customerId: loan ? Number(loan.getDataValue("customerId")) : null,
+                amount: Number(amount),
+                accountNumber,
+                paymentMethod: payMethod,
+                bankAccountId: disburseAccountId,
+            });
+        }
+        catch (cashError) {
+            console.error("[DESEMBOLSO] Bloqueio de tesouraria:", (cashError === null || cashError === void 0 ? void 0 : cashError.message) || cashError);
+            return res.status((cashError === null || cashError === void 0 ? void 0 : cashError.code) === "CAIXA_FECHADO" ? 403 : 400).json({
+                success: false,
+                error: (cashError === null || cashError === void 0 ? void 0 : cashError.code) || "DISBURSEMENT_TREASURY_ERROR",
+                message: (cashError === null || cashError === void 0 ? void 0 : cashError.message) || "Não foi possível liquidar os fundos na tesouraria para este desembolso.",
+            });
+        }
         // Gera o plano de amortização usando o sistema francês
         const customerAmortizationPlan = (0, loanAmortization_1.simulator)({
             companyId,
@@ -383,6 +411,23 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 id: loanId
             }
         });
+        // ── RAZÃO CONTABILÍSTICO (Partidas Dobradas): Débito Carteira / Crédito Tesouraria ──
+        try {
+            const { recordDisbursementLedger } = yield Promise.resolve().then(() => __importStar(require("../services/generalLedgerService")));
+            yield recordDisbursementLedger({
+                companyId: Number(companyId),
+                loanId: Number(loanId),
+                amount: Number(amount),
+                paymentMethod: payMethod,
+                bankAccountId: disburseAccountId,
+                adminFee: adminFeeValue,
+                adminFeeAccountId,
+                userId: disburseUserId,
+            });
+        }
+        catch (ledgerError) {
+            console.error("[GeneralLedger] Erro ao lançar partidas dobradas de desembolso:", (ledgerError === null || ledgerError === void 0 ? void 0 : ledgerError.message) || ledgerError);
+        }
         // ── SPRINT 5: linha do tempo — quem desembolsou e quando ──
         // (auditável; best-effort como o pacote de concessão — o estado já está
         // consistente no update acima e a falha fica registada no log)
@@ -442,34 +487,6 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                 console.error("[Concessao] Falha ao gerar pacote (desembolso mantido):", (pkgError === null || pkgError === void 0 ? void 0 : pkgError.message) || pkgError);
             }
         }
-        // ── CAIXA DIÁRIO: movimento automático SAIDA / DESEMBOLSO ──
-        // Best-effort: se falhar, NÃO impede o desembolso (apenas regista o erro).
-        // O caixa ABERTO já foi validado pelo middleware checkCashRegisterOpen e
-        // chega em req.cashRegister.
-        try {
-            const { recordDisbursement } = yield Promise.resolve().then(() => __importStar(require("../services/cashRegisterService")));
-            const openRegister = req.cashRegister;
-            if (openRegister) {
-                const jwt = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
-                const decoded = jwt.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
-                yield recordDisbursement({
-                    companyId: Number(companyId),
-                    userId: Number(decoded === null || decoded === void 0 ? void 0 : decoded.id) || undefined,
-                    loanId: Number(loanId),
-                    customerId: loan ? Number(loan.getDataValue("customerId")) : null,
-                    amount: Number(amount),
-                    accountNumber,
-                    // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
-                    paymentMethod: String(((_e = req.body) === null || _e === void 0 ? void 0 : _e.payment_method) || "CASH"),
-                    bankAccountId: ((_f = req.body) === null || _f === void 0 ? void 0 : _f.bank_account_id)
-                        ? Number(req.body.bank_account_id)
-                        : null,
-                });
-            }
-        }
-        catch (cashError) {
-            console.error("[CAIXA] Falha ao registar desembolso no caixa (desembolso mantido):", (cashError === null || cashError === void 0 ? void 0 : cashError.message) || cashError);
-        }
         return bulckInsert != null && bulckInsert.length > 0
             ? res.status(200).json({
                 success: true,
@@ -509,7 +526,7 @@ exports.createAmortizationLoan = createAmortizationLoan;
  * dados financeiros).
  */
 const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _g;
+    var _e;
     try {
         const { companyId } = req.params;
         const companyIdNum = Number(companyId);
@@ -605,7 +622,7 @@ const getInstallmentsControl = (req, res) => __awaiter(void 0, void 0, void 0, f
                     customerName: (customer === null || customer === void 0 ? void 0 : customer.customerName) || null,
                     customerPhone: (customer === null || customer === void 0 ? void 0 : customer.customerPhone) || "",
                     hasCustomer: !!customer,
-                    installmentOrder: (_g = a.installmentOrder) !== null && _g !== void 0 ? _g : "",
+                    installmentOrder: (_e = a.installmentOrder) !== null && _e !== void 0 ? _e : "",
                     installment: Number(a.installment) || 0,
                     paidAmount: Number(a.paidAmount) || 0,
                     status,

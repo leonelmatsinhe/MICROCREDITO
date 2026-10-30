@@ -7,6 +7,11 @@ import { formatMoney as formatCurrency } from '@/utils/formatters'
  */
 export async function logAction({ userId, companyId, userName, userRole, action, module, description }) {
   if (!userId || !companyId) return
+  // Mutuários no portal têm IDs da tabela `customers`, não de `users` (staff).
+  // Não tentar registar em `user_logs` para evitar violação de integridade referencial.
+  if (userRole === 'customer' || userRole === 'portal' || localStorage.getItem('isCustomerSession') === 'true') {
+    return
+  }
   // FIX (logout em produção): o token é capturado de forma SÍNCRONA agora,
   // porque o logout limpa o localStorage imediatamente a seguir e o
   // interceptor do axios (que lê o localStorage) só corre numa microtask —

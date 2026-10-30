@@ -135,7 +135,7 @@ const routes = [
     path: '/mutuarios/:accountNumber',
     name: 'CustomerDetail',
     component: CustomerDetailPage,
-    meta: { requiresAuth: true, allowedRoles: [1, 2, 3] }
+    meta: { requiresAuth: true, allowedRoles: [1, 2, 3], hideNavbar: true }
   },
   {
     path: '/loans',
@@ -362,19 +362,33 @@ router.beforeEach((to, from, next) => {
       authStore.restoreSession()
     }
   }
-  
+
+  // Tratamento específico e prioritário para o Portal do Mutuário (mobile-first)
+  const isPortal = to.path === '/portal' || to.path.startsWith('/portal/')
+  if (isPortal) {
+    if (!authStore.isLoggedIn) {
+      authStore.restoreSession()
+    }
+    if (authStore.isLoggedIn) {
+      redirectCount = 0
+      next()
+      return
+    }
+    next({ name: 'Login', query: { redirect: to.fullPath } })
+    return
+  }
+
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const isLoggedIn = authStore.isLoggedIn
   const userRole = authStore.userRole
-  
+
   // Rota requer autenticação
   if (requiresAuth) {
     if (!isLoggedIn) {
       next({ name: 'Login', query: { redirect: to.fullPath } })
       return
     }
-    
-    // Verificar se tem permissão para a rota
+
     const allowedRoles = to.meta.allowedRoles
     if (allowedRoles && !allowedRoles.includes(userRole)) {
       const redirect = authStore.defaultRoute

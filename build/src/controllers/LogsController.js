@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteLogs = exports.createLog = exports.findLogsByCompany = exports.findAllLogs = void 0;
 const sequelize_1 = require("sequelize");
 const LogsModel_1 = require("../database/models/LogsModel");
+const UserModel_1 = require("../database/models/UserModel");
 const findAllLogs = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { from, to, companyId, limit } = req.query;
@@ -102,6 +103,15 @@ const createLog = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             return res.status(400).send({
                 success: false,
                 message: "userId e companyId são obrigatórios.",
+            });
+        }
+        // Verificar se o utilizador existe na tabela `users` para não violar a chave estrangeira fk_user_logs_user
+        // (ex.: mutuários autenticados no portal têm IDs da tabela `customers`, não de `users`)
+        const userExists = yield UserModel_1.UserModel.findByPk(Number(userId));
+        if (!userExists) {
+            return res.status(200).send({
+                success: true,
+                result: "Log ignorado: Utilizador não pertence ao staff interno (users).",
             });
         }
         // Normalizar valores para nunca violar NOT NULL (ex.: logout de mutuário sem `name`)

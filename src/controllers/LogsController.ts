@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { Op } from "sequelize";
 import { LogsModel } from "../database/models/LogsModel";
+import { UserModel } from "../database/models/UserModel";
 
 const findAllLogs = async (req: Request, res: Response) => {
   try {
@@ -96,6 +97,16 @@ const createLog = async (req: Request, res: Response) => {
       return res.status(400).send({
         success: false,
         message: "userId e companyId são obrigatórios.",
+      });
+    }
+
+    // Verificar se o utilizador existe na tabela `users` para não violar a chave estrangeira fk_user_logs_user
+    // (ex.: mutuários autenticados no portal têm IDs da tabela `customers`, não de `users`)
+    const userExists = await UserModel.findByPk(Number(userId));
+    if (!userExists) {
+      return res.status(200).send({
+        success: true,
+        result: "Log ignorado: Utilizador não pertence ao staff interno (users).",
       });
     }
 

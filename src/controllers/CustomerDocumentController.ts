@@ -108,7 +108,19 @@ const getCustomerDocuments = async (req: Request, res: Response) => {
 
 const createDocument = async (req: Request, res: Response) => {
   try {
-    const { companyId, accountNumber, documentName, uploadedBy } = req.body;
+    const rawCompanyId = Array.isArray(req.body.companyId)
+      ? req.body.companyId[0]
+      : req.body.companyId;
+    const rawAccountNumber = Array.isArray(req.body.accountNumber)
+      ? req.body.accountNumber[0]
+      : req.body.accountNumber;
+    const rawDocumentName = Array.isArray(req.body.documentName)
+      ? req.body.documentName[0]
+      : req.body.documentName;
+    const rawUploadedBy = Array.isArray(req.body.uploadedBy)
+      ? req.body.uploadedBy[0]
+      : req.body.uploadedBy;
+
     const uploadedFileName = req.file?.filename;
     if (!uploadedFileName) {
       return res.status(400).json({
@@ -119,10 +131,14 @@ const createDocument = async (req: Request, res: Response) => {
     }
     const documentFileUrl = buildStoredDocumentUrl(uploadedFileName);
 
-    if (!companyId || !accountNumber || !documentName || !uploadedBy || !documentFileUrl) {
+    const accountNumberNum = Number(rawAccountNumber);
+    const documentName = rawDocumentName ? String(rawDocumentName).trim() : "";
+    const uploadedBy = rawUploadedBy ? String(rawUploadedBy).trim() : "";
+
+    if (!accountNumberNum || !documentName || !uploadedBy || !documentFileUrl) {
       return res.status(400).send({
         success: false,
-        message: "Campos obrigatórios: companyId, accountNumber, documentName, uploadedBy e ficheiro.",
+        message: "Campos obrigatórios: accountNumber, documentName, uploadedBy e ficheiro.",
       });
     }
     if (!isLocalDocumentUrl(String(documentFileUrl))) {
@@ -133,8 +149,13 @@ const createDocument = async (req: Request, res: Response) => {
       });
     }
 
+    const companyIdNum = Number(rawCompanyId) || Number((req as any).companyId) || 0;
+
     const customer = await CustomerModel.findOne({
-      where: { companyId: Number(companyId), accountNumber: String(accountNumber) },
+      where: {
+        accountNumber: accountNumberNum,
+        ...(companyIdNum ? { companyId: companyIdNum } : {}),
+      },
     });
     if (!customer) {
       return res.status(409).json({
@@ -143,9 +164,11 @@ const createDocument = async (req: Request, res: Response) => {
       });
     }
 
+    const effectiveCompanyId = Number(customer.getDataValue("companyId")) || companyIdNum;
+
     const document = await CustomerDocumentsModel.create({
-      companyId: Number(companyId),
-      accountNumber: Number(accountNumber),
+      companyId: effectiveCompanyId,
+      accountNumber: accountNumberNum,
       customerId: customer.getDataValue("id"),
       documentName: String(documentName),
       documentFileUrl: String(documentFileUrl),
@@ -182,6 +205,18 @@ const updateDocument = async (req: Request, res: Response) => {
     }
 
     const updatePayload: any = { ...req.body };
+    if (Array.isArray(updatePayload.companyId)) {
+      updatePayload.companyId = updatePayload.companyId[0];
+    }
+    if (Array.isArray(updatePayload.accountNumber)) {
+      updatePayload.accountNumber = updatePayload.accountNumber[0];
+    }
+    if (updatePayload.companyId !== undefined) {
+      updatePayload.companyId = Number(updatePayload.companyId);
+    }
+    if (updatePayload.accountNumber !== undefined) {
+      updatePayload.accountNumber = Number(updatePayload.accountNumber);
+    }
     if (req.file?.filename) {
       updatePayload.documentFileUrl = buildStoredDocumentUrl(req.file.filename);
     }

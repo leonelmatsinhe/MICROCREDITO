@@ -42,27 +42,45 @@ export const PAGE_TOURS = [
         steps: [
           {
             el: '[data-tour="dash-filters"]',
-            title: 'Aqui vês o resumo da tua carteira hoje',
-            text: 'Escolhe o <strong>período</strong>, a <strong>carteira de financiamento</strong> e o <strong>gestor</strong>. O filtro muda o «Movimento do período» e os gráficos; os cartões do topo são acumulados (saldo total) e <strong>não</strong> mudam com a data.',
+            title: 'Filtros de Período & Sincronização',
+            text: 'Define o período de análise (<strong>Hoje</strong>, <strong>Semana</strong>, <strong>Mês</strong>, <strong>Ano</strong> ou datas personalizadas) e clica em <strong>Actualizar</strong>. O filtro sincroniza os desembolsos e cobranças do período sem afectar a posição viva da carteira activa.',
             side: 'bottom'
           },
           {
             el: '[data-tour="dash-kpis"]',
-            title: 'O que significa cada número',
-            text: '<strong>Capital em dívida</strong> é o que os mutuários ainda devem. <strong>PAR 30</strong> mostra quanto da tua carteira está em atraso há mais de 30 dias — é o dinheiro em risco. <strong>Mora</strong> são os juros de atraso já apurados.',
+            title: '5 Indicadores Mestres (Padrão CGAP / Bancário)',
+            text: '<strong>Carteira Activa Bruta (GLP)</strong>: capital total em dívida. <strong>PAR 30</strong>: termómetro regulamentar de risco (<5% Saudável, 5-10% Alerta, >10% Crítico). <strong>Desembolsos</strong>, <strong>Reembolsos & Cobrança</strong> (com quebra de capital, juros, mora e eficácia) e <strong>Liquidez Real</strong> em conta.',
             side: 'bottom'
+          },
+          {
+            el: '[data-tour="dash-pipeline"]',
+            title: 'Funil Operacional & Pipeline de Crédito',
+            text: 'Acompanha em tempo real as 4 etapas operacionais: <strong>Pedidos em Análise</strong>, <strong>Aprovados a aguardar desembolso</strong>, <strong>A Vencer esta Semana</strong> e <strong>Prestações em Incumprimento</strong>. Clica em qualquer cartão para navegar directamente.',
+            side: 'bottom'
+          },
+          {
+            el: '[data-tour="dash-matrix"]',
+            title: 'Evolução da Carteira & Matriz de Risco (Aging)',
+            text: 'Gráfico histórico dos últimos 6 meses (desembolsos vs reembolsos) e <strong>Matriz de Aging</strong> por escalões de mora: Em Dia (0 dias), 1 a 30 dias, 31 a 60 dias (PAR30), 61 a 90 dias (PAR60) e acima de 90 dias.',
+            side: 'top'
+          },
+          {
+            el: '[data-tour="dash-managers"]',
+            title: 'Produtividade & Desempenho por Gestor',
+            text: 'Auditoria e metas da equipa: volume de carteira sob custódia de cada gestor, reembolsos recebidos no período seleccionado e taxa de incumprimento individual.',
+            side: 'top'
+          },
+          {
+            el: '[data-tour="dash-alerts"]',
+            title: 'Alertas de Incumprimento & Próximas Prestações',
+            text: 'Mutuários em situação crítica com mora acumulada e dias de atraso para contacto urgente, ao lado da agenda de prestações a vencer nos próximos dias.',
+            side: 'top'
           },
           {
             el: '[data-tour="dash-wallets"]',
-            title: 'Carteiras de financiamento',
-            text: 'Alocado, desembolsado e <strong>disponível</strong> por fundo ou parceiro. Erro comum: conceder crédito de uma carteira sem saldo analítico — o sistema bloqueia. Confirma o «Disponível» antes de prometer dinheiro ao mutuário.',
-            side: 'bottom'
-          },
-          {
-            el: '[data-tour="nav:/cobranca"]',
-            title: 'Clica aqui para ir para Cobrança',
-            text: 'A Cobrança mostra só os mutuários da tua carteira com prestação vencida — é lá que registas a visita, a ligação e a promessa de pagamento (PTP).',
-            side: 'right'
+            title: 'Origem de Capital & Carteiras de Financiadores',
+            text: 'Posição consolidada dos fundos próprios e parceiros investidores (capital alocado, desembolsado e disponível). Confirma sempre a liquidez real antes de conceder novos créditos.',
+            side: 'top'
           }
         ]
       },
@@ -154,7 +172,7 @@ export const PAGE_TOURS = [
   },
   {
     id: 'credito',
-    label: 'Gestão de Crédito',
+    label: 'Crédito',
     pages: [
       {
         id: 'mutuarios',
@@ -196,21 +214,27 @@ export const PAGE_TOURS = [
         roles: [1, 2, 3],
         steps: [
           {
-            el: '[data-tour="mutuario-body"]',
-            title: 'Perfil 360º do mutuário',
-            text: 'Créditos activos, prestações, pagamentos, documentos KYC, garantias e o histórico de cobrança (visitas, ligações e promessas) — tudo na mesma ficha.',
+            el: '[data-tour="mutuario-header"]',
+            title: 'Cockpit 360° do Mutuário',
+            text: 'Cabeçalho executivo com dados cadastrais do cliente, contacto, estado da conta e a <strong>Taxa de Esforço (DTI)</strong> calculada pelo padrão prudencial do Banco de Moçambique.',
             side: 'bottom'
+          },
+          {
+            el: '[data-tour="mutuario-kpis"]',
+            title: 'Indicadores de Risco & Dívida',
+            text: 'Acompanha em tempo real o <strong>Rendimento mensal</strong>, <strong>Total em Dívida</strong> viva, margem de capacidade e conformidade do <strong>Dossier KYC</strong>.',
+            side: 'bottom'
+          },
+          {
+            el: '[data-tour="mutuario-actions"]',
+            title: 'Acções Rápidas de Balcão',
+            text: 'Atalhos imediatos para <strong>Registar Pagamento</strong> (recebimento na hora), iniciar <strong>Cobrança SMS/WhatsApp</strong> com modelos profissionais e emitir o <strong>Extracto em PDF</strong>.',
+            side: 'left'
           },
           {
             el: '[data-tour="mutuario-tabs"]',
-            title: 'Muda de assunto pelas abas',
-            text: 'As abas separam crédito, prestações, documentos e garantias. Erro comum: registar o pagamento na aba errada — os pagamentos entram por <strong>Registar pagamento</strong>, que emite o recibo.',
-            side: 'bottom'
-          },
-          {
-            el: '[data-tour="page-content"]',
-            title: 'Antes de conceder mais crédito',
-            text: 'Confirma o histórico de atraso e as garantias já dadas. Dois créditos abertos com a mesma garantia é o erro mais caro nesta ficha.',
+            title: 'Navegação por Abas Especializadas',
+            text: 'Alterna entre a <strong>Visão Geral</strong> (timeline e saúde financeira), <strong>Créditos & Concessão</strong>, <strong>Plano de Amortização</strong>, <strong>Documentos & KYC</strong>, <strong>Documentos Legais</strong> e <strong>Garantias & Recibos</strong>.',
             side: 'bottom'
           }
         ]
@@ -318,27 +342,27 @@ export const PAGE_TOURS = [
         roles: [1, 2, 3],
         steps: [
           {
-            el: '[data-tour="installments-body"]',
-            title: 'Todas as prestações por data de vencimento',
-            text: 'Filtra por <strong>estado</strong>, mutuário e intervalo de datas. É a ferramenta de acompanhamento diário do plano de pagamentos da empresa.',
+            el: '[data-tour="installments-kpis"]',
+            title: '4 Indicadores Executivos de Cobrança',
+            text: 'Resumo da carteira viva: <strong>Em Atraso</strong> (volume e mora em risco), <strong>A Vencer nos Próximos 30 Dias</strong>, <strong>Juros de Mora Gerados</strong> e <strong>Liquidadas / Pagas</strong>.',
             side: 'bottom'
           },
           {
-            el: '[data-tour="installments-kpis"]',
-            title: 'Total, pagas, pendentes e em atraso',
-            text: 'Os quatro cartões resumem o período filtrado. <strong>Pendentes</strong> ainda podem ser pagas; <strong>em atraso</strong> já geram mora e entram no PAR 30.',
+            el: '[data-tour="installments-body"]',
+            title: 'Filtros Rápidos & Segmentação',
+            text: 'Filtra com um clique por presets executivos: <strong>Vencidas & 30 Dias</strong> (padrão de cobrança), <strong>Em Atraso</strong>, <strong>Vencem Hoje</strong>, <strong>Liquidadas</strong> ou <strong>Todas</strong>, além de busca por mutuário e intervalo de datas.',
             side: 'bottom'
           },
           {
             el: '[data-tour="installments-table"]',
-            title: 'Lê a linha da prestação',
-            text: 'Mostra o valor da prestação, a <strong>mora</strong> acumulada e o <strong>total a pagar</strong>. A mora cresce todos os dias — resolve cedo para não assustar o mutuário com um valor inflacionado.',
-            side: 'bottom'
+            title: 'Grelha de Prestações & Cálculo de Mora',
+            text: 'Acompanha cada prestação com o valor original, amortizações parciais, <strong>juros de mora diários</strong> acumulados e total real a liquidar. Clica no mutuário para aceder à ficha 360°.',
+            side: 'top'
           },
           {
             el: '[data-tour="installments-actions"]',
-            title: 'Enviar lembrete por SMS',
-            text: 'O botão <strong>SMS</strong> envia o aviso de vencimento com o valor já preenchido. O WhatsApp está indisponível por enquanto. Erro comum: enviar o lembrete depois da data — o aviso deve sair <strong>antes</strong> do vencimento.',
+            title: 'Avisos de Cobrança (SMS & WhatsApp Directo)',
+            text: 'Dispara notificações instantâneas com 8 modelos profissionais padronizados (preventivo, dia D, avisos formais, pré-contencioso e recibos). Permite envio via <strong>SMS Gateway</strong> ou abertura imediata no <strong>WhatsApp Directo</strong>.',
             side: 'left'
           }
         ]
@@ -352,26 +376,32 @@ export const PAGE_TOURS = [
       {
         id: 'pagamentos',
         path: '/pagamentos',
-        label: 'Pagamentos',
+        label: 'Recebimentos & Caixa',
         roles: [1],
         steps: [
           {
+            el: '[data-tour="payments-quick-btn"]',
+            title: 'Receber Pagamento Sem Voltas (Quick Pay)',
+            text: 'Clica aqui para receber qualquer prestação na hora. Pesquisa o mutuário por nome, conta ou telefone, escolhe a prestação devida e cobra via <strong>M-Pesa API</strong> (envia pedido de PIN directo ao telemóvel do cliente), <strong>Numerário</strong> (entrada em caixa) ou <strong>Banco/POS</strong>.',
+            side: 'bottom'
+          },
+          {
+            el: '[data-tour="payments-kpis"]',
+            title: 'Cockpit Financeiro de Recebimentos',
+            text: 'Resumo executivo do dia e do período: <strong>Total Recebido</strong>, <strong>Entradas de Hoje</strong>, <strong>Juros de Mora Recuperados</strong> e a percentagem arrecadada via M-Pesa vs Numerário.',
+            side: 'bottom'
+          },
+          {
             el: '[data-tour="payments-filters"]',
-            title: 'Encontra o pagamento',
-            text: 'Pesquisa por mutuário, conta, telefone, referência ou operador e filtra por data e <strong>meio de pagamento</strong> (dinheiro, banco, M-Pesa, e-Mola).',
+            title: 'Filtros Rápidos & Exportações',
+            text: 'Selecciona o intervalo de tempo com atalhos rápidos (<strong>Hoje</strong>, <strong>Ontem</strong>, <strong>Esta Semana</strong>, <strong>Este Mês</strong>, <strong>Ano</strong>), pesquisa inteligente e exporta relatórios formatados em <strong>PDF</strong> e <strong>Excel</strong>.',
             side: 'bottom'
           },
           {
             el: '[data-tour="payments-table"]',
-            title: 'O recibo nasce do pagamento',
-            text: 'Cada linha mostra o valor, a alocação às prestações e o recibo emitido (com QR de validação). Erro comum: registar o pagamento sem abrir o caixa do dia — o sistema recusa, porque todo o dinheiro tem de passar pelo caixa.',
-            side: 'bottom'
-          },
-          {
-            el: '[data-tour="nav:/caixa"]',
-            title: 'Abre o caixa antes de receber',
-            text: 'O caixa é obrigatório para operar: abre com a folha de contagem e fecha no fim do dia. Sem caixa aberto não há entradas de pagamento.',
-            side: 'right'
+            title: 'Histórico, Talão Térmico (80mm) & WhatsApp',
+            text: 'Cada linha regista a liquidação detalhada. Clica em <strong>Recibo</strong> para abrir o <strong>PDF oficial (A4)</strong>, imprimir no formato <strong>Talão Térmico de Balcão (80mm)</strong> ou reenviar o comprovativo directamente para o <strong>WhatsApp</strong> do cliente.',
+            side: 'top'
           }
         ]
       },
@@ -466,7 +496,7 @@ export const PAGE_TOURS = [
           {
             el: '[data-tour="bank-list"]',
             title: 'Cada cartão é uma conta',
-            text: 'Clica em ⋮ para ver o extrato ou editar. Contas inactivas ficam esbatidas e não podem receber nem pagar — desactivar é melhor do que apagar, para não perder o histórico.',
+            text: 'Clica em ⋮ para ver o extracto ou editar. Contas inactivas ficam esbatidas e não podem receber nem pagar — desactivar é melhor do que apagar, para não perder o histórico.',
             side: 'bottom'
           },
           {
@@ -484,21 +514,27 @@ export const PAGE_TOURS = [
         roles: [1],
         steps: [
           {
+            el: '[data-tour="caixa-hist-kpis"]',
+            title: 'Indicadores e Auditoria de Caixas',
+            text: 'Resumo executivo do período: <strong>Turnos Filtrados</strong>, <strong>Volume Total Movimentado</strong>, <strong>Índice de Conformidade</strong> (% de turnos sem quebra) e <strong>Divergência Acumulada</strong> ou alertas de regularização pendente.',
+            side: 'bottom'
+          },
+          {
             el: '[data-tour="caixa-hist-filters"]',
-            title: 'Consulta por período',
-            text: 'Escolhe as datas e o sistema lista todos os caixas fechados da empresa, com o operador e o tipo de fecho (normal, entrega ao cofre, depósito bancário ou divergência).',
+            title: 'Filtros Rápidos & Intervalo Personalizado',
+            text: 'Utiliza os atalhos (Hoje, 7 Dias, Este Mês, Este Ano) ou selecciona um intervalo de datas e operador específico para auditar turnos passados.',
             side: 'bottom'
           },
           {
             el: '[data-tour="caixa-hist-resumo"]',
-            title: 'Divergência acumulada',
-            text: 'O badge do topo soma as diferenças do período. <strong>Positivo</strong> = sobra, <strong>negativo</strong> = quebra. Um valor alto e recorrente é sinal de conferência cega mal feita no guichê.',
+            title: 'Divergência e Regularização',
+            text: 'O cartão de divergência alerta para quebras ou sobras globais. Se existirem caixas de dias anteriores deixados abertos, o sistema sinaliza a necessidade de <strong>Regularização</strong> imediata.',
             side: 'bottom'
           },
           {
             el: '[data-tour="caixa-hist-table"]',
-            title: 'Abrir o caixa e ver os movimentos',
-            text: 'Clica na linha para expandir os movimentos do dia. É aqui que confirmas se uma <strong>Entrega de Valores ao Cofre Central</strong> tem comprovativo e se o Auto de Diferença foi lançado.',
+            title: 'Turnos e Rastreio de Movimentos',
+            text: 'Cada linha identifica o operador, horário, saldo inicial, entradas, saídas e a conferência cega. Clica na linha para expandir os movimentos analíticos, comprovativos e o Auto de Diferença.',
             side: 'bottom'
           }
         ]
@@ -517,26 +553,26 @@ export const PAGE_TOURS = [
         steps: [
           {
             el: '[data-tour="financing-tabs"]',
-            title: 'Carteiras e Taxas',
-            text: 'A primeira aba guarda as <strong>carteiras</strong> (origem do capital: fundos MBRM e parceiros). A segunda guarda as <strong>taxas de juro</strong>, sempre ligadas a uma origem de capital.',
+            title: 'Carteiras e Taxas de Financiamento',
+            text: 'Gere a origem de fundos na aba <strong>Carteiras de Financiamento</strong> (fundos próprios MBRM e investidores parceiros) e os preçários na aba <strong>Taxas de Juro</strong>, vinculados a cada fundo.',
             side: 'bottom'
           },
           {
             el: '[data-tour="financing-wallets"]',
-            title: 'Alocado, desembolsado e disponível',
-            text: 'O <strong>disponível</strong> é o que ainda podes emprestar daquela carteira. A barra mostra a utilização: acima de 80% convém reforçar o fundo antes de aprovar novos créditos.',
+            title: 'Capital, Rentabilidade e Mora Gerada',
+            text: 'Cada carteira apresenta 3 blocos executivos: <strong>Capital Alocado</strong>, <strong>Posição de Empréstimo / Recuperação</strong> e <strong>Rentabilidade Líquida com Juros de Mora</strong> calculados em tempo real.',
             side: 'bottom'
           },
           {
             el: '[data-tour="financing-actions"]',
-            title: 'Nova Carteira e classificação',
-            text: 'Cria uma carteira por financiador. Usa <strong>Classificar créditos antigos</strong> para os créditos anteriores às carteiras — sem isso, o relatório do financiador não consegue atribuir a origem do capital.',
+            title: 'Nova Carteira e Classificação',
+            text: 'Cria uma carteira por financiador e associa o parceiro. A ferramenta <strong>Classificar créditos antigos</strong> assegura que nenhum mútuo histórico fique sem origem atribuída.',
             side: 'bottom'
           },
           {
             el: '[data-tour="nav:/equipe?tab=parceiros"]',
-            title: 'Quem financia',
-            text: 'Os parceiros financiadores com acesso ao portal vivem em Equipa e Parceiros. Erro comum: criar a carteira sem parceiro associado — o financiador não vê os dados no portal.',
+            title: 'Financiadores no Portal',
+            text: 'Os investidores com acesso ao portal visualizam exclusivamente a sua carteira em tempo real. As credenciais de acesso são geridas na aba Parceiros de Equipa.',
             side: 'right'
           }
         ]
@@ -620,7 +656,7 @@ export const PAGE_TOURS = [
           {
             el: '[data-tour="bm-form"]',
             title: 'Mapa Diário Modelo BM',
-            text: 'Escolhe o período e clica na lupa para gerar. As <strong>Notas</strong> explicam as colunas e <strong>Dados da Instituição</strong> imprime o cabeçalho oficial com NUIT.',
+            text: 'Escolhe o período trimestral ou mensal e clica em Gerar. Os <strong>Dados Regulamentares da Instituição</strong> (NUIT, Sede, Bairro, Cidade, Número de Trabalhadores) vêm directamente das Configurações da Empresa e compõem o cabeçalho oficial do PDF e Excel.',
             side: 'bottom'
           },
           {
@@ -652,7 +688,7 @@ export const PAGE_TOURS = [
           {
             el: '[data-tour="settings-nav"]',
             title: 'O menu das configurações',
-            text: '<strong>Empresa</strong> (nome, NUIT, contactos), <strong>Contas Bancárias</strong>, <strong>Caixa</strong> (físico ou electrónico), <strong>Permissões</strong> e <strong>Aparência</strong>. Os dados da empresa saem impressos em contratos, recibos e relatórios.',
+            text: '<strong>Empresa</strong> (dados gerais e <strong>Identificação Regulamentar para o Banco de Moçambique</strong>), <strong>Contas Bancárias</strong>, <strong>Caixa</strong>, <strong>Permissões</strong> e <strong>Aparência</strong>. Os dados da empresa saem impressos em contratos, recibos e relatórios oficiais.',
             side: 'right'
           },
           {
@@ -676,21 +712,27 @@ export const PAGE_TOURS = [
         roles: [1, 3],
         steps: [
           {
+            el: '[data-tour="sms-kpis"]',
+            title: 'Fluxo e Eficácia de Comunicações',
+            text: 'Métricas em tempo real da fila: mensagens aguardando processamento, total entregue com sucesso, taxa de eficácia de entrega e alertas de falhas que exigem correcção de contacto.',
+            side: 'bottom'
+          },
+          {
             el: '[data-tour="sms-filters"]',
-            title: 'Credenciais e avisos enviados',
-            text: 'Filtra por assunto (credenciais, aviso de vencimento, mora) e por estado. Se o SMS estiver desactivado nas configurações, o aviso amarelo aparece e nada é enviado.',
+            title: 'Filtros por Assunto e Estado',
+            text: 'Filtra por assunto (credenciais de acesso, avisos de vencimento, juros de mora, recibos ou fechos administrativos) e por estado. O banner superior alerta caso o Gateway SMS esteja desligado.',
             side: 'bottom'
           },
           {
             el: '[data-tour="sms-table"], [data-tour="sms-vazio"]',
-            title: 'O estado de cada mensagem',
-            text: '<strong>Pendente</strong> ainda não saiu, <strong>enviado</strong> já foi entregue à operadora, <strong>falhado</strong> precisa de correcção do número. Um número sem indicativo do país é a causa mais comum de falha. Lista vazia = ainda não há credenciais nem avisos por enviar.',
+            title: 'Destinatários e Contacto Directo WhatsApp',
+            text: 'Visualiza o destinatário (mutuário ou equipa interna), telefone com indicativo internacional e ícone para iniciar conversa directa no WhatsApp sem precisar gravar o contacto na agenda.',
             side: 'bottom'
           },
           {
             el: '[data-tour="sms-acoes"], [data-tour="nav:/mutuarios"]',
-            title: 'Reenviar e corrigir',
-            text: 'Reenvia depois de corrigires o telefone na ficha do mutuário (formato 84/85/86/87 + 7 dígitos). Erro comum: reenviar em série sem corrigir o número — a mensagem falha outra vez e gasta crédito.',
+            title: 'Pré-visualização e Reenvio Seguro',
+            text: 'Clica no olho para ler a mensagem completa e a contagem de caracteres. O botão reenviar repõe a mensagem na fila após confirmares o número correcto.',
             side: 'left'
           }
         ]
@@ -734,22 +776,28 @@ export const PAGE_TOURS = [
         roles: [1],
         steps: [
           {
+            el: '[data-tour="logs-kpis"]',
+            title: 'Painel Executivo de Auditoria',
+            text: 'Total de eventos auditáveis, volume de logins/autenticações hoje, operações financeiras de crédito/pagamento e utilizadores activos no período analisado.',
+            side: 'bottom'
+          },
+          {
             el: '[data-tour="logs-filters"]',
-            title: 'Quem fez o quê e quando',
-            text: 'Filtra por <strong>tipo de acção</strong>, <strong>módulo</strong> e texto livre. Regista logins, créditos, pagamentos, alterações de configuração e o reset de dados.',
+            title: 'Pesquisa e Filtros por Módulo',
+            text: 'Localiza qualquer evento pesquisando por utilizador, acção, IP ou descrição. Utiliza os atalhos rápidos (Logins, Créditos, Pagamentos, Eliminações) para investigações imediatas.',
             side: 'bottom'
           },
           {
             el: '[data-tour="logs-table"]',
-            title: 'Ler um registo',
-            text: 'Utilizador, acção, módulo, data e IP. Para investigar uma diferença de caixa ou um crédito alterado, filtra pelo módulo e pelo dia — o registo é a prova.',
+            title: 'Trilho Imutável de Auditoria',
+            text: 'Registo cronológico e protegido contra adulteração com data/hora, perfil do operador, módulo, tipo de acção e endereço IP de origem. Clica no olho para visualizar todos os parâmetros.',
             side: 'bottom'
           },
           {
-            el: '[data-tour="logs-delete"]',
-            title: 'Cuidado ao eliminar registos',
-            text: 'Apagar o histórico de auditoria dificulta a defesa da instituição numa inspecção. Erro comum: limpar registos «para arrumar» — só elimines duplicados óbvios e deixa sempre rasto.',
-            side: 'bottom'
+            el: '[data-tour="logs-export"]',
+            title: 'Exportação e Expurgo Regulamentar',
+            text: 'Exporta o relatório oficial em PDF ou folha de cálculo Excel para arquivo ou inspecção do Banco de Moçambique. O expurgo de registos antigos (>90 ou 180 dias) é estritamente controlado para Administradores.',
+            side: 'left'
           }
         ]
       },

@@ -25,8 +25,112 @@
         </div>
       </div>
 
-      <!-- Dívida por liquidar -->
-      <q-card v-if="hasOutstandingDebt" flat class="portal-debt-card q-mb-sm">
+      <!-- TIMELINE DO PEDIDO EM ANÁLISE -->
+      <q-card v-if="hasPendingRequest" flat bordered class="q-mb-sm timeline-card">
+        <q-card-section class="q-pa-sm bg-orange-1 text-orange-10 row items-center justify-between">
+          <div class="row items-center">
+            <q-icon name="pending_actions" size="20px" class="q-mr-xs" />
+            <span class="text-subtitle2 text-weight-bold">Acompanhamento do Pedido de Crédito</span>
+          </div>
+          <q-badge color="orange" rounded>Em Análise</q-badge>
+        </q-card-section>
+
+        <q-card-section class="q-pa-md">
+          <div class="text-caption text-grey-8 q-mb-md">
+            Solicitou <strong>{{ formatMoney(summary.pendingAmount) }}</strong>. O seu pedido está a ser avaliado pela equipa de crédito.
+          </div>
+
+          <div class="timeline-steps row items-center justify-between text-center">
+            <div class="step-item col">
+              <q-avatar size="28px" color="positive" text-color="white" class="q-mb-xs">
+                <q-icon name="check" size="16px" />
+              </q-avatar>
+              <div class="step-label text-weight-bold text-positive">Submetido</div>
+              <div class="step-sub text-grey-6">Pelo portal</div>
+            </div>
+
+            <div class="step-line col-grow bg-positive"></div>
+
+            <div class="step-item col">
+              <q-avatar size="28px" color="orange" text-color="white" class="q-mb-xs">
+                <q-spinner-dots size="16px" color="white" />
+              </q-avatar>
+              <div class="step-label text-weight-bold text-orange">Análise</div>
+              <div class="step-sub text-grey-6">Gestor de Crédito</div>
+            </div>
+
+            <div class="step-line col-grow bg-grey-4"></div>
+
+            <div class="step-item col">
+              <q-avatar size="28px" color="grey-4" text-color="grey-7" class="q-mb-xs">
+                <q-icon name="gavel" size="16px" />
+              </q-avatar>
+              <div class="step-label text-grey-6">Aprovação</div>
+              <div class="step-sub text-grey-5">Administração</div>
+            </div>
+
+            <div class="step-line col-grow bg-grey-4"></div>
+
+            <div class="step-item col">
+              <q-avatar size="28px" color="grey-4" text-color="grey-7" class="q-mb-xs">
+                <q-icon name="payments" size="16px" />
+              </q-avatar>
+              <div class="step-label text-grey-6">Desembolso</div>
+              <div class="step-sub text-grey-5">Via M-Pesa</div>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- ALERTA DE PRESTAÇÃO EM ATRASO (ALTA PRIORIDADE BANCÁRIA) -->
+      <q-card v-if="overdueInstallments.length > 0" flat class="overdue-hero-card q-mb-sm">
+        <q-card-section class="q-pa-md">
+          <div class="row items-center justify-between no-wrap q-mb-xs">
+            <div class="row items-center no-wrap text-negative text-weight-bolder" style="font-size: 14px">
+              <q-avatar size="28px" color="red-1" text-color="negative" class="q-mr-xs">
+                <q-icon name="warning" size="18px" />
+              </q-avatar>
+              <span>Regularização Pendente ({{ overdueInstallments.length }} em atraso)</span>
+            </div>
+            <q-badge color="negative" class="text-bold">Mora Acumulada</q-badge>
+          </div>
+          <div class="text-caption text-grey-8 q-mb-sm">
+            Tem prestações com juros de mora legais acumulados. Regularize agora via M-Pesa Open API.
+          </div>
+
+          <div v-for="overdue in overdueInstallments" :key="overdue.id" class="overdue-item-box q-pa-sm q-mb-xs">
+            <div class="row items-center justify-between no-wrap q-mb-xs">
+              <div>
+                <div class="text-weight-bold text-grey-9" style="font-size: 13px">
+                  Prestação {{ ordinalNumber(overdue.installmentOrder) }} · Crédito #{{ overdue.loanId }}
+                </div>
+                <div class="text-caption text-negative font-11">
+                  Venceu a {{ formatDate(overdue.dueDate) }} ({{ overdue.lateDays }} dias em atraso)
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-caption text-grey-6 font-11">Total c/ Mora</div>
+                <div class="text-subtitle1 text-weight-bolder text-primary">
+                  {{ formatMoney(Math.max(0, Number(overdue.installment || 0) - Number(overdue.paidAmount || 0)) + Number(overdue.latePaymentInterest || 0)) }}
+                </div>
+              </div>
+            </div>
+
+            <q-btn
+              unelevated
+              color="positive"
+              icon="payments"
+              label="Pagar Prestação c/ Mora"
+              no-caps
+              class="full-width btn-inst-pay q-mt-xs"
+              @click="openPaymentModal(overdue)"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <!-- Dívida por liquidar (apenas quando não há alerta de atraso prioritário) -->
+      <q-card v-if="hasOutstandingDebt && (!overdueInstallments || overdueInstallments.length === 0)" flat class="portal-debt-card q-mb-sm">
         <q-card-section class="row items-center no-wrap q-pa-sm">
           <q-icon name="warning_amber" color="negative" size="32px" class="q-mr-sm" />
           <div class="col" style="min-width: 0">
@@ -39,39 +143,44 @@
         </q-card-section>
       </q-card>
 
-      <q-card v-else flat bordered class="portal-cta-card q-mb-sm">
+      <!-- CTA PARA SIMULAÇÃO OU NOVO CRÉDITO -->
+      <q-card v-else-if="!hasPendingRequest" flat bordered class="portal-cta-card q-mb-sm">
         <q-card-section class="row items-center no-wrap q-pa-sm">
           <q-avatar
-            :icon="hasPendingRequest ? 'hourglass_top' : 'add_circle_outline'"
-            :color="hasPendingRequest ? 'warning' : 'primary'"
+            icon="monetization_on"
+            color="primary"
             text-color="white"
             size="38px"
             class="q-mr-sm"
           />
           <div class="col" style="min-width: 0">
             <div class="text-subtitle2 text-weight-bold">
-              {{ hasPendingRequest ? 'Pedido em análise' : 'Precisa de um novo crédito?' }}
+              Precisa de um novo crédito?
             </div>
             <div class="text-caption text-grey-6">
-              <template v-if="hasPendingRequest">
-                Já existe um pedido de {{ formatMoney(summary.pendingAmount) }} a aguardar aprovação da instituição.
-              </template>
-              <template v-else>
-                Solicite um novo empréstimo directamente pelo portal — a taxa de juro e a prestação serão definidas pela instituição aquando da aprovação.
-              </template>
+              Simule o valor da prestação ou submeta o pedido com carregamento directo de comprovativos.
             </div>
           </div>
         </q-card-section>
         <template v-if="canRequestCredit">
           <q-separator />
-          <q-card-actions class="q-pa-sm">
+          <q-card-actions class="q-pa-sm row q-gutter-xs">
+            <q-btn
+              outline
+              color="primary"
+              icon="calculate"
+              label="Simular Crédito"
+              no-caps
+              class="col btn-native"
+              @click="showSimulatorModal = true"
+            />
             <q-btn
               unelevated
               color="primary"
               icon="add"
-              label="Solicitar Novo Empréstimo"
+              label="Solicitar Empréstimo"
               no-caps
-              class="full-width btn-native"
+              class="col btn-native"
               @click="openLoanRequest"
             />
           </q-card-actions>
@@ -79,11 +188,16 @@
       </q-card>
 
       <!-- Próximas Prestações -->
-      <q-card flat bordered class="portal-section-card">
+      <q-card flat bordered class="portal-section-card q-mb-sm">
         <q-card-section class="portal-section-header q-py-sm">
-          <div class="row items-center">
-            <q-icon name="event" size="20px" color="primary" class="q-mr-sm" />
-            <div class="text-subtitle1 text-weight-bold">Próximas Prestações</div>
+          <div class="row items-center justify-between">
+            <div class="row items-center">
+              <q-icon name="event" size="20px" color="primary" class="q-mr-sm" />
+              <div class="text-subtitle1 text-weight-bold">Próximas Prestações</div>
+            </div>
+            <q-chip v-if="upcomingInstallments.length > 0" dense color="primary" text-color="white" size="xs">
+              M-Pesa Directo
+            </q-chip>
           </div>
         </q-card-section>
         <q-card-section class="q-pa-sm">
@@ -110,8 +224,8 @@
               <q-btn
                 unelevated
                 color="positive"
-                icon="payment"
-                label="Pagar Prestação"
+                icon="payments"
+                label="Pagar via M-Pesa"
                 no-caps
                 class="full-width btn-native"
                 @click="openPaymentModal(inst)"
@@ -120,10 +234,50 @@
           </div>
         </q-card-section>
       </q-card>
+
+      <!-- CARTÃO: MEU GESTOR DE CRÉDITO DEDICADO -->
+      <q-card flat bordered class="portal-section-card q-mb-sm">
+        <q-card-section class="q-pa-sm row items-center justify-between no-wrap">
+          <div class="row items-center no-wrap">
+            <q-avatar size="38px" color="teal-7" text-color="white" class="q-mr-sm">
+              <q-icon name="support_agent" size="22px" />
+            </q-avatar>
+            <div>
+              <div class="text-subtitle2 text-weight-bold">Gestor de Crédito Dedicado</div>
+              <div class="text-caption text-grey-6">Esclarecimentos, renegociações e apoio directo</div>
+            </div>
+          </div>
+
+          <div class="row q-gutter-xs">
+            <q-btn
+              round
+              dense
+              flat
+              color="positive"
+              icon="chat"
+              :href="whatsappUrl"
+              target="_blank"
+            >
+              <q-tooltip>Falar no WhatsApp</q-tooltip>
+            </q-btn>
+            <q-btn
+              round
+              dense
+              flat
+              color="primary"
+              icon="call"
+              :href="phoneCallUrl"
+            >
+              <q-tooltip>Ligar para o Gestor</q-tooltip>
+            </q-btn>
+          </div>
+        </q-card-section>
+      </q-card>
     </template>
 
+    <PortalSimulatorDialog v-model="showSimulatorModal" @apply="onSimulationApplied" />
     <PortalPaymentDialog v-model="showPaymentModal" :installment="selectedInstallment" @paid="refresh()" />
-    <PortalLoanRequestDialog v-model="showLoanRequest" @submitted="refresh()" />
+    <PortalLoanRequestDialog v-model="showLoanRequest" :preset="simulatorPreset" @submitted="refresh()" />
   </q-page>
 </template>
 
@@ -132,13 +286,16 @@ import { ref, computed } from 'vue'
 import { usePortalData } from '@/composables/usePortalData'
 import PortalPaymentDialog from './PortalPaymentDialog.vue'
 import PortalLoanRequestDialog from './PortalLoanRequestDialog.vue'
+import PortalSimulatorDialog from './PortalSimulatorDialog.vue'
 
 const { loading, summary, refresh, hasActiveLoan, hasPendingRequest, hasOutstandingDebt, canRequestCredit,
-  upcomingInstallments, formatMoney, ordinalNumber, formatDate } = usePortalData()
+  overdueInstallments, upcomingInstallments, formatMoney, ordinalNumber, formatDate, customer } = usePortalData()
 
 const showPaymentModal = ref(false)
 const selectedInstallment = ref(null)
 const showLoanRequest = ref(false)
+const showSimulatorModal = ref(false)
+const simulatorPreset = ref(null)
 
 const kpis = computed(() => [
   {
@@ -156,9 +313,34 @@ const kpis = computed(() => [
   { label: 'Saldo Devedor', value: formatMoney(summary.value.totalDebt), icon: 'savings', color: 'warning', valueClass: 'kpi-value text-orange' }
 ])
 
+const gestorPhone = computed(() => '258840000000') // Número padrão de suporte/gestão da empresa
+
+const whatsappUrl = computed(() => {
+  const phone = String(gestorPhone.value).replace(/\D/g, '')
+  const text = encodeURIComponent(`Olá, sou o mutuário ${customer.value?.name || ''} (Conta: ${customer.value?.accountNumber || ''}). Gostaria de obter informações sobre o meu crédito.`)
+  return `https://wa.me/${phone}?text=${text}`
+})
+
+const phoneCallUrl = computed(() => {
+  return `tel:${gestorPhone.value}`
+})
+
 function openPaymentModal(inst) {
   selectedInstallment.value = inst
   showPaymentModal.value = true
+}
+
+function openLoanRequest() {
+  simulatorPreset.value = null
+  showLoanRequest.value = true
+}
+
+function onSimulationApplied(sim) {
+  simulatorPreset.value = {
+    amount: sim.amount,
+    installments: sim.installments
+  }
+  showLoanRequest.value = true
 }
 </script>
 
@@ -178,7 +360,8 @@ function openPaymentModal(inst) {
 }
 
 .portal-section-card,
-.portal-cta-card {
+.portal-cta-card,
+.timeline-card {
   border-radius: 16px;
   overflow: hidden;
 }
@@ -205,6 +388,37 @@ function openPaymentModal(inst) {
   line-height: 1.5;
 }
 
+.timeline-steps {
+  position: relative;
+  margin: 8px 0;
+}
+
+.step-item {
+  position: relative;
+  z-index: 2;
+}
+
+.step-label {
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.step-sub {
+  font-size: 9px;
+}
+
+.step-line {
+  height: 3px;
+  margin: 0 4px;
+  margin-top: -16px;
+  z-index: 1;
+}
+
+.btn-native {
+  min-height: 42px;
+  border-radius: 10px;
+}
+
 body.body--dark {
   .portal-section-header {
     background-color: rgba(255, 255, 255, 0.04);
@@ -218,10 +432,33 @@ body.body--dark {
     background-color: rgba(239, 68, 68, 0.12);
     border-color: rgba(239, 68, 68, 0.4);
   }
-  .kpi-value,
-  .text-grey-5,
-  .text-grey-6 {
-    color: #9ca3af;
+  .timeline-card {
+    background: $gray-800;
   }
 }
+
+.overdue-hero-card {
+  background: #fff5f5;
+  border: 1.5px solid #feb2b2;
+  border-left: 5px solid #e53e3e;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(229, 62, 62, 0.08);
+}
+
+.overdue-item-box {
+  background: #ffffff;
+  border: 1px solid #fed7d7;
+  border-radius: 12px;
+}
+
+.btn-inst-pay {
+  min-height: 44px;
+  border-radius: 10px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2);
+}
+
+.font-11 { font-size: 11px; }
+
 </style>

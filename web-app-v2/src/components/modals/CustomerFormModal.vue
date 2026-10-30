@@ -412,7 +412,7 @@
             <q-btn
               type="submit"
               unelevated
-              :label="isEdit ? 'Salvar' : 'Criar Mutuário'"
+              :label="isEdit ? 'Guardar' : 'Criar Mutuário'"
               color="primary"
               :loading="saving"
             />

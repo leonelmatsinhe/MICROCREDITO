@@ -57,7 +57,7 @@
               <q-btn
                 color="primary"
                 icon="cloud_upload"
-                label="Salvar"
+                label="Guardar"
                 unelevated
                 rounded
                 size="sm"

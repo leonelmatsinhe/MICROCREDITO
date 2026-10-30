@@ -26,6 +26,7 @@ import {
 import { installmentPanification } from "../utils/calculateLateAmount";
 import { methodToTreasury } from "../utils/paymentMethodMap";
 import * as jwt from "jsonwebtoken";
+import { actorFromRequest } from "../utils/requestActor";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IDENTIDADE (JWT) + AUDITORIA APPEND-ONLY
@@ -632,6 +633,18 @@ const addTranzaction = async (req: Request, res: Response) => {
   const receivedBy = Number(decoded.id) || null;
   const clientIp = clientIpOf(req);
 
+  // ── BLINDAGEM DE PAGAMENTOS (Alçada por Perfil) ──
+  // Gestores de Crédito (userRole 3) NÃO podem registar pagamentos manuais.
+  // Devem usar exclusivamente o fluxo automatizado M-Pesa Open API.
+  const actor = await actorFromRequest(req);
+  if (actor.role === 3) {
+    return res.status(403).json({
+      success: false,
+      code: "GESTOR_PAYMENT_RESTRICTED",
+      message: "Operação não autorizada. O Gestor de Crédito só tem permissão para iniciar pagamentos via M-Pesa Open API. Registos manuais (numerário, banco ou cheque) são da alçada exclusiva da Administração.",
+    });
+  }
+
   // ── 2. Chave de idempotência já usada? Devolve a resposta original ──
   try {
     const previous: any = await IdempotencyKeyModel.findOne({ where: { idem_key: idemKey } });
@@ -693,7 +706,7 @@ const addTranzaction = async (req: Request, res: Response) => {
       }
 
       const loan: any = await LoanModel.findByPk(installment.getDataValue("loanId"), {
-        attributes: ["id", "companyId", "walletId", "status"],
+        attributes: ["id", "companyId", "walletId", "status", "customerId"],
         transaction: t,
       });
       if (!loan) {
@@ -701,6 +714,11 @@ const addTranzaction = async (req: Request, res: Response) => {
       }
       const realLoanId = Number(loan.getDataValue("id"));
       const loanCompanyId = Number(loan.getDataValue("companyId"));
+      const customerId =
+        Number(installment.getDataValue("customerId")) ||
+        Number(loan.getDataValue("customerId")) ||
+        Number(body.customerId) ||
+        0;
       const walletId = Number(installment.getDataValue("walletId")) || Number(loan.getDataValue("walletId")) || null;
 
       // ── CONTA DE DESTINO (accounts.id, purpose REEMBOLSO/MISTO/caixa) ──
@@ -808,7 +826,7 @@ const addTranzaction = async (req: Request, res: Response) => {
         {
           companyId: loanCompanyId,
           accountNumber: Number(accountNumber),
-          customerId: installment.getDataValue("customerId"),
+          customerId: customerId || installment.getDataValue("customerId"),
           amortizationLoanId: Number(amortizationLoanId),
           amount: appliedAmount,
           totalAmount: appliedAmount,
@@ -965,7 +983,7 @@ const addTranzaction = async (req: Request, res: Response) => {
               await DebtModel.create(
                 {
                   companyId: loanCompanyId,
-                  customerId: installment.getDataValue("customerId"),
+                  customerId: tranzaction.getDataValue("customerId") || installment.getDataValue("customerId"),
                   accountNumber: String(accountNumber),
                   loanId: realLoanId,
                   amortisationId: Number(next.getDataValue("id")),
@@ -1033,7 +1051,7 @@ const addTranzaction = async (req: Request, res: Response) => {
           await DebtModel.create(
             {
               companyId: loanCompanyId,
-              customerId: installment.getDataValue("customerId"),
+              customerId: tranzaction.getDataValue("customerId") || installment.getDataValue("customerId"),
               accountNumber: String(accountNumber),
               loanId: realLoanId,
               amortisationId: Number(amortizationLoanId),
@@ -1133,6 +1151,27 @@ const addTranzaction = async (req: Request, res: Response) => {
       }
     } catch (cashError: any) {
       console.error("[CAIXA] Falha ao registar pagamento no caixa (pagamento mantido):", cashError?.message || cashError);
+    }
+
+    // ── RAZÃO CONTABILÍSTICO (Partidas Dobradas): Débito Tesouraria / Crédito Carteira e Juros ──
+    try {
+      const { recordRepaymentLedger } = await import("../services/generalLedgerService");
+      const totalAmount = Number(result.appliedAmount || 0);
+      const late = Number(result.latePaymentInterest || 0);
+      const netPrincipalAndInterest = Math.max(0, totalAmount - late);
+      await recordRepaymentLedger({
+        companyId: Number(companyId),
+        tranzactionId: result.tranzactionId,
+        loanId: result.realLoanId,
+        capital: netPrincipalAndInterest,
+        interest: 0,
+        lateInterest: late,
+        paymentMethod: methodToTreasury(body.paymentMethod),
+        bankAccountId: result.bankAccountId,
+        userId: receivedBy || undefined,
+      });
+    } catch (ledgerError: any) {
+      console.error("[GeneralLedger] Falha ao lançar partidas dobradas de reembolso:", ledgerError?.message || ledgerError);
     }
 
     // Recibo já foi emitido DENTRO da transacção (passo 15) — aqui é apenas
@@ -1410,7 +1449,7 @@ const reverseTranzaction = async (req: Request, res: Response) => {
           await DebtModel.create(
             {
               companyId: tranzaction.getDataValue("companyId"),
-              customerId: installment.getDataValue("customerId"),
+              customerId: tranzaction.getDataValue("customerId") || installment.getDataValue("customerId"),
               accountNumber: String(tranzaction.getDataValue("accountNumber")),
               loanId: tranzaction.getDataValue("loanId"),
               amortisationId: amortizationLoanId,

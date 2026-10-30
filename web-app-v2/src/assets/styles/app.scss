@@ -60,9 +60,268 @@ body {
   color: $gray-800;
 }
 
+// ==================== PALETA SLATE & COMPATIBILIDADE ====================
+.text-slate-900 { color: #0f172a; }
+.text-slate-800 { color: #1e293b; }
+.text-slate-700 { color: #334155; }
+.text-slate-600 { color: #475569; }
+
+// ==================== REGRAS MESTRE DO MODO ESCURO ====================
 body.body--dark {
-  background-color: $gray-900;
-  color: $gray-100;
+  background-color: #0b1329;
+  color: #f1f5f9;
+
+  // Tipografia e Contrastes de Texto
+  .text-slate-900 { color: #f8fafc !important; }
+  .text-slate-800 { color: #f1f5f9 !important; }
+  .text-slate-700 { color: #e2e8f0 !important; }
+  .text-slate-600 { color: #cbd5e1 !important; }
+
+  .text-grey-9, .text-grey-10 { color: #f8fafc !important; }
+  .text-grey-8 { color: #f1f5f9 !important; }
+  .text-grey-7 { color: #cbd5e1 !important; }
+  .text-grey-6 { color: #94a3b8 !important; }
+  .text-grey-5 { color: #64748b !important; }
+
+  // Cores semânticas com contraste calibrado para fundo escuro
+  .text-primary { color: #4ade80 !important; }
+  .text-positive { color: #4ade80 !important; }
+  .text-negative { color: #f87171 !important; }
+  .text-warning { color: #fbbf24 !important; }
+  .text-info { color: #60a5fa !important; }
+  .text-amber-10, .text-amber-9 { color: #fbbf24 !important; }
+  .text-green-8, .text-green-9, .text-green-10 { color: #4ade80 !important; }
+  .text-teal-8, .text-teal-9 { color: #2dd4bf !important; }
+
+  // Cartões & Superfícies (Elimina caixas brancas ofuscadas)
+  .q-card {
+    background-color: #162032 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .kpi-card,
+  .filters-card,
+  .filter-card,
+  .table-card,
+  .statement-card,
+  .empty-card,
+  .form-card,
+  .glass-wrap {
+    background-color: #162032 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .kpi-card.kpi-alert {
+    background-color: #3b1111 !important;
+    border-color: #7f1d1d !important;
+  }
+
+  // Modais e Diálogos
+  .q-dialog .q-card {
+    background-color: #162032 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #f8fafc;
+  }
+
+  // Elementos com classe .bg-white forçada em templates
+  .bg-white {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+  }
+
+  // Inputs e Selects do Quasar no Dark Mode (Fim das caixas brancas ofuscadas!)
+  .q-field--outlined.bg-white,
+  .q-field--filled.bg-white {
+    background-color: transparent !important;
+  }
+
+  .q-field--outlined .q-field__control {
+    background-color: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(255, 255, 255, 0.14) !important;
+    color: #f8fafc !important;
+    transition: all 0.2s ease;
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.28) !important;
+    }
+  }
+
+  .q-field--outlined.q-field--focused .q-field__control {
+    border-color: #22c55e !important;
+    box-shadow: 0 0 0 1px #22c55e !important;
+  }
+
+  .q-field__native,
+  .q-field__input {
+    color: #f8fafc !important;
+  }
+
+  .q-field__label {
+    color: #94a3b8 !important;
+  }
+
+  .q-field__prefix,
+  .q-field__suffix {
+    color: #94a3b8 !important;
+  }
+
+  .q-field__prepend .q-icon,
+  .q-field__append .q-icon {
+    color: #94a3b8 !important;
+  }
+
+  // Menus suspensos e dropdowns
+  .q-menu,
+  .q-select__dialog {
+    background-color: #162032 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+
+    .q-item {
+      color: #e2e8f0 !important;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.06) !important;
+        color: #f8fafc !important;
+      }
+
+      &.q-item--active {
+        background-color: rgba(34, 197, 94, 0.15) !important;
+        color: #4ade80 !important;
+      }
+    }
+  }
+
+  // Botões de filtro inactivos (pills tipo "Na Fila", "Falhas", "7 Dias", "Este Mês")
+  .q-btn.bg-grey-2,
+  .q-btn.bg-grey-1,
+  .q-btn.bg-grey-3 {
+    background-color: rgba(255, 255, 255, 0.06) !important;
+    color: #cbd5e1 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.1) !important;
+      color: #ffffff !important;
+    }
+  }
+
+  // Botões outline no dark mode
+  .q-btn--outline {
+    &[class*="text-grey"] {
+      color: #cbd5e1 !important;
+      border-color: rgba(255, 255, 255, 0.2) !important;
+
+      &:hover {
+        background-color: rgba(255, 255, 255, 0.06) !important;
+      }
+    }
+
+    &[class*="text-primary"] {
+      color: #4ade80 !important;
+      border-color: rgba(74, 222, 128, 0.35) !important;
+
+      &:hover {
+        background-color: rgba(74, 222, 128, 0.08) !important;
+      }
+    }
+
+    &[class*="text-green"] {
+      color: #4ade80 !important;
+      border-color: rgba(74, 222, 128, 0.35) !important;
+
+      &:hover {
+        background-color: rgba(74, 222, 128, 0.08) !important;
+      }
+    }
+
+    &[class*="text-negative"],
+    &[class*="text-red"] {
+      color: #f87171 !important;
+      border-color: rgba(248, 113, 113, 0.35) !important;
+
+      &:hover {
+        background-color: rgba(248, 113, 113, 0.08) !important;
+      }
+    }
+  }
+
+  // Banners de Alerta no Dark Mode
+  .bg-amber-1 {
+    background-color: rgba(245, 158, 11, 0.12) !important;
+    color: #fde68a !important;
+    border: 1px solid rgba(245, 158, 11, 0.28) !important;
+  }
+
+  .border-amber {
+    border-color: rgba(245, 158, 11, 0.28) !important;
+  }
+
+  .bg-red-1 {
+    background-color: rgba(239, 68, 68, 0.12) !important;
+    color: #fca5a5 !important;
+    border: 1px solid rgba(239, 68, 68, 0.28) !important;
+  }
+
+  .bg-green-1 {
+    background-color: rgba(34, 197, 94, 0.12) !important;
+    color: #86efac !important;
+    border: 1px solid rgba(34, 197, 94, 0.28) !important;
+  }
+
+  // Badges e Chips Neutros
+  .q-badge.bg-grey-3,
+  .q-badge.bg-grey-2,
+  .q-badge.bg-grey-1 {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  }
+
+  .q-chip.bg-grey-3,
+  .q-chip.bg-grey-2 {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #e2e8f0 !important;
+  }
+
+  // Tabelas Quasar no Dark Mode
+  .q-table {
+    background-color: #162032;
+    color: #f1f5f9;
+
+    thead tr {
+      background-color: #0b1329 !important;
+    }
+
+    th {
+      color: #94a3b8 !important;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+
+    td {
+      color: #f1f5f9 !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+
+    tbody tr:hover {
+      background-color: rgba(255, 255, 255, 0.035) !important;
+    }
+
+    .q-table__bottom {
+      background-color: #162032;
+      border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+      color: #94a3b8 !important;
+    }
+  }
+
+  // Separadores
+  .q-separator,
+  hr {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
 }
 
 // Contact details need stronger contrast than muted secondary text.
@@ -89,22 +348,10 @@ body.body--dark h3,
 body.body--dark h4,
 body.body--dark h5,
 body.body--dark h6 {
-  color: $gray-100;
+  color: #f8fafc;
 }
 
-// Texto secundário legível no modo escuro, sem peso excessivo.
-body.body--dark .text-grey-5,
-body.body--dark .text-grey-6,
-body.body--dark .text-grey-7,
-body.body--dark .text-grey-8 {
-  color: #cbd5e1 !important;
-  font-weight: 400 !important;
-}
-
-// Texto de alto contraste no modo claro: os cinzas claros (text-grey-5/6)
-// ficam ofuscados sobre o fundo branco. Aplicar `app-text-dark` a qualquer
-// elemento força o quase-preto apenas no modo claro — no modo dark a classe
-// é inerte e mantêm-se a cor herdada (ou as regras dark acima).
+// Texto de alto contraste no modo claro
 body.body--light .app-text-dark {
   color: $gray-900 !important;
 }

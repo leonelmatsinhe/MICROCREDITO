@@ -38,6 +38,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("./config/env");
 const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const routes_1 = require("./routes");
 const migrations_1 = require("./migrations");
 const CompanyModel_1 = require("./database/models/CompanyModel");
@@ -65,9 +66,22 @@ const projectRoot = isCompiled
 // Frontend: servir de public-v2 (Quasar/Vue 3)
 const publicDir = process.env.PUBLIC_DIR
     || path_1.default.join(projectRoot, "public-v2");
-// Uploads
+// Uploads (persistência de ficheiros: documentos, recibos, fotos, logotipos)
 const uploadsDir = process.env.UPLOADS_DIR
     || path_1.default.join(projectRoot, "uploads");
+// Assegura que o volume montado (ex.: Dokploy no VPS) tem a estrutura de pastas necessária
+[
+    uploadsDir,
+    path_1.default.join(uploadsDir, "documents"),
+    path_1.default.join(uploadsDir, "img"),
+    path_1.default.join(uploadsDir, "recibos"),
+    path_1.default.join(uploadsDir, "concessao"),
+    path_1.default.join(uploadsDir, "docs"),
+].forEach((dir) => {
+    if (!fs_1.default.existsSync(dir)) {
+        fs_1.default.mkdirSync(dir, { recursive: true });
+    }
+});
 // ISOLAMENTO SINGLE-TENANT: primeiro middleware executado antes de todas as rotas
 app.use(tenantGuard_1.tenantGuard);
 app.use(body_parser_1.default.urlencoded({ extended: true, limit: "10mb" }));
@@ -114,6 +128,9 @@ const bootstrap = () => __awaiter(void 0, void 0, void 0, function* () {
             generateMissingPackages(25).then((n) => console.log(`[Concessao] Backfill: ${n} pacote(s) gerado(s)`)).catch((e) => console.error("[Concessao] Backfill falhou:", (e === null || e === void 0 ? void 0 : e.message) || e));
         }, 40 * 1000))
             .catch((jobError) => console.error("[Jobs] Falha ao arrancar backfill de concessão:", (jobError === null || jobError === void 0 ? void 0 : jobError.message) || jobError));
+        // JOBS DE STAFF SMS E RECONCILIAÇÃO M-PESA
+        Promise.resolve().then(() => __importStar(require("./jobs/staffSmsJobs"))).then(({ startStaffAndMpesaJobs }) => startStaffAndMpesaJobs())
+            .catch((jobError) => console.error("[Jobs] Falha ao arrancar jobs de staff e M-Pesa:", (jobError === null || jobError === void 0 ? void 0 : jobError.message) || jobError));
         // Fila de SMS (BulkSMM): processar mensagens pendentes a cada 60s.
         // Sem BULKSMS_API_KEY no .env, a fila permanece intacta (sem efeitos).
         setInterval(() => {

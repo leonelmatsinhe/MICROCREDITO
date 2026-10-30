@@ -113,7 +113,7 @@
             </q-select>
             <div class="row justify-end q-gutter-sm q-mt-md">
               <q-btn flat label="Cancelar" color="grey" @click="closeForm" no-caps />
-              <q-btn type="submit" unelevated :label="editingRate ? 'Salvar' : 'Criar'" color="primary" :loading="saving" no-caps rounded />
+              <q-btn type="submit" unelevated :label="editingRate ? 'Guardar' : 'Criar'" color="primary" :loading="saving" no-caps rounded />
             </div>
           </q-form>
         </q-card-section>

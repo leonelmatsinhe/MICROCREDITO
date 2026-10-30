@@ -38,7 +38,23 @@
                   <q-icon :name="payment.status === 'completed' ? 'check' : 'schedule'" size="18px" />
                 </q-avatar>
                 <div class="col" style="min-width: 0">
-                  <div class="text-weight-bold" style="font-size: 15px">{{ formatMoney(payment.amount) }}</div>
+                  <div class="row items-center q-gutter-x-xs">
+                    <span class="text-weight-bold" style="font-size: 15px">
+                      {{ formatMoney(payment.totalAmount || payment.amount) }}
+                    </span>
+                    <q-badge
+                      v-if="Number(payment.latePaymentInterest) > 0"
+                      color="orange-1"
+                      text-color="deep-orange-9"
+                      class="text-bold font-10 q-px-xs"
+                      style="border: 1px solid #ffcc80"
+                    >
+                      Mora: {{ formatMoney(payment.latePaymentInterest) }}
+                    </q-badge>
+                  </div>
+                  <div v-if="Number(payment.latePaymentInterest) > 0" class="text-caption text-grey-6 font-11">
+                    Amortização base: {{ formatMoney(payment.amount) }}
+                  </div>
                   <div class="text-caption text-grey-6" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
                     Ref: {{ payment.reference || 'N/A' }}
                   </div>
@@ -153,8 +169,6 @@ async function downloadCreditExtract(loan) {
   if (!loan || !loan.installments?.length) return
   generatingPdf.value = true
   try {
-    // PDF GERADO NO BACKEND — o portal do financiador consome o mesmo endpoint
-    // tabelar (POST /api/reports/table-pdf) usado pelas páginas internas.
     const { downloadTablePdf } = await import('@/utils/tablePdf')
 
     const cust = customer.value || {}
@@ -166,63 +180,85 @@ async function downloadCreditExtract(loan) {
     const principal = parseFloat(loan.amount) || 0
     const rate = parseFloat(loan.interestRate) || 0
     const n = parseInt(loan.numberOfInstallments) || 1
-    let totalInterest = 0
-    let totalDebt = principal
-    if (principal > 0 && rate > 0 && n > 0) {
-      const factor = Math.pow(1 + rate, n)
-      const pmt = principal * (rate * factor) / (factor - 1)
-      totalInterest = Math.round(((pmt * n) - principal) * 100) / 100
-      totalDebt = Math.round(pmt * n * 100) / 100
-    }
-    const totalPaid = allAmorts.reduce((sum, a) => sum + (parseFloat(a.paidAmount) || 0), 0)
-    const remainingDebt = Math.max(0, Math.round((totalDebt - totalPaid) * 100) / 100)
 
-    // Plano de amortização — tabela única enviada ao backend
-    let saldoCorrente = principal
+    let totalPrincipal = 0
+    let totalInterest = 0
+    let totalInstallment = 0
+    let totalPaid = 0
+    let totalMora = 0
+
+    allAmorts.forEach(row => {
+      totalPrincipal += Number(row.amortization) || 0
+      totalInterest += Number(row.rateAmount) || 0
+      totalInstallment += Number(row.installment) || 0
+      totalPaid += Number(row.paidAmount) || 0
+      totalMora += Number(row.latePaymentInterest) || Number(row.chargedLatePaymentInterest) || 0
+    })
+
+    const remainingDebt = Math.max(0, Math.round((totalInstallment - totalPaid) * 100) / 100)
+
+    let saldoCorrente = totalInstallment
     const installmentsRows = allAmorts.map(row => {
       const status = Number(row.status) === 1 ? 'Pago' : Number(row.status) === -1 ? 'Parcial' : 'Pendente'
       const paidAmount = Number(row.paidAmount) || 0
-      const discount = paidAmount > 0 && paidAmount < row.installment ? row.installment - paidAmount : 0
-      const saldo = Math.max(0, saldoCorrente - (Number(row.amortization) || 0))
-      saldoCorrente = saldo
+      const lateFee = Number(row.latePaymentInterest) || Number(row.chargedLatePaymentInterest) || 0
+      const totalDevido = Math.round((Number(row.installment) + lateFee) * 100) / 100
+      saldoCorrente = Math.max(0, Math.round((saldoCorrente - paidAmount) * 100) / 100)
+
       return [
         row.installmentOrder || '',
         formatDate(row.dueDate),
         formatMoney(row.amortization),
         formatMoney(row.rateAmount),
         formatMoney(row.installment),
-        formatMoney(saldo),
+        lateFee > 0 ? formatMoney(lateFee) : '0,00 MZN',
+        formatMoney(totalDevido),
         formatMoney(paidAmount),
-        discount > 0 ? '-' + formatMoney(discount) : '—',
+        formatMoney(saldoCorrente),
         status
       ]
     })
 
+    const totalsRow = [
+      'TOTAIS',
+      '',
+      formatMoney(totalPrincipal),
+      formatMoney(totalInterest),
+      formatMoney(totalInstallment),
+      formatMoney(totalMora),
+      formatMoney(totalInstallment + totalMora),
+      formatMoney(totalPaid),
+      formatMoney(remainingDebt),
+      paidInstallments.length === allAmorts.length ? 'Liquidado' : `${paidInstallments.length}/${allAmorts.length}`
+    ]
+
     const fileName = `Extracto_Credito_Conta${cust.accountNumber || 'N/A'}_${new Date().toISOString().split('T')[0]}.pdf`
     await downloadTablePdf({
-      title: 'Extracto do Crédito',
+      title: 'Extracto Detalhado do Crédito',
       meta: [
-        `${cust.name || ''} · Conta ${cust.accountNumber || 'N/A'} · Tel. ${cust.phone || '—'}`,
-        `Capital ${formatMoney(principal)} · Taxa ${((rate) * 100).toFixed(1)}% · ${n} prestações · Total dívida ${formatMoney(totalDebt)}`,
-        `Pago ${formatMoney(totalPaid)} · Saldo ${formatMoney(remainingDebt)} · Prestações pagas ${paidInstallments.length}/${allAmorts.length}`
+        `${cust.name || ''} · Conta: ${cust.accountNumber || 'N/A'}${cust.nuit ? ' · NUIT: ' + cust.nuit : ''} · Tel.: ${cust.phone || '—'}`,
+        `Capital Financiado: ${formatMoney(principal)} · Taxa: ${((rate) * 100).toFixed(1)}% · ${n} prestações · Contratado: ${formatMoney(totalInstallment)}`,
+        `Amortizado: ${formatMoney(totalPaid)} · Mora Liquidada: ${formatMoney(totalMora)} · Total Geral Liquidado: ${formatMoney(totalPaid + totalMora)} · Saldo Devedor: ${formatMoney(remainingDebt)}`
       ],
       orientation: 'landscape',
       filename: `extracto-credito-${cust.accountNumber || 'na'}`,
       columns: [
-        { label: 'Ordem', width: 40, align: 'center' },
+        { label: 'Ordem', width: 45, align: 'center' },
         { label: 'Vencimento', width: 65, align: 'center' },
-        { label: 'Capital', width: 70, align: 'right' },
-        { label: 'Juros', width: 65, align: 'right' },
-        { label: 'Prestação', width: 70, align: 'right' },
-        { label: 'Saldo', width: 75, align: 'right' },
+        { label: 'Capital', width: 65, align: 'right' },
+        { label: 'Juros', width: 60, align: 'right' },
+        { label: 'Prestação', width: 65, align: 'right' },
+        { label: 'Mora', width: 65, align: 'right' },
+        { label: 'Total Devido', width: 70, align: 'right' },
         { label: 'Pago', width: 70, align: 'right' },
-        { label: 'Desconto', width: 65, align: 'right' },
+        { label: 'Saldo', width: 65, align: 'right' },
         { label: 'Estado', width: 55, align: 'center' }
       ],
-      rows: installmentsRows
+      rows: installmentsRows,
+      totalsRow
     }, fileName)
     showExtractPicker.value = false
-    $q.notify({ type: 'positive', message: 'Extracto gerado com sucesso', position: 'top' })
+    $q.notify({ type: 'positive', message: 'Extracto detalhado gerado com sucesso', position: 'top' })
   } catch (e) {
     console.error('Erro ao gerar extracto:', e)
     $q.notify({ type: 'negative', message: 'Erro ao gerar extracto', position: 'top' })

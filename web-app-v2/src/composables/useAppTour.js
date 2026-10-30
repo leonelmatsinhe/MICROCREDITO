@@ -45,7 +45,7 @@ const LAYOUT_STEPS = {
   menuGroups: {
     el: '[data-tour="menu-groups"]',
     title: 'Menu agrupado por área',
-    text: 'O menu está dividido por áreas de negócio (Geral, Gestão de Crédito, Financeiro, Financiamento, Relatórios, Sistema). A estrela ☆ em cada item guarda-o em <strong>Favoritos</strong>, no topo.',
+    text: 'O menu está dividido por áreas de negócio (Geral, Crédito, Financeiro, Financiamento, Relatórios, Sistema). A estrela ☆ em cada item guarda-o em <strong>Favoritos</strong>, no topo.',
     side: 'right'
   },
   navbarTitle: {
@@ -81,15 +81,50 @@ const PAGE_STEPS = {
     el: '[data-tour="dash-filters"]',
     route: '/dashboard',
     title: 'Filtros do painel',
-    text: 'Escolha o período, a carteira de financiamento e o gestor. Todos os KPIs, gráficos e o ranking abaixo passam a reflectir esse filtro.',
+    text: 'Escolha o período (Hoje, Semana, Mês, Ano ou datas personalizadas) e clique em Actualizar. Os desembolsos e cobranças reflectem o intervalo seleccionado, mantendo a posição viva da carteira activa (GLP).',
     side: 'bottom'
   },
   dashKpis: {
     el: '[data-tour="dash-kpis"]',
     route: '/dashboard',
-    title: 'Indicadores da carteira',
-    text: 'Resumo executivo: capital em dívida, desembolsado no período, recebido, mora, PAR e tendência face ao mês anterior.',
+    title: 'Indicadores mestres (Padrão Bancário)',
+    text: 'Métricas de padrão CGAP: Carteira Activa Bruta (GLP), PAR 30 (indicador regulamentar de risco), Desembolsos, Cobrança com quebra de Capital/Juros/Mora e Liquidez Real em contas.',
     side: 'bottom'
+  },
+  dashPipeline: {
+    el: '[data-tour="dash-pipeline"]',
+    route: '/dashboard',
+    title: 'Funil e pipeline de crédito',
+    text: 'Acompanhamento do ciclo de concessão: pedidos em análise, aprovados a aguardar desembolso, cobrança preventiva de prestações a vencer na semana e créditos em incumprimento.',
+    side: 'bottom'
+  },
+  dashMatrix: {
+    el: '[data-tour="dash-matrix"]',
+    route: '/dashboard',
+    title: 'Matriz de risco (Aging) e evolução',
+    text: 'Evolução histórica de 6 meses (desembolsos vs cobranças) e matriz de envelhecimento da dívida por escalões de atraso (Em Dia, 1-30d, 31-60d PAR30, 61-90d PAR60 e >90d).',
+    side: 'top'
+  },
+  dashManagers: {
+    el: '[data-tour="dash-managers"]',
+    route: '/dashboard',
+    title: 'Produtividade por gestor',
+    text: 'Auditoria individual da equipa: volume de carteira sob custódia de cada gestor de crédito, reembolsos obtidos no período e taxa de incumprimento.',
+    side: 'top'
+  },
+  dashAlerts: {
+    el: '[data-tour="dash-alerts"]',
+    route: '/dashboard',
+    title: 'Alertas imediatos e vencimentos',
+    text: 'Lista prioritária de mutuários em mora crítica com dias de atraso e contacto telefónico directo, além do calendário de prestações a vencer.',
+    side: 'top'
+  },
+  dashWallets: {
+    el: '[data-tour="dash-wallets"]',
+    route: '/dashboard',
+    title: 'Origem de capital e financiadores',
+    text: 'Saldos analíticos de capital próprio e de parceiros financiadores (alocado, desembolsado e disponível) com validação de liquidez real.',
+    side: 'top'
   },
   customersKpis: {
     el: '[data-tour="customers-kpis"]',
@@ -136,8 +171,8 @@ const PAGE_STEPS = {
   paymentsFilters: {
     el: '[data-tour="payments-filters"]',
     route: '/pagamentos',
-    title: 'Pagamentos',
-    text: 'Todos os pagamentos recebidos, por data, método e operador. Abra a linha para ver o recibo e a alocação às prestações.',
+    title: 'Recebimentos & Terminal Quick Pay',
+    text: 'Cockpit de liquidações: receba pagamentos express sem voltas via M-Pesa Open API (prompt PIN), Numerário ou Banco, com emissão instantânea de Recibo A4 e Talão Térmico (80mm).',
     side: 'bottom'
   },
   caixaBody: {
@@ -179,28 +214,28 @@ const PAGE_STEPS = {
     el: '[data-tour="bm-form"]',
     route: '/reports/banco-mocambique',
     title: 'Relatório do Banco de Moçambique',
-    text: 'Escolha o período e gere o relatório: produção, carteira, PAR e mora no formato do BM, com exportação para PDF e Excel.',
+    text: 'Escolha o período e gere o relatório: os dados institucionais (NUIT, Endereço, Bairro, Cidade, Trabalhadores) vêm automaticamente das Configurações da Empresa, com exportação oficial para PDF e Excel.',
     side: 'bottom'
   },
   logsFilters: {
     el: '[data-tour="logs-filters"]',
     route: '/logs',
-    title: 'Histórico do sistema',
-    text: 'Auditoria: quem fez o quê e quando (logins, créditos, pagamentos, alterações de configuração). Filtre por utilizador, módulo e data.',
+    title: 'Histórico do sistema e auditoria',
+    text: 'Trilho de auditoria: quem fez o quê e quando (logins, concessões, amortizações, alterações operacionais e expurgo controlado). Filtre por utilizador, acção e módulo.',
     side: 'bottom'
   },
   settingsNav: {
     el: '[data-tour="settings-nav"]',
     route: '/settings',
     title: 'Configurações',
-    text: 'Dados da empresa, contas e planos, permissões por perfil, parâmetros de crédito (juros de mora, prazos), documentos legais e modelos de mensagens.',
+    text: 'Dados da empresa e Identificação Regulamentar BM, contas bancárias, parâmetros de crédito (juros de mora, prazos), permissões por perfil e modelos de mensagens.',
     side: 'right'
   },
   smsFilters: {
     el: '[data-tour="sms-filters"]',
     route: '/sms/pendentes',
-    title: 'Mensagens',
-    text: 'Credenciais de acesso e avisos enviados por SMS/WhatsApp, com o estado de cada envio (pendente, enviado, falhado).',
+    title: 'Centro de Mensagens e Notificações',
+    text: 'Fila de comunicações: credenciais, recibos e alertas enviados por SMS ou WhatsApp, com métricas de entrega e contacto directo.',
     side: 'bottom'
   },
   companyBody: {
@@ -243,7 +278,7 @@ const PAGE_STEPS = {
   partnerMenu: {
     el: '[data-tour="partner-menu"]',
     title: 'As suas vistas',
-    text: 'Do lado do financiador: créditos desembolsados, prestações pagas e pendentes, juros de mora, recebimentos, extrato da carteira e recibos.',
+    text: 'Do lado do financiador: créditos desembolsados, prestações pagas e pendentes, juros de mora, recebimentos, extracto da carteira e recibos.',
     side: 'right'
   },
   partnerWallet: {

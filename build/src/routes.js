@@ -36,6 +36,7 @@ const isCompiled = __dirname.includes(path_1.default.sep + "build" + path_1.defa
 const projectRoot = isCompiled
     ? path_1.default.join(__dirname, "..", "..")
     : path_1.default.join(__dirname, "..");
+const uploadsDir = process.env.UPLOADS_DIR || path_1.default.join(projectRoot, "uploads");
 const UserController_1 = require("./controllers/UserController");
 const CompanyController_1 = require("./controllers/CompanyController");
 const CustomerController_1 = require("./controllers/CustomerController");
@@ -107,8 +108,8 @@ routes.get("/logo/:image", (req, res) => {
     const raw = req.params.image || '';
     const fileName = path_1.default.basename(raw);
     // Primeiro tenta uploads/img, depois uploads/documents
-    const imgPath = path_1.default.join(projectRoot, 'uploads', 'img', fileName);
-    const docPath = path_1.default.join(projectRoot, 'uploads', 'documents', fileName);
+    const imgPath = path_1.default.join(uploadsDir, 'img', fileName);
+    const docPath = path_1.default.join(uploadsDir, 'documents', fileName);
     if (fs_1.default.existsSync(imgPath))
         return res.sendFile(imgPath);
     if (fs_1.default.existsSync(docPath))
@@ -118,7 +119,7 @@ routes.get("/logo/:image", (req, res) => {
 // Rota para servir documentos (fotos de garantias, logotipos, etc.)
 routes.get("/documents/:fileName", (req, res) => {
     const safeFileName = path_1.default.basename(req.params.fileName);
-    const filePath = path_1.default.join(projectRoot, 'uploads', 'documents', safeFileName);
+    const filePath = path_1.default.join(uploadsDir, 'documents', safeFileName);
     if (fs_1.default.existsSync(filePath))
         return res.sendFile(filePath);
     return res.status(404).json({ success: false, message: 'Ficheiro não encontrado.' });
@@ -154,6 +155,10 @@ routes.post("/api/debt", DebtController_1.createDebt);
 routes.delete("/api/debt", DebtController_1.deleteDebtp);
 routes.put("/api/mpesa/receive", MpesaPaymentController_1.c2Business);
 routes.post("/api/mpesa/send", MpesaPaymentController_1.b2Customer);
+routes.post("/api/mpesa/c2b/initiate", roles_1.isStaff, MpesaPaymentController_1.initiateC2B);
+routes.post("/api/mpesa/c2b/callback", MpesaPaymentController_1.mpesaCallbackWebhook);
+routes.get("/api/mpesa/c2b/status/:mpesaTxId", roles_1.isStaff, MpesaPaymentController_1.getTransactionStatus);
+routes.post("/api/mpesa/c2b/query-vodacom/:mpesaTxId", roles_1.isStaff, MpesaPaymentController_1.queryVodacomStatus);
 // Notification Routes (públicas para o portal do cliente)
 routes.get("/api/notifications/customer/:companyId/:customerId", NotificationController_1.getCustomerNotifications);
 routes.get("/api/notifications/customer/unread/:companyId/:customerId", NotificationController_1.getCustomerUnreadCount);
@@ -190,7 +195,7 @@ routes.post("/api/upload", documentUpload, (req, res) => {
 routes.get("/api/download/:id", (req, res) => {
     const fileName = req.params.id;
     return fileName != null
-        ? res.sendFile(path_1.default.join(projectRoot, "uploads", fileName))
+        ? res.sendFile(path_1.default.join(uploadsDir, fileName))
         : res.json({
             success: false,
             message: "Arquivo não encontrado.",
@@ -199,7 +204,7 @@ routes.get("/api/download/:id", (req, res) => {
 // Documento público para abertura em nova aba sem header Authorization
 routes.get("/api/document/file/:fileName", (req, res) => {
     const safeFileName = path_1.default.basename(req.params.fileName);
-    return res.sendFile(path_1.default.join(projectRoot, "uploads", "documents", safeFileName));
+    return res.sendFile(path_1.default.join(uploadsDir, "documents", safeFileName));
 });
 // FLUXO DE SUBSCRIÇÃO — cadastro público (antes do middleware auth)
 // DESACTIVADO EM MODO SINGLE-TENANT: a instalação serve uma só empresa, logo
@@ -529,3 +534,7 @@ routes.get("/api/partner/recibos", PartnerPortalController_1.recibos);
 // "RESETAR" + senha do Admin (bcrypt). O preview mostra o que será apagado.
 routes.get("/api/admin/system/reset-status", roles_1.isAdmin, SystemResetController_1.resetStatus);
 routes.post("/api/admin/system/reset-operational-data", roles_1.isAdmin, SystemResetController_1.resetOperationalData);
+// ==================== RELATÓRIOS FINANCEIROS E BALANCETE (PGC) ====================
+const FinancialReportsController_1 = require("./controllers/FinancialReportsController");
+routes.get("/api/financeiro/balancete", auth_1.auth, FinancialReportsController_1.getBalancete);
+routes.get("/api/financeiro/dre", auth_1.auth, FinancialReportsController_1.getDRE);

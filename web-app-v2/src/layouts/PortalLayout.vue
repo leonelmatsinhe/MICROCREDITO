@@ -12,8 +12,8 @@
         <q-btn flat round dense :icon="isDark ? 'light_mode' : 'dark_mode'" @click="uiStore.toggleDark()">
           <q-tooltip>{{ isDark ? 'Modo Claro' : 'Modo Escuro' }}</q-tooltip>
         </q-btn>
-        <q-btn flat round dense icon="notifications" to="/portal/pagamentos" aria-label="Notificações">
-          <q-tooltip>Pagamentos e avisos</q-tooltip>
+        <q-btn flat round dense icon="notifications" @click="showNotificationsModal = true" aria-label="Notificações">
+          <q-tooltip>Avisos e Notificações</q-tooltip>
         </q-btn>
         <q-btn flat round dense to="/portal/perfil" aria-label="Perfil">
           <q-avatar size="28px" color="white" text-color="primary" style="font-size: 12px; font-weight: 700">
@@ -41,6 +41,8 @@
         <q-tab name="payments" icon="account_balance_wallet" label="Pagamentos" :ripple="true" @click="$router.push('/portal/pagamentos')" />
       </q-tabs>
     </q-footer>
+
+    <PortalNotificationsDialog v-model="showNotificationsModal" />
   </q-layout>
 </template>
 
@@ -50,12 +52,14 @@ import { useRoute } from 'vue-router'
 import { useUiStore } from '@/stores/ui'
 import { useCompanyStore } from '@/stores/company'
 import { usePortalData } from '@/composables/usePortalData'
+import PortalNotificationsDialog from '@/pages/portal/PortalNotificationsDialog.vue'
 
 const route = useRoute()
 const uiStore = useUiStore()
 const companyStore = useCompanyStore()
 const isDark = computed(() => uiStore.isDark)
 const { customer, getInitials, loadData, ensureCompanyLoaded } = usePortalData()
+const showNotificationsModal = ref(false)
 
 const TAB_BY_PATH = {
   '/portal': 'dashboard',

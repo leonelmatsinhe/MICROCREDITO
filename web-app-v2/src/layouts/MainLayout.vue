@@ -2,6 +2,7 @@
   <q-layout view="lHh Lpr lFf">
     <!-- Navbar -->
     <AppNavbar
+      v-if="!hideNavbar"
       :notifications="notifications"
       :unread-count="unreadCount"
       :sidebar-mini="sidebarMini"
@@ -36,7 +37,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useQuasar } from 'quasar'
 import AppNavbar from '@/components/layout/AppNavbar.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
@@ -48,9 +49,12 @@ import { useAppTour } from '@/composables/useAppTour'
 import { useOnboardingChecklist } from '@/composables/useOnboardingChecklist'
 
 const router = useRouter()
+const route = useRoute()
 const $q = useQuasar()
 const uiStore = useUiStore()
 const authStore = useAuthStore()
+
+const hideNavbar = computed(() => route.meta?.hideNavbar === true)
 const {
   isActive: tourActive,
   shouldPromptOnboarding,

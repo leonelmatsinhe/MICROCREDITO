@@ -54,6 +54,7 @@ const bankAccountResolver_1 = require("../services/bankAccountResolver");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const paymentMethodMap_1 = require("../utils/paymentMethodMap");
 const jwt = __importStar(require("jsonwebtoken"));
+const requestActor_1 = require("../utils/requestActor");
 const decodeJwt = (req) => {
     try {
         const [, token] = (req.headers.authorization || "").split(" ");
@@ -555,6 +556,17 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
     const decoded = decodeJwt(req);
     const receivedBy = Number(decoded.id) || null;
     const clientIp = clientIpOf(req);
+    // ── BLINDAGEM DE PAGAMENTOS (Alçada por Perfil) ──
+    // Gestores de Crédito (userRole 3) NÃO podem registar pagamentos manuais.
+    // Devem usar exclusivamente o fluxo automatizado M-Pesa Open API.
+    const actor = yield (0, requestActor_1.actorFromRequest)(req);
+    if (actor.role === 3) {
+        return res.status(403).json({
+            success: false,
+            code: "GESTOR_PAYMENT_RESTRICTED",
+            message: "Operação não autorizada. O Gestor de Crédito só tem permissão para iniciar pagamentos via M-Pesa Open API. Registos manuais (numerário, banco ou cheque) são da alçada exclusiva da Administração.",
+        });
+    }
     // ── 2. Chave de idempotência já usada? Devolve a resposta original ──
     try {
         const previous = yield paymentsV2Models_1.IdempotencyKeyModel.findOne({ where: { idem_key: idemKey } });
@@ -616,7 +628,7 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 };
             }
             const loan = yield LoanModel_1.LoanModel.findByPk(installment.getDataValue("loanId"), {
-                attributes: ["id", "companyId", "walletId", "status"],
+                attributes: ["id", "companyId", "walletId", "status", "customerId"],
                 transaction: t,
             });
             if (!loan) {
@@ -624,6 +636,10 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
             }
             const realLoanId = Number(loan.getDataValue("id"));
             const loanCompanyId = Number(loan.getDataValue("companyId"));
+            const customerId = Number(installment.getDataValue("customerId")) ||
+                Number(loan.getDataValue("customerId")) ||
+                Number(body.customerId) ||
+                0;
             const walletId = Number(installment.getDataValue("walletId")) || Number(loan.getDataValue("walletId")) || null;
             // ── CONTA DE DESTINO (accounts.id, purpose REEMBOLSO/MISTO/caixa) ──
             // Prioridade: body → caixa aberto do utilizador → 1.ª conta CAIXA_FISICO
@@ -723,7 +739,7 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
             const tranzaction = yield TranzactionModel_1.TranzactionModel.create({
                 companyId: loanCompanyId,
                 accountNumber: Number(accountNumber),
-                customerId: installment.getDataValue("customerId"),
+                customerId: customerId || installment.getDataValue("customerId"),
                 amortizationLoanId: Number(amortizationLoanId),
                 amount: appliedAmount,
                 totalAmount: appliedAmount,
@@ -863,7 +879,7 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                         else {
                             yield DebtModel.create({
                                 companyId: loanCompanyId,
-                                customerId: installment.getDataValue("customerId"),
+                                customerId: tranzaction.getDataValue("customerId") || installment.getDataValue("customerId"),
                                 accountNumber: String(accountNumber),
                                 loanId: realLoanId,
                                 amortisationId: Number(next.getDataValue("id")),
@@ -913,7 +929,7 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 else {
                     yield DebtModel.create({
                         companyId: loanCompanyId,
-                        customerId: installment.getDataValue("customerId"),
+                        customerId: tranzaction.getDataValue("customerId") || installment.getDataValue("customerId"),
                         accountNumber: String(accountNumber),
                         loanId: realLoanId,
                         amortisationId: Number(amortizationLoanId),
@@ -1006,6 +1022,27 @@ const addTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, function*
         }
         catch (cashError) {
             console.error("[CAIXA] Falha ao registar pagamento no caixa (pagamento mantido):", (cashError === null || cashError === void 0 ? void 0 : cashError.message) || cashError);
+        }
+        // ── RAZÃO CONTABILÍSTICO (Partidas Dobradas): Débito Tesouraria / Crédito Carteira e Juros ──
+        try {
+            const { recordRepaymentLedger } = yield Promise.resolve().then(() => __importStar(require("../services/generalLedgerService")));
+            const totalAmount = Number(result.appliedAmount || 0);
+            const late = Number(result.latePaymentInterest || 0);
+            const netPrincipalAndInterest = Math.max(0, totalAmount - late);
+            yield recordRepaymentLedger({
+                companyId: Number(companyId),
+                tranzactionId: result.tranzactionId,
+                loanId: result.realLoanId,
+                capital: netPrincipalAndInterest,
+                interest: 0,
+                lateInterest: late,
+                paymentMethod: (0, paymentMethodMap_1.methodToTreasury)(body.paymentMethod),
+                bankAccountId: result.bankAccountId,
+                userId: receivedBy || undefined,
+            });
+        }
+        catch (ledgerError) {
+            console.error("[GeneralLedger] Falha ao lançar partidas dobradas de reembolso:", (ledgerError === null || ledgerError === void 0 ? void 0 : ledgerError.message) || ledgerError);
         }
         // Recibo já foi emitido DENTRO da transacção (passo 15) — aqui é apenas
         // propagado na resposta. (Fallback pós-commit mantido só para recibos
@@ -1247,7 +1284,7 @@ const reverseTranzaction = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 else {
                     yield DebtModel.create({
                         companyId: tranzaction.getDataValue("companyId"),
-                        customerId: installment.getDataValue("customerId"),
+                        customerId: tranzaction.getDataValue("customerId") || installment.getDataValue("customerId"),
                         accountNumber: String(tranzaction.getDataValue("accountNumber")),
                         loanId: tranzaction.getDataValue("loanId"),
                         amortisationId: amortizationLoanId,

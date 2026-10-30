@@ -186,6 +186,63 @@
           </q-card-section>
         </q-card>
 
+        <!-- Identificação Regulamentar — Banco de Moçambique -->
+        <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
+          <q-card-section>
+            <div class="row items-center q-mb-xs">
+              <q-icon name="account_balance" size="18px" color="primary" class="q-mr-xs" />
+              <div class="text-subtitle2 text-weight-bold">Identificação Regulamentar — Banco de Moçambique</div>
+            </div>
+            <div class="text-caption text-grey-6 q-mb-md">
+              Campos institucionais para o preenchimento automático do reporte mensal obrigatório ao Banco de Moçambique.
+            </div>
+
+            <div class="row q-col-gutter-md">
+              <div class="col-12 col-sm-6">
+                <q-input v-model="form.bairro" dense outlined label="Bairro da Sede" input-style="font-size: 13px">
+                  <template v-slot:prepend>
+                    <q-icon name="place" size="16px" color="grey-5" />
+                  </template>
+                </q-input>
+              </div>
+              <div class="col-12 col-sm-6">
+                <q-input v-model="form.cidade" dense outlined label="Cidade da Sede" input-style="font-size: 13px">
+                  <template v-slot:prepend>
+                    <q-icon name="location_city" size="16px" color="grey-5" />
+                  </template>
+                </q-input>
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-md q-mt-xs">
+              <div class="col-12 col-sm-6">
+                <q-input v-model.number="form.numberOfEmployees" dense outlined label="Nº de Trabalhadores" type="number" input-style="font-size: 13px">
+                  <template v-slot:prepend>
+                    <q-icon name="groups" size="16px" color="grey-5" />
+                  </template>
+                </q-input>
+              </div>
+              <div class="col-12 col-sm-6">
+                <q-input v-model="form.activityStartDate" dense outlined label="Data de Início das Actividades" placeholder="DD/MM/AAAA" mask="##/##/####" input-style="font-size: 13px">
+                  <template v-slot:prepend>
+                    <q-icon name="event" size="16px" color="grey-5" />
+                  </template>
+                </q-input>
+              </div>
+            </div>
+
+            <div class="row q-col-gutter-md q-mt-xs">
+              <div class="col-12">
+                <q-input v-model="form.representedInstitutions" dense outlined label="Instituição(ões) Representada(s)" placeholder="Por defeito: Responsável da Gestão" input-style="font-size: 13px">
+                  <template v-slot:prepend>
+                    <q-icon name="corporate_fare" size="16px" color="grey-5" />
+                  </template>
+                </q-input>
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+
         <!-- Contrato de Concessão -->
         <q-card flat bordered style="border-radius: 12px" class="q-mb-md">
           <q-card-section>
@@ -250,7 +307,7 @@
         <div class="row justify-end q-mb-lg">
           <q-btn
             unelevated
-            label="Salvar Alterações"
+            label="Guardar Alterações"
             color="primary"
             icon="save"
             no-caps
@@ -297,7 +354,12 @@ const form = ref({
   forfeit: 0,
   companyStatus: 1,
   smsEnabled: true,
-  contractHideInsuranceClause: false
+  contractHideInsuranceClause: false,
+  bairro: '',
+  cidade: '',
+  numberOfEmployees: null,
+  activityStartDate: '',
+  representedInstitutions: ''
 })
 
 function getLogoUrl(logo) {
@@ -392,7 +454,12 @@ onMounted(async () => {
         forfeit: c.forfeit || 0,
         companyStatus: c.companyStatus ?? 1,
         smsEnabled: c.smsEnabled === 1 || c.smsEnabled == null,
-        contractHideInsuranceClause: Number(c.contractHideInsuranceClause || 0) === 1
+        contractHideInsuranceClause: Number(c.contractHideInsuranceClause || 0) === 1,
+        bairro: c.bairro || '',
+        cidade: c.cidade || '',
+        numberOfEmployees: c.numberOfEmployees || null,
+        activityStartDate: c.activityStartDate || '',
+        representedInstitutions: c.representedInstitutions || ''
       }
     }
   } catch { /* silent */ }

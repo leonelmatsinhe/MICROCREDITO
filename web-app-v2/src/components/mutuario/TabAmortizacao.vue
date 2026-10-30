@@ -81,6 +81,9 @@
           <template v-slot:body-cell-dueDate="props"><q-td :props="props" class="text-right">{{ formatDateShort(props.row.dueDate) }}</q-td></template>
           <template v-slot:body-cell-actions="props">
             <q-td :props="props" class="text-center">
+              <q-btn dense flat round icon="chat" size="sm" color="amber-9" @click="openSendMessageModal(props.row)">
+                <q-tooltip>Cobrança SMS / WhatsApp Directo</q-tooltip>
+              </q-btn>
               <q-btn v-if="canRegisterPayment(authStore.userRole)" dense flat round icon="credit_card" size="sm" color="orange" @click="openPayment(props.row, 'full')">
                 <q-tooltip>Pagar prestação</q-tooltip>
               </q-btn>
@@ -114,6 +117,7 @@
               <div class="text-caption">Total a pagar: <strong class="text-negative">{{ formatMoney(installmentTotalDue(row)) }}</strong></div>
             </q-card-section>
             <q-card-actions align="right" v-if="canRegisterPayment(authStore.userRole)">
+              <q-btn dense outline color="amber-9" icon="chat" label="Cobrar" no-caps @click="openSendMessageModal(row)" />
               <q-btn dense outline color="orange" label="Pagar" no-caps @click="openPayment(row, 'full')" />
               <q-btn dense outline color="teal" label="Parcial" no-caps @click="openPayment(row, 'partial')" />
               <q-btn dense outline color="primary" label="Desconto" no-caps @click="openPayment(row, 'discount')" />
@@ -225,6 +229,13 @@
 
     <!-- Visualizador do recibo legal (PDF servido pelo backend) -->
     <ReciboViewerDialog v-model="reciboViewerOpen" :recibo="reciboViewer" />
+
+    <!-- Modal de Envio de Alertas de Cobrança com 8 Templates & WhatsApp Directo -->
+    <SendMessageModal
+      v-model="showMessageModal"
+      :customer="store.customer"
+      :installment-data="selectedInstallmentData"
+    />
   </div>
 </template>
 
@@ -241,6 +252,7 @@ import { api } from '@/boot/axios'
 import ReciboViewerDialog from '@/components/recibos/ReciboViewerDialog.vue'
 import RegistarPagamentoModal from '@/components/mutuario/RegistarPagamentoModal.vue'
 import LiquidarDividaModal from '@/components/mutuario/LiquidarDividaModal.vue'
+import SendMessageModal from '@/components/modals/SendMessageModal.vue'
 
 const $q = useQuasar()
 const store = useMutuarioStore()
@@ -252,13 +264,27 @@ const bankStore = useBankStore()
 // O PDF do recibo é gerado no BACKEND (pdfkit, dentro da transacção do
 // pagamento). O frontend apenas consome: GET /api/tranzactions/:id/recibo →
 // visualizador com o PDF servido por /api/recibos/:id/pdf.
-const reciboViewerOpen = ref(false)
-const reciboViewer = ref(null)
-const reciboLoadingId = ref(null)
-const sucessoPagamento = ref(false)
-const ultimoPagamento = ref(null) // { tranzactionId, recibo }
-const baixandoRecibo = ref(false)
-const extracting = ref(false)
+const showMessageModal = ref(false)
+const selectedInstallmentData = ref(null)
+
+function openSendMessageModal(row) {
+  const today = new Date().toISOString().split('T')[0]
+  const dueDate = row.dueDate ? String(row.dueDate).split('T')[0] : ''
+  const isOverdue = !!(dueDate && dueDate < today)
+  const diffDays = dueDate
+    ? Math.round((new Date(dueDate).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24))
+    : 0
+
+  selectedInstallmentData.value = {
+    installmentNumber: row.installmentOrder,
+    dueDate: row.dueDate,
+    amount: row.installment,
+    lateFee: row.latePaymentInterest || 0,
+    daysOverdue: isOverdue ? Math.abs(diffDays) : 0,
+    daysUntilDue: !isOverdue ? diffDays : 0
+  }
+  showMessageModal.value = true
+}
 
 async function imprimirRecibo(row) {
   const txId = Number(row?.tranzactionId)

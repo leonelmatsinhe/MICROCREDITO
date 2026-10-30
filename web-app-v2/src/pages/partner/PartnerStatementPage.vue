@@ -3,7 +3,7 @@
     <q-card flat bordered class="q-mb-md" style="border-radius: 12px">
       <q-card-section class="row q-col-gutter-sm items-center q-py-sm">
         <div class="col-12 col-md-4">
-          <div class="text-subtitle2 text-weight-bold">Extrato da carteira</div>
+          <div class="text-subtitle2 text-weight-bold">Extracto da carteira</div>
           <div class="text-caption text-grey-6">Resumo do capital, desembolsos e recebimentos do seu fundo.</div>
         </div>
         <div class="col-6 col-md-2">
@@ -145,7 +145,7 @@ async function load() {
       to: filters.value.to || undefined
     })
   } catch (error) {
-    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao carregar o extrato', position: 'top' })
+    $q.notify({ type: 'negative', message: error.response?.data?.message || 'Erro ao carregar o extracto', position: 'top' })
   }
 }
 
@@ -155,10 +155,10 @@ async function exportExcel() {
     if (filters.value.from) query.set('from', filters.value.from)
     if (filters.value.to) query.set('to', filters.value.to)
     const code = walletsStore.partnerProfile?.carteira?.codigo || 'carteira'
-    await walletsStore.downloadFile(`/api/partner/statement/excel?${query.toString()}`, `Extrato_${code}.xlsx`)
-    $q.notify({ type: 'positive', message: 'Extrato exportado', position: 'top' })
+    await walletsStore.downloadFile(`/api/partner/statement/excel?${query.toString()}`, `Extracto_${code}.xlsx`)
+    $q.notify({ type: 'positive', message: 'Extracto exportado', position: 'top' })
   } catch (error) {
-    $q.notify({ type: 'negative', message: 'Erro ao exportar o extrato', position: 'top' })
+    $q.notify({ type: 'negative', message: 'Erro ao exportar o extracto', position: 'top' })
   }
 }
 

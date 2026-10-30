@@ -25,17 +25,24 @@ export function usePortalData() {
   const canRequestCredit = computed(() => !hasPendingRequest.value && !hasOutstandingDebt.value)
   const loanRequestCapacity = computed(() => (Number(customer.value?.monthlySalary) || 0) / 3)
 
-  // ---- Próximas prestações (30 dias) ----
+  // ---- Prestações em atraso (prioridade máxima) ----
+  const overdueInstallments = computed(() => {
+    return allInstallments.value
+      .filter(inst => Number(inst.status) !== 1 && Number(inst.lateDays) > 0)
+      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+  })
+
+  // ---- Próximas prestações a vencer (0 a 30 dias, sem atraso) ----
   const upcomingInstallments = computed(() => {
     const result = []
     const now = new Date()
     loans.value.forEach(loan => {
       if (Number(loan.status) !== 1) return
       loan.installments.forEach(inst => {
-        if (inst.status !== 1) {
+        if (Number(inst.status) !== 1 && !(Number(inst.lateDays) > 0)) {
           const dueDate = new Date(inst.dueDate)
           const diffDays = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24))
-          if (diffDays > 0 && diffDays <= 30) {
+          if (diffDays >= 0 && diffDays <= 30) {
             result.push({ ...inst, loanId: loan.id, totalInstallments: loan.numberOfInstallments, daysUntilDue: diffDays, lateFee: 0 })
           }
         }
@@ -221,7 +228,7 @@ export function usePortalData() {
     customer, summary, loans, allPayments, collectAccount, loading,
     // computed
     hasActiveLoan, hasPendingRequest, hasOutstandingDebt, canRequestCredit, loanRequestCapacity,
-    upcomingInstallments, allInstallments,
+    overdueInstallments, upcomingInstallments, allInstallments,
     // acções
     loadData, refresh, ensureCompanyLoaded, downloadPaymentRecibo,
     // helpers

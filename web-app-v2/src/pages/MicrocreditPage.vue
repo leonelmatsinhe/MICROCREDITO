@@ -5,10 +5,10 @@
         <div class="text-h5 text-weight-bold">{{ heading }}</div>
         <div class="text-caption text-grey-6">{{ companyStore.companyName || 'Empresa' }} · módulo isolado por empresa</div>
       </div>
-      <div class="col-12" v-if="['clientes','creditos','pagamentos','financiamentos'].includes(mode)"><q-banner dense rounded class="bg-blue-1 text-blue-10"><template v-slot:avatar><q-icon name="info"/></template>Esta área apresenta dados do sistema core em modo de consulta. Para criar ou alterar registos, use Gestão de Crédito, Financeiro e Financiamento; assim cada operação é validada e lançada uma única vez no core.</q-banner></div>
+      <div class="col-12" v-if="['clientes','creditos','pagamentos','financiamentos'].includes(mode)"><q-banner dense rounded class="bg-blue-1 text-blue-10"><template v-slot:avatar><q-icon name="info"/></template>Esta área apresenta dados do sistema core em modo de consulta. Para criar ou alterar registos, use Crédito, Financeiro e Financiamento; assim cada operação é validada e lançada uma única vez no core.</q-banner></div>
     </div>
 
-    <q-tabs v-model="activeTab" dense align="left" no-caps active-color="primary" indicator-color="primary" class="bg-white q-mb-md rounded-borders shadow-1">
+    <q-tabs v-model="activeTab" dense align="left" no-caps active-color="primary" indicator-color="primary" class="q-mb-md rounded-borders shadow-1">
       <q-route-tab v-for="item in nav" :key="item.to" :to="item.to" :name="item.key" :icon="item.icon" :label="item.label" />
     </q-tabs>
 
@@ -44,12 +44,255 @@
       </div>
 
       <section v-else-if="mode === 'reportes'">
-        <q-card flat bordered class="q-mb-md"><q-card-section><div class="text-h6 text-weight-bold">Empresa {{ companyStore.companyName || 'Empresa' }} <span class="text-caption text-grey-6">({{ report?.tenant?.workers ?? '—' }} trabalhadores)</span></div><div class="text-caption text-grey-6">{{ report?.tenant?.address || '' }} · {{ report?.tenant?.province || '' }} · {{ report?.tenant?.phone || '' }}</div><div class="row q-col-gutter-sm items-end q-mt-sm"><div class="col-6 col-md-3"><q-input v-model="period.start" type="date" outlined dense label="Data início"/></div><div class="col-6 col-md-3"><q-input v-model="period.end" type="date" outlined dense label="Data fim"/></div><div class="col-auto"><q-btn color="primary" icon="preview" label="Pré-visualizar" no-caps :loading="saving" @click="previewReport"/></div><div class="col-auto"><q-btn color="positive" icon="download" label="Gerar Excel BM" no-caps :loading="downloading" @click="downloadExcel"/></div><div class="col-auto"><q-btn outline color="negative" icon="picture_as_pdf" label="Exportar PDF" no-caps :disable="!report" @click="downloadPdf"/></div></div></q-card-section></q-card>
+        <q-card flat bordered class="q-mb-md">
+          <q-card-section>
+            <div class="row items-center justify-between">
+              <div>
+                <div class="text-h6 text-weight-bold">
+                  {{ report?.tenant?.name || companyStore.companyName || 'Empresa' }}
+                  <span class="text-caption text-grey-6">({{ report?.tenant?.workers ?? '—' }} colaboradores activos)</span>
+                </div>
+                <div class="text-caption text-grey-6">
+                  {{ report?.tenant?.address || '' }} · {{ report?.tenant?.province || '' }} · {{ report?.tenant?.phone || '' }} · {{ report?.tenant?.email || '' }}
+                </div>
+              </div>
+              <q-btn outline color="primary" icon="account_balance" label="Parametrizar Capital" no-caps rounded @click="openCapitalDialog" />
+            </div>
+
+            <!-- Atalhos de Período -->
+            <div class="row q-col-gutter-xs q-mt-sm items-center">
+              <span class="text-caption text-weight-medium text-grey-7 q-mr-xs">Atalhos de Período:</span>
+              <q-btn flat dense no-caps color="primary" label="1º Trimestre (Jan-Mar)" @click="selectQuarter(1)" />
+              <q-btn flat dense no-caps color="primary" label="2º Trimestre (Abr-Jun)" @click="selectQuarter(2)" />
+              <q-btn flat dense no-caps color="primary" label="3º Trimestre (Jul-Set)" @click="selectQuarter(3)" />
+              <q-btn flat dense no-caps color="primary" label="4º Trimestre (Out-Dez)" @click="selectQuarter(4)" />
+              <q-btn flat dense no-caps color="secondary" label="Mês Actual" @click="selectCurrentMonth" />
+            </div>
+
+            <div class="row q-col-gutter-sm items-end q-mt-xs">
+              <div class="col-6 col-md-3">
+                <q-input v-model="period.start" type="date" outlined dense label="Data início" />
+              </div>
+              <div class="col-6 col-md-3">
+                <q-input v-model="period.end" type="date" outlined dense label="Data fim" />
+              </div>
+              <div class="col-auto">
+                <q-btn color="primary" icon="preview" label="Pré-visualizar" no-caps :loading="saving" @click="previewReport" />
+              </div>
+              <div class="col-auto">
+                <q-btn color="positive" icon="download" label="Gerar Excel BM (.xlsx)" no-caps :loading="downloading" @click="downloadExcel" />
+              </div>
+              <div class="col-auto">
+                <q-btn outline color="negative" icon="picture_as_pdf" label="Exportar PDF" no-caps :disable="!report" @click="downloadPdf" />
+              </div>
+            </div>
+          </q-card-section>
+        </q-card>
+
         <div v-if="report" class="column q-gutter-md">
-          <q-banner v-if="report.dataWarnings?.length" rounded class="bg-orange-1 text-orange-10"><template v-slot:avatar><q-icon name="warning"/></template><div class="text-weight-bold">Campos BM sem fonte core validada ou que exigem revisão</div><ul class="q-mb-none q-mt-sm"><li v-for="(warning,i) in report.dataWarnings" :key="i">{{ warning }}</li></ul></q-banner>
-          <q-card flat bordered><q-card-section class="text-subtitle1 text-weight-bold">2.1 Carteira de crédito — MZN</q-card-section><q-markup-table dense flat separator="cell"><thead><tr><th>Indicador</th><th class="text-right">Capital</th><th class="text-right">Juro</th><th class="text-right">Total</th></tr></thead><tbody><tr v-for="row in volumeRows" :key="row.label"><td>{{ row.label }}</td><td class="text-right">{{ money(row.capital) }}</td><td class="text-right">{{ money(row.interest) }}</td><td class="text-right">{{ money(row.capital+row.interest) }}</td></tr></tbody></q-markup-table><div class="row q-pa-md q-gutter-md"><span>Créditos concedidos: <b>{{ report.loanCounts.granted }}</b></span><span>Reembolsados: <b>{{ report.loanCounts.repaid }}</b></span><span>Clientes activos: <b>{{ report.clients.total }}</b></span></div></q-card>
-          <div class="row q-col-gutter-md"><div class="col-12 col-md-6"><q-card flat bordered><q-card-section class="text-subtitle1 text-weight-bold">Carteira activa por sector (capital)</q-card-section><q-markup-table dense flat><tbody><tr v-for="(amount,sector) in report.sectors" :key="sector"><td>{{ sector }}</td><td class="text-right">{{ money(amount) }}</td></tr></tbody></q-markup-table></q-card></div><div class="col-12 col-md-6"><q-card flat bordered><q-card-section class="text-subtitle1 text-weight-bold">Carteira em risco</q-card-section><q-markup-table dense flat><thead><tr><th>Classe</th><th class="text-right">Capital</th><th class="text-right">Juro</th><th class="text-right">Total</th></tr></thead><tbody><tr v-for="risk in risks" :key="risk"><td>Classe {{ risk }}</td><td class="text-right">{{ money(report.riskClasses[risk].capital) }}</td><td class="text-right">{{ money(report.riskClasses[risk].interest) }}</td><td class="text-right">{{ money(report.riskClasses[risk].capital+report.riskClasses[risk].interest) }}</td></tr></tbody></q-markup-table></q-card></div></div>
-          <q-card flat bordered><q-card-section class="text-subtitle1 text-weight-bold">2.2–3. Situação financeira</q-card-section><q-card-section class="row q-col-gutter-md"><div class="col-6 col-md-3">Taxa mensal: {{ report.rates.min }}%–{{ report.rates.max }}%</div><div class="col-6 col-md-3">Prazo: {{ report.rates.termMin }}–{{ report.rates.termMax }} meses</div><div class="col-6 col-md-3">Capital inicial: {{ money(report.capital.initial) }}</div><div class="col-6 col-md-3">Capital actual: {{ money(report.capital.current) }}</div></q-card-section><q-markup-table dense flat separator="cell"><thead><tr><th>Activo</th><th v-for="(month,i) in report.period.months" :key="month">Mês {{ i+1 }} · {{ month }}</th></tr></thead><tbody><tr><td>Caixa</td><td v-for="(v,i) in report.assets.cash" :key="i" class="text-right">{{ money(v) }}</td></tr><tr><td>Bancos</td><td v-for="(v,i) in report.assets.banks" :key="i" class="text-right">{{ money(v) }}</td></tr><tr><td>Outros Activos</td><td v-for="(v,i) in report.assets.other" :key="i" class="text-right">{{ money(v) }}</td></tr></tbody></q-markup-table></q-card>
+          <q-banner v-if="report.dataWarnings?.length" rounded class="bg-orange-1 text-orange-10">
+            <template v-slot:avatar><q-icon name="warning" /></template>
+            <div class="text-weight-bold">Notas de Mapeamento Regulatório BM</div>
+            <ul class="q-mb-none q-mt-sm">
+              <li v-for="(warning, i) in report.dataWarnings" :key="i">{{ warning }}</li>
+            </ul>
+          </q-banner>
+
+          <!-- 2.1.1 Volume de Créditos e Contagens -->
+          <q-card flat bordered>
+            <q-card-section class="text-subtitle1 text-weight-bold">
+              2.1.1 Volume de Créditos — MZN & 2.1.2 Contagens
+            </q-card-section>
+            <q-markup-table dense flat separator="cell">
+              <thead>
+                <tr>
+                  <th>Indicador</th>
+                  <th class="text-right">Capital</th>
+                  <th class="text-right">Juro</th>
+                  <th class="text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in volumeRows" :key="row.label">
+                  <td>{{ row.label }}</td>
+                  <td class="text-right">{{ money(row.capital) }}</td>
+                  <td class="text-right">{{ money(row.interest) }}</td>
+                  <td class="text-right">{{ money(row.capital + row.interest) }}</td>
+                </tr>
+              </tbody>
+            </q-markup-table>
+            <div class="row q-pa-md q-gutter-lg bg-grey-1 text-caption text-weight-medium">
+              <span>Créditos concedidos no período: <b class="text-primary">{{ report.loanCounts.granted }}</b></span>
+              <span>Créditos reembolsados integralmente: <b class="text-positive">{{ report.loanCounts.repaid }}</b></span>
+              <span>Clientes activos com carteira: <b class="text-dark">{{ report.clients.total }}</b></span>
+            </div>
+          </q-card>
+
+          <!-- 2.1.3 Sectores e 2.1.4 Clientes -->
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-6">
+              <q-card flat bordered class="full-height">
+                <q-card-section class="text-subtitle1 text-weight-bold">
+                  2.1.3 Concedidos por sector de actividade / finalidade
+                </q-card-section>
+                <q-markup-table dense flat separator="cell">
+                  <thead>
+                    <tr>
+                      <th>Actividade / Finalidade</th>
+                      <th class="text-right">Montante Concedido (MZN)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(amount, sector) in report.sectors" :key="sector">
+                      <td>{{ sector }}</td>
+                      <td class="text-right">{{ money(amount) }}</td>
+                    </tr>
+                    <tr class="bg-grey-2 text-weight-bold">
+                      <td>TOTAL</td>
+                      <td class="text-right text-primary">{{ money(report._sectorGrantedTotal || Object.values(report.sectors).reduce((a, b) => a + b, 0)) }}</td>
+                    </tr>
+                  </tbody>
+                </q-markup-table>
+              </q-card>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <q-card flat bordered class="full-height">
+                <q-card-section class="text-subtitle1 text-weight-bold">
+                  2.1.4 Carteira de Clientes Activos
+                </q-card-section>
+                <q-markup-table dense flat separator="cell">
+                  <thead>
+                    <tr>
+                      <th>Descrição</th>
+                      <th class="text-right">Nº de Clientes Activos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Homens</td>
+                      <td class="text-right">{{ report.clients.men }}</td>
+                    </tr>
+                    <tr>
+                      <td>Mulheres</td>
+                      <td class="text-right">{{ report.clients.women }}</td>
+                    </tr>
+                    <tr>
+                      <td>Outros (Pessoas Colectivas / Indefinido)</td>
+                      <td class="text-right">{{ report.clients.other }}</td>
+                    </tr>
+                    <tr class="bg-grey-2 text-weight-bold">
+                      <td>Total</td>
+                      <td class="text-right text-primary">{{ report.clients.total }}</td>
+                    </tr>
+                  </tbody>
+                </q-markup-table>
+              </q-card>
+            </div>
+          </div>
+
+          <!-- 2.1.5 Risco e 2.2 Taxas/Prazos/Capital -->
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-6">
+              <q-card flat bordered class="full-height">
+                <q-card-section class="text-subtitle1 text-weight-bold">
+                  2.1.5 Estrutura da Carteira em Risco (Mora)
+                </q-card-section>
+                <q-markup-table dense flat separator="cell">
+                  <thead>
+                    <tr>
+                      <th>Classe de Risco</th>
+                      <th class="text-right">Capital</th>
+                      <th class="text-right">Juro</th>
+                      <th class="text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="risk in risks" :key="risk">
+                      <td>
+                        <q-badge :color="riskColors[risk]" class="q-mr-xs">Classe {{ risk }}</q-badge>
+                        <span class="text-caption text-grey-7">{{ riskLabels[risk] }}</span>
+                      </td>
+                      <td class="text-right">{{ money(report.riskClasses[risk].capital) }}</td>
+                      <td class="text-right">{{ money(report.riskClasses[risk].interest) }}</td>
+                      <td class="text-right">{{ money(report.riskClasses[risk].capital + report.riskClasses[risk].interest) }}</td>
+                    </tr>
+                    <tr class="bg-grey-2 text-weight-bold">
+                      <td>Total em Risco</td>
+                      <td class="text-right text-negative">{{ money(report.volume.risk.capital) }}</td>
+                      <td class="text-right text-negative">{{ money(report.volume.risk.interest) }}</td>
+                      <td class="text-right text-negative">{{ money(report.volume.risk.capital + report.volume.risk.interest) }}</td>
+                    </tr>
+                  </tbody>
+                </q-markup-table>
+              </q-card>
+            </div>
+
+            <div class="col-12 col-md-6">
+              <q-card flat bordered class="full-height">
+                <q-card-section class="text-subtitle1 text-weight-bold">
+                  2.2 Taxas & Prazos | 2.5 Capital
+                </q-card-section>
+                <q-card-section class="q-pt-none">
+                  <div class="row q-col-gutter-md">
+                    <div class="col-6">
+                      <div class="text-caption text-grey-6">Taxa de Juro Mensal</div>
+                      <div class="text-body1 text-weight-bold">{{ report.rates.min }}% a {{ report.rates.max }}%</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-caption text-grey-6">Prazo de Reembolso</div>
+                      <div class="text-body1 text-weight-bold">{{ report.rates.termMin }} a {{ report.rates.termMax }} meses</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-caption text-grey-6">Capital Inicial</div>
+                      <div class="text-body1 text-weight-bold text-teal">{{ money(report.capital.initial) }}</div>
+                    </div>
+                    <div class="col-6">
+                      <div class="text-caption text-grey-6">Capital Actual</div>
+                      <div class="text-body1 text-weight-bold text-primary">{{ money(report.capital.current) }}</div>
+                    </div>
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+
+          <!-- 3. Situação Financeira -->
+          <q-card flat bordered>
+            <q-card-section class="text-subtitle1 text-weight-bold">
+              3. Situação Financeira do Operador
+            </q-card-section>
+            <q-markup-table dense flat separator="cell">
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th v-for="(month, i) in report.period.months" :key="month" class="text-right">
+                    {{ report.period.months.length === 1 ? month : `Mês ${i + 1} (${month})` }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Caixa</td>
+                  <td v-for="(v, i) in report.assets.cash" :key="i" class="text-right">{{ money(v) }}</td>
+                </tr>
+                <tr>
+                  <td>Bancos</td>
+                  <td v-for="(v, i) in report.assets.banks" :key="i" class="text-right">{{ money(v) }}</td>
+                </tr>
+                <tr>
+                  <td>Outros Activos</td>
+                  <td v-for="(v, i) in report.assets.other" :key="i" class="text-right">{{ money(v) }}</td>
+                </tr>
+                <tr class="bg-grey-2 text-weight-bold">
+                  <td>Total</td>
+                  <td v-for="(month, i) in report.period.months" :key="i" class="text-right text-primary">
+                    {{ money((report.assets.cash?.[i] || 0) + (report.assets.banks?.[i] || 0) + (report.assets.other?.[i] || 0)) }}
+                  </td>
+                </tr>
+              </tbody>
+            </q-markup-table>
+          </q-card>
         </div>
       </section>
     </template>
@@ -60,6 +303,29 @@
       <template v-else-if="dialogType==='funding'"><div class="col-12"><q-input v-model="form.descricao" outlined dense label="Descrição *"/></div><div class="col-6"><q-select v-model="form.tipo" :options="fundingTypes" emit-value map-options outlined dense label="Origem de capital"/></div><div class="col-6"><q-input v-model.number="form.montante" type="number" outlined dense label="Montante (MZN) *"/></div><div class="col-6"><q-input v-model="form.data_entrada" type="date" outlined dense label="Data de entrada *"/></div><div class="col-6"><q-input v-model="form.origem" outlined dense label="Origem / entidade"/></div><div class="col-12"><q-select v-model="form.categoria_periodo" :options="fundingCategories" emit-value map-options clearable outlined dense label="Categoria do período (2.4)"/></div></template>
       <template v-else><div class="col-6"><q-select v-model="form.tipo" :options="assetTypes" emit-value map-options outlined dense label="Activo"/></div><div class="col-6"><q-input v-model.number="form.mes" type="number" min="1" max="3" outlined dense label="Mês do período (1–3)"/></div><div class="col-6"><q-input v-model="form.data" type="date" outlined dense label="Data"/></div><div class="col-6"><q-input v-model.number="form.montante" type="number" outlined dense label="Montante"/></div></template>
     </q-card-section><q-card-actions align="right" class="q-pa-md"><q-btn flat label="Cancelar" v-close-popup/><q-btn color="primary" label="Guardar" :loading="saving" @click="saveDialog"/></q-card-actions></q-card></q-dialog>
+    <!-- Modal de Capital Social BM -->
+    <q-dialog v-model="capitalDialog" persistent>
+      <q-card style="width: 480px; max-width: 95vw">
+        <q-card-section class="row items-center">
+          <div class="text-h6">Parametrizar Capital Social (BM)</div>
+          <q-space />
+          <q-btn flat round icon="close" v-close-popup />
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <div class="text-caption text-grey-7 q-mb-md">
+            Estes valores são impressos na secção <b>2.5 Capital</b> da Ficha de Reporte Trimestral do Banco de Moçambique.
+          </div>
+          <div class="q-gutter-md">
+            <q-input v-model.number="capitalForm.capital_inicial" type="number" outlined dense label="Capital Inicial (MZN)" min="0" step="1000" />
+            <q-input v-model.number="capitalForm.capital_actual" type="number" outlined dense label="Capital Actual (MZN)" min="0" step="1000" />
+          </div>
+        </q-card-section>
+        <q-card-actions align="right" class="q-pa-md">
+          <q-btn flat label="Cancelar" v-close-popup />
+          <q-btn color="primary" label="Guardar" :loading="saving" @click="saveCapital" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
@@ -78,10 +344,46 @@ const mode = computed(() => route.path.split('/').pop()), activeTab = computed((
 const titles = {dashboard:'Microcrédito · Painel',clientes:'Clientes de microcrédito',creditos:'Créditos e amortização',pagamentos:'Registo de pagamentos',financiamentos:'Fontes e situação financeira',reportes:'Reporte trimestral · Banco de Moçambique'}
 const heading = computed(() => titles[mode.value] || 'Microcrédito')
 const loading = ref(false), saving = ref(false), downloading = ref(false), search = ref(''), dialog = ref(false), dialogType = ref(''), dialogId = ref(null), report = ref(null)
+const capitalDialog = ref(false), capitalForm = reactive({ capital_inicial: 0, capital_actual: 0 })
 const dashboard = ref({ portfolio:0,riskAmount:0,riskPercent:0,activeClients:0,activeCredits:0,sectors:{},riskClasses:{I:0,II:0,III:0,IV:0},overdue:[] })
 const clients=ref([]),credits=ref([]),payments=ref([]),funding=ref([]),movements=ref([]), config=ref({taxa_juro_min:0,taxa_juro_max:0,prazo_min:1,prazo_max:6,capital_inicial:0,capital_actual:0})
-const sectors=['Comércio','Agricultura','Pecuária','Indústria','Serviços','Consumo','Outros'], risks=['I','II','III','IV'],riskColors={I:'green',II:'amber-8',III:'orange-9',IV:'negative'},paymentMethods=['M-Pesa','BCI','eMola','Dinheiro'],fundingTypes=[{label:'Capitais próprios',value:'Proprio'},{label:'Alheios nacionais',value:'Alheio_Nacional'},{label:'Alheios estrangeiros',value:'Alheio_Estrangeiro'}],fundingCategories=[{label:'Empréstimo obtido',value:'Emprestimo'},{label:'Donativo',value:'Donativo'},{label:'Aumento de capital próprio',value:'Aumento_Capital'}],assetTypes=[{label:'Caixa',value:'Caixa'},{label:'Bancos',value:'Bancos'},{label:'Outros activos',value:'Outros_Activos'}]
-const today=new Date().toISOString().slice(0,10), period=reactive({start:'2025-10-01',end:'2025-12-31'}),payment=reactive({credito_id:null,montante:null,forma:'Dinheiro',data_pagamento:today}),form=reactive({})
+const sectors=['Comércio','Agricultura','Pecuária','Indústria','Serviços','Consumo','Outros'], risks=['I','II','III','IV']
+const riskColors={I:'green',II:'amber-8',III:'orange-9',IV:'negative'}
+const riskLabels={I:'(de 1 até 30 dias)',II:'(de 31 até 90 dias)',III:'(de 91 a 365 dias)',IV:'(mais de 365 dias)'}
+const paymentMethods=['M-Pesa','BCI','eMola','Dinheiro'],fundingTypes=[{label:'Capitais próprios',value:'Proprio'},{label:'Alheios nacionais',value:'Alheio_Nacional'},{label:'Alheios estrangeiros',value:'Alheio_Estrangeiro'}],fundingCategories=[{label:'Empréstimo obtido',value:'Emprestimo'},{label:'Donativo',value:'Donativo'},{label:'Aumento de capital próprio',value:'Aumento_Capital'}],assetTypes=[{label:'Caixa',value:'Caixa'},{label:'Bancos',value:'Bancos'},{label:'Outros activos',value:'Outros_Activos'}]
+
+const now = new Date()
+const today = now.toISOString().slice(0, 10)
+const curYear = now.getFullYear()
+const curQuarter = Math.floor(now.getMonth() / 3) + 1
+
+function calcQuarterDates(year, q) {
+  const startMonth = String((q - 1) * 3 + 1).padStart(2, '0')
+  const endMonth = String(q * 3).padStart(2, '0')
+  const lastDay = new Date(Date.UTC(year, q * 3, 0)).getUTCDate()
+  return { start: `${year}-${startMonth}-01`, end: `${year}-${endMonth}-${String(lastDay).padStart(2, '0')}` }
+}
+
+const initialDates = calcQuarterDates(curYear, curQuarter)
+const period = reactive({ start: initialDates.start, end: initialDates.end })
+const payment = reactive({ credito_id: null, montante: null, forma: 'Dinheiro', data_pagamento: today })
+const form = reactive({})
+
+function selectQuarter(q) {
+  const d = calcQuarterDates(curYear, q)
+  period.start = d.start
+  period.end = d.end
+  previewReport()
+}
+
+function selectCurrentMonth() {
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const lastDay = new Date(Date.UTC(curYear, now.getMonth() + 1, 0)).getUTCDate()
+  period.start = `${curYear}-${m}-01`
+  period.end = `${curYear}-${m}-${String(lastDay).padStart(2, '0')}`
+  previewReport()
+}
+
 const money = n => `${new Intl.NumberFormat('pt-MZ',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0)} MZN`
 const maxSector=computed(()=>Math.max(0,...Object.values(dashboard.value.sectors||{}))),maxRisk=computed(()=>Math.max(0,...Object.values(dashboard.value.riskClasses||{})))
 const kpis=computed(()=>[{label:'Carteira activa',value:dashboard.value.portfolio,money:true},{label:'Em risco',value:`${money(dashboard.value.riskAmount)} · ${dashboard.value.riskPercent}%`,money:false},{label:'Clientes activos',value:dashboard.value.activeClients},{label:'Créditos em curso',value:dashboard.value.activeCredits}])
@@ -93,9 +395,35 @@ const creditColumns=[{name:'codigo',label:'Código',field:'codigo',align:'left'}
 const paymentColumns=[{name:'data_pagamento',label:'Data',field:'data_pagamento',align:'left'},{name:'codigo',label:'Crédito',field:'codigo',align:'left'},{name:'cliente_nome',label:'Cliente',field:'cliente_nome',align:'left'},{name:'numero_prestacao',label:'Prestação',field:'numero_prestacao',align:'center'},{name:'capital_pago',label:'Capital pago',field:'capital_pago',align:'right'},{name:'juro_pago',label:'Juro pago',field:'juro_pago',align:'right'},{name:'forma',label:'Forma',field:'forma',align:'left'}]
 const fundingColumns=[{name:'descricao',label:'Descrição',field:'descricao',align:'left'},{name:'tipo',label:'Tipo',field:'tipo',align:'left'},{name:'data_entrada',label:'Data de criação da carteira',field:'data_entrada',align:'center'},{name:'origem',label:'Parceiro / fundo',field:'origem',align:'left'},{name:'montante',label:'Alocação analítica (não caixa)',field:'montante',align:'right'},{name:'estado',label:'Estado',field:'estado',align:'left'}]
 const movementColumns=[{name:'tipo',label:'Origem',field:'tipo',align:'left'},{name:'mes',label:'Mês',field:r=>`Mês ${r.mes}`,align:'center'},{name:'data',label:'Data de abertura',field:'data',align:'center'},{name:'montante',label:'Saldo calculado',field:'montante',align:'right'},{name:'estado',label:'Estado',field:'estado',align:'left'}]
-const volumeRows=computed(()=>report.value?[{label:'Concedidos no período',...report.value.volume.granted},{label:'Reembolsados no período',...report.value.volume.repaid},{label:'Abatidos no período',...report.value.volume.writtenOff},{label:'Carteira activa/vigente',...report.value.volume.active},{label:'Carteira em risco',...report.value.volume.risk}]:[])
+const volumeRows=computed(()=>report.value?[{label:'Montante de créditos concedidos no período',...report.value.volume.granted},{label:'Montante de créditos reembolsados no período',...report.value.volume.repaid},{label:'Montante de créditos abatidos no período',...report.value.volume.writtenOff},{label:'Montante da carteira de crédito activa/vigente',...report.value.volume.active},{label:'Montante da carteira em risco',...report.value.volume.risk}]:[])
 const dialogTitle=computed(()=>({client:dialogId.value?'Editar cliente':'Novo cliente',credit:'Conceder crédito',funding:dialogId.value?'Editar financiamento':'Novo financiamento',movement:dialogId.value?'Editar movimento':'Novo movimento'}[dialogType.value]||'Registo'))
-async function load(){loading.value=true;try{if(mode.value==='dashboard'){dashboard.value=(await api.get('/api/microcredito/dashboard')).data.result}else if(mode.value==='clientes'){clients.value=(await api.get('/api/microcredito/clientes')).data.result}else if(mode.value==='creditos'){credits.value=(await api.get('/api/microcredito/creditos')).data.result}else if(mode.value==='pagamentos'){payments.value=(await api.get('/api/microcredito/pagamentos')).data.result}else if(mode.value==='financiamentos'){[funding.value,movements.value,config.value]=await Promise.all([api.get('/api/microcredito/financiamentos').then(r=>r.data.result),api.get('/api/microcredito/movimentos').then(r=>r.data.result),api.get('/api/microcredito/configuracao').then(r=>r.data.result)])}else if(mode.value==='reportes'){/* metadata comes from preview; company details are never client-supplied */}}catch(e){$q.notify({type:'negative',message:e.response?.data?.message||'Falha ao carregar módulo de microcrédito'})}finally{loading.value=false}}
+
+function openCapitalDialog() {
+  capitalForm.capital_inicial = Number(config.value?.capital_inicial || report.value?.capital?.initial || 0)
+  capitalForm.capital_actual = Number(config.value?.capital_actual || report.value?.capital?.current || 0)
+  capitalDialog.value = true
+}
+
+async function saveCapital() {
+  saving.value = true
+  try {
+    const res = await api.put('/api/microcredito/configuracao', {
+      ...config.value,
+      capital_inicial: capitalForm.capital_inicial,
+      capital_actual: capitalForm.capital_actual
+    })
+    config.value = res.data.result
+    $q.notify({ type: 'positive', message: 'Capital social guardado com sucesso' })
+    capitalDialog.value = false
+    if (report.value) await previewReport()
+  } catch (e) {
+    $q.notify({ type: 'negative', message: e.response?.data?.message || 'Falha ao guardar capital' })
+  } finally {
+    saving.value = false
+  }
+}
+
+async function load(){loading.value=true;try{if(mode.value==='dashboard'){dashboard.value=(await api.get('/api/microcredito/dashboard')).data.result}else if(mode.value==='clientes'){clients.value=(await api.get('/api/microcredito/clientes')).data.result}else if(mode.value==='creditos'){credits.value=(await api.get('/api/microcredito/creditos')).data.result}else if(mode.value==='pagamentos'){payments.value=(await api.get('/api/microcredito/pagamentos')).data.result}else if(mode.value==='financiamentos'){[funding.value,movements.value,config.value]=await Promise.all([api.get('/api/microcredito/financiamentos').then(r=>r.data.result),api.get('/api/microcredito/movimentos').then(r=>r.data.result),api.get('/api/microcredito/configuracao').then(r=>r.data.result)])}else if(mode.value==='reportes'){await Promise.all([api.get('/api/microcredito/configuracao').then(r=>config.value=r.data.result).catch(()=>{}),previewReport()])}}catch(e){$q.notify({type:'negative',message:e.response?.data?.message||'Falha ao carregar módulo de microcrédito'})}finally{loading.value=false}}
 watch(()=>route.path,load);onMounted(load)
 function resetForm(values={}){Object.keys(form).forEach(k=>delete form[k]);Object.assign(form,values)}
 function openClient(row){dialogId.value=row?.id||null;dialogType.value='client';resetForm(row||{sexo:'Outro',sector_actividade:'Outros',estado:'Activo'});dialog.value=true}

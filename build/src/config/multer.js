@@ -9,7 +9,8 @@ const isCompiled = __dirname.includes(`${path_1.sep}build${path_1.sep}`) || __di
 const projectRoot = isCompiled
     ? (0, path_1.join)(__dirname, "..", "..", "..")
     : (0, path_1.join)(__dirname, "..", "..");
-const documentsUploadDir = (0, path_1.join)(projectRoot, "uploads", "documents");
+const baseUploadsDir = process.env.UPLOADS_DIR || (0, path_1.join)(projectRoot, "uploads");
+const documentsUploadDir = (0, path_1.join)(baseUploadsDir, "documents");
 (0, fs_1.mkdirSync)(documentsUploadDir, { recursive: true });
 exports.multerConfig = {
     storage: (0, multer_1.diskStorage)({

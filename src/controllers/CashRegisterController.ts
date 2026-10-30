@@ -202,7 +202,10 @@ export const openToday = async (req: Request, res: Response) => {
     const hasDenominations =
       denominations && typeof denominations === "object" && Object.keys(denominations).length > 0;
 
-    if (!hasDenominations && (rawBalance === undefined || rawBalance === null || rawBalance === "")) {
+    const { isElectronicCashMode } = await import("../services/cashModeService");
+    const isElectronic = await isElectronicCashMode(companyId);
+
+    if (!isElectronic && !hasDenominations && (rawBalance === undefined || rawBalance === null || rawBalance === "")) {
       return res.status(400).json({
         success: false,
         message:
@@ -213,7 +216,12 @@ export const openToday = async (req: Request, res: Response) => {
     const register = await openRegister({
       userId,
       companyId,
-      openingBalance: Number(rawBalance),
+      openingBalance:
+        rawBalance !== undefined && rawBalance !== null && rawBalance !== ""
+          ? Number(rawBalance)
+          : isElectronic
+            ? 0
+            : undefined,
       denominations: hasDenominations ? denominations : undefined,
     });
     return res.status(201).json({ success: true, result: register });
@@ -247,7 +255,10 @@ export const close = async (req: Request, res: Response) => {
     const hasDenominations =
       denominations && typeof denominations === "object" && Object.keys(denominations).length > 0;
 
-    if (!hasDenominations && (raw === undefined || raw === null || raw === "")) {
+    const { isElectronicCashMode } = await import("../services/cashModeService");
+    const isElectronic = await isElectronicCashMode(companyId);
+
+    if (!isElectronic && !hasDenominations && (raw === undefined || raw === null || raw === "")) {
       return res.status(400).json({
         success: false,
         message:

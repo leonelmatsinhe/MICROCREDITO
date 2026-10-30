@@ -360,6 +360,38 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       }
     }
 
+    // ── TESOURARIA: Liquidação estrita do desembolso (obrigatória e bloqueante) ──
+    // O dinheiro sai efectivamente do caixa de balcão ou da conta bancária.
+    // Se o saldo for insuficiente ou o caixa estiver fechado, o desembolso é
+    // bloqueado sem gerar plano nem activar o crédito.
+    const jwtDisburse = await import("jsonwebtoken");
+    const decodedDisburse: any = jwtDisburse.verify(
+      (req.headers.authorization || "").split(" ")[1] || "",
+      process.env.APP_SECRET + ""
+    );
+    const disburseUserId = Number(decodedDisburse?.id) || undefined;
+
+    try {
+      const { recordDisbursement } = await import("../services/cashRegisterService");
+      await recordDisbursement({
+        companyId: Number(companyId),
+        userId: disburseUserId,
+        loanId: Number(loanId),
+        customerId: loan ? Number(loan.getDataValue("customerId")) : null,
+        amount: Number(amount),
+        accountNumber,
+        paymentMethod: payMethod,
+        bankAccountId: disburseAccountId,
+      });
+    } catch (cashError: any) {
+      console.error("[DESEMBOLSO] Bloqueio de tesouraria:", cashError?.message || cashError);
+      return res.status(cashError?.code === "CAIXA_FECHADO" ? 403 : 400).json({
+        success: false,
+        error: cashError?.code || "DISBURSEMENT_TREASURY_ERROR",
+        message: cashError?.message || "Não foi possível liquidar os fundos na tesouraria para este desembolso.",
+      });
+    }
+
     // Gera o plano de amortização usando o sistema francês
     const customerAmortizationPlan = simulator({
       companyId,
@@ -398,6 +430,23 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
         }
       }
     );
+
+    // ── RAZÃO CONTABILÍSTICO (Partidas Dobradas): Débito Carteira / Crédito Tesouraria ──
+    try {
+      const { recordDisbursementLedger } = await import("../services/generalLedgerService");
+      await recordDisbursementLedger({
+        companyId: Number(companyId),
+        loanId: Number(loanId),
+        amount: Number(amount),
+        paymentMethod: payMethod,
+        bankAccountId: disburseAccountId,
+        adminFee: adminFeeValue,
+        adminFeeAccountId,
+        userId: disburseUserId,
+      });
+    } catch (ledgerError: any) {
+      console.error("[GeneralLedger] Erro ao lançar partidas dobradas de desembolso:", ledgerError?.message || ledgerError);
+    }
 
     // ── SPRINT 5: linha do tempo — quem desembolsou e quando ──
     // (auditável; best-effort como o pacote de concessão — o estado já está
@@ -464,36 +513,7 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       }
     }
 
-    // ── CAIXA DIÁRIO: movimento automático SAIDA / DESEMBOLSO ──
-    // Best-effort: se falhar, NÃO impede o desembolso (apenas regista o erro).
-    // O caixa ABERTO já foi validado pelo middleware checkCashRegisterOpen e
-    // chega em req.cashRegister.
-    try {
-      const { recordDisbursement } = await import("../services/cashRegisterService");
-      const openRegister = (req as any).cashRegister;
-      if (openRegister) {
-        const jwt = await import("jsonwebtoken");
-        const decoded: any = jwt.verify(
-          (req.headers.authorization || "").split(" ")[1] || "",
-          process.env.APP_SECRET + ""
-        );
-        await recordDisbursement({
-          companyId: Number(companyId),
-          userId: Number(decoded?.id) || undefined,
-          loanId: Number(loanId),
-          customerId: loan ? Number(loan.getDataValue("customerId")) : null,
-          amount: Number(amount),
-          accountNumber,
-          // Método/conta vindos do form do Quasar (CASH por defeito nos antigos).
-          paymentMethod: String((req.body as any)?.payment_method || "CASH"),
-          bankAccountId: (req.body as any)?.bank_account_id
-            ? Number((req.body as any).bank_account_id)
-            : null,
-        });
-      }
-    } catch (cashError: any) {
-      console.error("[CAIXA] Falha ao registar desembolso no caixa (desembolso mantido):", cashError?.message || cashError);
-    }
+
 
     return bulckInsert != null && bulckInsert.length > 0
       ? res.status(200).json({

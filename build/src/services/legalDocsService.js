@@ -35,7 +35,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.renderLegalDoc = exports.buildDeclaracaoGarantias = exports.buildTermoCompromisso = exports.buildContratoConcessao = exports.buildExtractoCredito = exports.loadLegalDocsData = void 0;
+exports.renderLegalDoc = exports.buildDeclaracaoGarantias = exports.buildTermoCompromisso = exports.buildContratoConcessao = exports.buildPlanoAmortizacao = exports.buildExtractoCredito = exports.loadLegalDocsData = void 0;
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -45,6 +45,7 @@ const CompanyModel_1 = require("../database/models/CompanyModel");
 const AmortizationLoanModel_1 = require("../database/models/AmortizationLoanModel");
 const GuarateeAssessmentModel_1 = require("../database/models/GuarateeAssessmentModel");
 const AccountModel_1 = require("../database/models/AccountModel");
+const TranzactionModel_1 = require("../database/models/TranzactionModel");
 const calculateLateAmount_1 = require("../utils/calculateLateAmount");
 const lateInterestService_1 = require("../services/lateInterestService");
 const COLORS = {
@@ -62,6 +63,12 @@ const COLORS = {
 // ── Formatação (idêntica ao Intl pt-MZ do frontend, incluindo a regra CLDR
 //    de agrupamento só a partir de 5 dígitos: "2179,11" mas "10 279,11") ──
 const groupInteger = (int) => int.length >= 5 ? int.replace(/\B(?=(\d{3})+(?!\d))/g, " ") : int;
+const fmtVal = (value) => {
+    const n = Math.round((Number(value) || 0) * 100) / 100;
+    const [int, dec] = Math.abs(n).toFixed(2).split(".");
+    const sign = n < 0 ? "-" : "";
+    return `${sign}${groupInteger(int)},${dec}`;
+};
 const fmtMoney = (value) => {
     const n = Math.round((Number(value) || 0) * 100) / 100;
     const [int, dec] = Math.abs(n).toFixed(2).split(".");
@@ -359,16 +366,269 @@ const loadLegalDocsData = (loanId) => __awaiter(void 0, void 0, void 0, function
         order: [["id", "DESC"]],
     });
     const accounts = yield AccountModel_1.AccountModel.findAll({ where: { companyId } });
-    return { loan, customer, company, amortizations, guarantees, accounts };
+    let transactions = [];
+    try {
+        transactions = yield TranzactionModel_1.TranzactionModel.findAll({
+            where: { loanId, companyId, status: "CONFIRMED" },
+            order: [["paymentDate", "ASC"], ["id", "ASC"]],
+        });
+    }
+    catch (tErr) {
+        console.error("[LegalDocs] Erro ao carregar transações:", tErr);
+    }
+    return { loan, customer, company, amortizations, guarantees, accounts, transactions };
 });
 exports.loadLegalDocsData = loadLegalDocsData;
-// ── 1. EXTRACTO DO CRÉDITO (landscape, colunas Price do PDF oficial) ───
+// ── 1. EXTRACTO DE CONTA DO CRÉDITO (PADRÃO BANCÁRIO & BANCO DE MOÇAMBIQUE) ───
 const buildExtractoCredito = (ctx, data) => {
+    const { doc, left, right } = ctx;
+    const { loan, customer: cu, amortizations, transactions = [] } = data;
+    const width = right - left;
+    let y = drawCompanyHeader(ctx, "Extracto de Conta do Crédito");
+    // 1. DADOS DO MUTUÁRIO & ENQUADRAMENTO DA OPERAÇÃO
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
+    doc.text("1. IDENTIFICAÇÃO DO MUTUÁRIO & ENQUADRAMENTO DO CONTRATO", left, y, { lineBreak: false });
+    y += 9 * 1.3 + 4;
+    const w4 = width / 4;
+    y = drawTable(ctx, {
+        x: left, y, widths: [w4, w4, w4, w4], aligns: ["left", "left", "left", "left"],
+        rows: [
+            [
+                { rich: [{ text: "Mutuário: ", bold: true }, { text: String((cu === null || cu === void 0 ? void 0 : cu.customerName) || "—") }] },
+                { rich: [{ text: "N.º de Conta: ", bold: true }, { text: String((cu === null || cu === void 0 ? void 0 : cu.accountNumber) || loan.getDataValue("accountNumber") || "—") }] },
+                { rich: [{ text: "Telefone: ", bold: true }, { text: String((cu === null || cu === void 0 ? void 0 : cu.customerPhone) ? `+258 ${cu.customerPhone}` : "—") }] },
+                { rich: [{ text: "NUIT: ", bold: true }, { text: String((cu === null || cu === void 0 ? void 0 : cu.customerNuit) || "—") }] },
+            ],
+            [
+                { rich: [{ text: "Operação / Contrato: ", bold: true }, { text: `CR-${loan.getDataValue("id")}` }] },
+                { rich: [{ text: "Sector BM (Secção 2.1.3): ", bold: true }, { text: String(loan.getDataValue("loanDescription") || "Comércio") }] },
+                { rich: [{ text: "Data de Concessão: ", bold: true }, { text: fmtDateShort(loan.getDataValue("disbursementDate") || loan.getDataValue("dateCreated")) }] },
+                { rich: [{ text: "Gestor de Crédito: ", bold: true }, { text: String(loan.getDataValue("creditManager") || "—") }] },
+            ],
+        ],
+        fontSize: 8, padY: 4, outerLine: COLORS.navy, outerWidth: 1, gridColor: "#e2e8f0",
+    });
+    y += 8;
+    // 2. PARÂMETROS FINANCEIROS E LIQUIDAÇÃO REAL
+    const capitalInicial = Math.round((parseFloat(loan.getDataValue("amount")) || 0) * 100) / 100;
+    const totalInterestContractual = Math.round(amortizations.reduce((s, r) => s + (parseFloat(r.rateAmount) || 0), 0) * 100) / 100;
+    const contractTotal = Math.round((capitalInicial + totalInterestContractual) * 100) / 100;
+    const taxaMensal = parseFloat(loan.getDataValue("interestRate")) || 0;
+    // TAEG anualizada
+    let taegAnual = null;
+    if (capitalInicial > 0 && amortizations.length > 0) {
+        const pv = (i) => amortizations.reduce((s, r, idx) => s + (parseFloat(r.installment) || 0) / Math.pow(1 + i, idx + 1), 0);
+        let lo = 0.0000001, hi = 1;
+        for (let k = 0; k < 80; k++) {
+            const mid = (lo + hi) / 2;
+            if (pv(mid) > capitalInicial)
+                lo = mid;
+            else
+                hi = mid;
+        }
+        const iMensal = (lo + hi) / 2;
+        taegAnual = Math.round((Math.pow(1 + iMensal, 12) - 1) * 10000) / 100;
+    }
+    const totalPaid = Math.round(amortizations.reduce((s, r) => s + (parseFloat(r.paidAmount) || 0), 0) * 100) / 100;
+    const moraTotal = Math.round(amortizations.reduce((s, r) => s + (Number(r.status) === 1 ? 0 : (parseFloat(r.latePaymentInterest) || 0)), 0) * 100) / 100;
+    const capitalPago = Math.round(amortizations.reduce((s, r) => {
+        const pago = parseFloat(r.paidAmount) || 0;
+        const juro = parseFloat(r.rateAmount) || 0;
+        const amort = parseFloat(r.amortization) || 0;
+        return s + Math.max(0, Math.min(amort, pago - juro));
+    }, 0) * 100) / 100;
+    const capitalEmDivida = Math.max(0, Math.round((capitalInicial - capitalPago) * 100) / 100);
+    const jurosPagos = Math.round(amortizations.reduce((s, r) => {
+        const pago = parseFloat(r.paidAmount) || 0;
+        const juro = parseFloat(r.rateAmount) || 0;
+        return s + Math.min(juro, pago);
+    }, 0) * 100) / 100;
+    const jurosEmDivida = Math.max(0, Math.round((totalInterestContractual - jurosPagos) * 100) / 100);
+    // TOTAL EXIGÍVEL HOJE PARA QUITAÇÃO (Capital + Juros Contratuais + Mora)
+    const totalExigivel = Math.round((capitalEmDivida + jurosEmDivida + moraTotal) * 100) / 100;
+    const paidCount = amortizations.filter(r => Number(r.status) === 1).length;
+    const pendingCount = amortizations.length - paidCount;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const atrasadas = amortizations.filter(r => Number(r.status) !== 1 && String(r.dueDate || "").slice(0, 10) < hoje);
+    const maxLateDays = Math.max(0, ...amortizations.map(r => Number(r.status) === 1 ? 0 : (Number(r.lateDays) || 0)));
+    // Classe de Risco Banco de Moçambique
+    const classeRiscoBM = maxLateDays <= 0 ? "Normal (Regularizado)" :
+        maxLateDays <= 30 ? `Classe I (${maxLateDays} dias em atraso)` :
+            maxLateDays <= 90 ? `Classe II - Sub-standard (${maxLateDays} dias)` :
+                maxLateDays <= 365 ? `Classe III - Duvidoso (${maxLateDays} dias)` :
+                    `Classe IV - Prejuízo (${maxLateDays} dias)`;
+    // 2. PAINEL DE POSIÇÃO FINANCEIRA & COMPOSIÇÃO DA DÍVIDA
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
+    doc.text("2. POSIÇÃO FINANCEIRA GLOBAL & COMPOSIÇÃO DA DÍVIDA (DATA DE EMISSÃO)", left, y, { lineBreak: false });
+    y += 9 * 1.3 + 4;
+    const w5 = width / 5;
+    // 2.1 Posição dos Saldos
+    y = drawTable(ctx, {
+        x: left, y, widths: [w5, w5, w5, w5, w5], aligns: ["center", "center", "center", "center", "center"],
+        rows: [
+            ["Capital Financiado", "Capital em Dívida (Saldo Vivo)", "Juros Contratuais em Dívida", "Juros de Mora Acumulados", "Total Liquidado / Pago"].map(t => plainTextCell(t, { bold: true, fontSize: 7, fillColor: "#f8fafc", color: t.includes("Mora") ? COLORS.red : t.includes("Pago") ? COLORS.green : COLORS.navy })),
+            [
+                plainTextCell(fmtMoney(capitalInicial), { bold: true, fontSize: 8.5 }),
+                plainTextCell(fmtMoney(capitalEmDivida), { bold: true, fontSize: 8.5, color: capitalEmDivida > 0 ? COLORS.red : COLORS.green }),
+                plainTextCell(fmtMoney(jurosEmDivida), { bold: true, fontSize: 8.5, color: jurosEmDivida > 0 ? COLORS.orange : COLORS.green }),
+                plainTextCell(fmtMoney(moraTotal), { bold: true, fontSize: 8.5, color: moraTotal > 0 ? COLORS.red : COLORS.green }),
+                plainTextCell(fmtMoney(totalPaid), { bold: true, fontSize: 8.5, color: COLORS.green }),
+            ],
+        ],
+        padY: 4, outerLine: "#cbd5e1", outerWidth: 1, gridColor: "#e2e8f0",
+    });
+    y += 4;
+    // 2.2 Destaque de Quitação Total & Enquadramento Regulamentar
+    const boxW1 = Math.round(width * 0.58);
+    const boxW2 = width - boxW1;
+    y = drawTable(ctx, {
+        x: left, y, widths: [boxW1, boxW2], aligns: ["left", "right"],
+        rows: [
+            [
+                plainTextCell("TOTAL EXIGÍVEL HOJE (QUITAÇÃO TOTAL CONTRATUAL)\n" +
+                    "Montante para desvinculação integral e cancelamento de dívida à data deste extracto.\n" +
+                    `Prestações: ${paidCount} liquidada(s) de ${amortizations.length} (${pendingCount} pendente(s) ou em atraso)`, { fontSize: 7.5, bold: false, fillColor: "#fff7ed", color: COLORS.navy }),
+                plainTextCell(`${fmtMoney(totalExigivel)}\n` +
+                    `Classificação BM: ${classeRiscoBM}\n` +
+                    `Taxa: ${(taxaMensal * 100).toFixed(1)}% a.m. | TAEG: ${taegAnual || 0}% a.a.`, { fontSize: 8, bold: true, fillColor: "#fff7ed", color: totalExigivel > 0 ? COLORS.red : COLORS.green, align: "right" }),
+            ]
+        ],
+        padY: 4, outerLine: COLORS.orange, outerWidth: 1,
+    });
+    y += 8;
+    // 3. QUADRO DAS PRESTAÇÕES & LIQUIDAÇÃO CONTRATUAL
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
+    doc.text(`3. QUADRO DAS PRESTAÇÕES & LIQUIDAÇÃO CONTRATUAL (${amortizations.length} prestações · Valores em Meticais/MZN)`, left, y, { lineBreak: false });
+    y += 9 * 1.3 + 4;
+    const planWidths = [32, 52, 56, 48, 56, 52, 52, 65, 110];
+    const planRows = amortizations.map((row) => {
+        const st = Number(row.status);
+        const prestacao = parseFloat(row.installment) || 0;
+        const pago = parseFloat(row.paidAmount) || 0;
+        const mora = st === 1 ? 0 : (parseFloat(row.latePaymentInterest) || 0);
+        const due = String(row.dueDate || "").slice(0, 10);
+        const diasAtraso = Number(row.lateDays) || 0;
+        let saldoPrestacao = 0;
+        let estadoLabel = "";
+        let estadoColor = COLORS.green;
+        if (st === 1) {
+            saldoPrestacao = 0;
+            estadoLabel = row.lastPaymentDate ? `LIQUIDADA (${fmtDateShort(row.lastPaymentDate)})` : "LIQUIDADA";
+            estadoColor = COLORS.green;
+        }
+        else if (pago > 0) {
+            saldoPrestacao = Math.max(0, Math.round((prestacao - pago + mora) * 100) / 100);
+            estadoLabel = `PARCIAL (${fmtMoney(pago)} pago)`;
+            estadoColor = COLORS.orange;
+        }
+        else if (due && due < hoje) {
+            saldoPrestacao = Math.round((prestacao + mora) * 100) / 100;
+            estadoLabel = `ATRASADO (${diasAtraso} dias)`;
+            estadoColor = COLORS.red;
+        }
+        else {
+            saldoPrestacao = prestacao;
+            estadoLabel = "PENDENTE";
+            estadoColor = COLORS.orange;
+        }
+        return [
+            plainTextCell(`${row.installmentOrder}ª`, { align: "center", fontSize: 8 }),
+            plainTextCell(fmtDateShort(row.dueDate), { align: "center", fontSize: 8 }),
+            plainTextCell(fmtVal(row.amortization), { align: "right", fontSize: 8 }),
+            plainTextCell(fmtVal(row.rateAmount), { align: "right", fontSize: 8 }),
+            plainTextCell(fmtVal(prestacao), { align: "right", bold: true, fontSize: 8 }),
+            plainTextCell(fmtVal(pago), { align: "right", fontSize: 8, color: pago > 0 ? COLORS.green : COLORS.grey }),
+            plainTextCell(fmtVal(mora), { align: "right", fontSize: 8, color: mora > 0 ? COLORS.red : COLORS.grey }),
+            plainTextCell(fmtVal(saldoPrestacao), { align: "right", bold: true, fontSize: 8, color: saldoPrestacao > 0 ? COLORS.red : COLORS.green }),
+            plainTextCell(estadoLabel, { align: "center", bold: true, color: estadoColor, fontSize: 7 }),
+        ];
+    });
+    // TOTAIS
+    planRows.push([
+        plainTextCell("TOTAL", { bold: true, color: COLORS.navy, align: "center", fontSize: 7.5 }),
+        plainTextCell("", {}),
+        plainTextCell(fmtVal(capitalInicial), { align: "right", bold: true, fontSize: 8 }),
+        plainTextCell(fmtVal(totalInterestContractual), { align: "right", bold: true, fontSize: 8 }),
+        plainTextCell(fmtVal(contractTotal), { align: "right", bold: true, fontSize: 8 }),
+        plainTextCell(fmtVal(totalPaid), { align: "right", bold: true, fontSize: 8, color: COLORS.green }),
+        plainTextCell(fmtVal(moraTotal), { align: "right", bold: true, fontSize: 8, color: moraTotal > 0 ? COLORS.red : COLORS.green }),
+        plainTextCell(fmtVal(totalExigivel), { align: "right", bold: true, fontSize: 8.5, color: totalExigivel > 0 ? COLORS.red : COLORS.green }),
+        plainTextCell(atrasadas.length > 0 ? `${atrasadas.length} EM ATRASO` : "REGULARIZADO", { align: "center", bold: true, color: atrasadas.length > 0 ? COLORS.red : COLORS.green, fontSize: 8 }),
+    ]);
+    y = drawTable(ctx, {
+        x: left, y, widths: planWidths, aligns: ["center", "center", "right", "right", "right", "right", "right", "right", "center"],
+        header: ["N.º", "Vencimento", "Capital", "Juros", "Prestação", "Amortizado", "Juros Mora", "Saldo Exigível", "Estado & Situação"],
+        headerBg: COLORS.navy, headerTextColor: "#ffffff",
+        rows: planRows, zebra: true, gridColor: "#cfd8dc",
+    });
+    y += 8;
+    // 4. HISTÓRICO DE PAGAMENTOS E MOVIMENTOS FINANCEIROS
+    if (y + 55 > ctx.contentBottom) {
+        doc.addPage();
+        ctx.contentBottom = doc.page.height - doc.page.margins.bottom - 20;
+        y = doc.page.margins.top;
+    }
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
+    doc.text("4. HISTÓRICO DE PAGAMENTOS & MOVIMENTOS FINANCEIROS REGISTADOS", left, y, { lineBreak: false });
+    y += 9 * 1.3 + 4;
+    if (transactions && transactions.length > 0) {
+        const txWidths = [55, 65, 95, 55, 48, 48, 65, 92];
+        const txRows = transactions.map((t) => [
+            plainTextCell(fmtDateShort(t.paymentDate), { align: "center", fontSize: 8 }),
+            plainTextCell(String(t.tranzactionReference || `TX-${t.id}`), { align: "center", bold: true, fontSize: 8 }),
+            plainTextCell(String(t.description || "Pagamento de Prestação"), { align: "left", fontSize: 7 }),
+            plainTextCell(fmtVal(Math.max(0, (parseFloat(t.amount) || 0) - (parseFloat(t.interestRateAmount) || 0))), { align: "right", fontSize: 8 }),
+            plainTextCell(fmtVal(parseFloat(t.interestRateAmount) || 0), { align: "right", fontSize: 8 }),
+            plainTextCell(fmtVal(parseFloat(t.mora_amount) || parseFloat(t.latePaymentInterest) || 0), { align: "right", fontSize: 8 }),
+            plainTextCell(fmtVal(parseFloat(t.totalAmount) || parseFloat(t.amount) || 0), { align: "right", bold: true, fontSize: 8, color: COLORS.green }),
+            plainTextCell(String(t.staffName || "Operador"), { align: "center", fontSize: 7 }),
+        ]);
+        y = drawTable(ctx, {
+            x: left, y, widths: txWidths, aligns: ["center", "center", "left", "right", "right", "right", "right", "center"],
+            header: ["Data", "Recibo / Ref.", "Descrição / Canal", "Capital", "Juro", "Mora", "Total Pago", "Operador"],
+            headerBg: "#334155", headerTextColor: "#ffffff",
+            rows: txRows, zebra: true, gridColor: "#cfd8dc",
+        });
+        y += 8;
+    }
+    else {
+        y = drawTable(ctx, {
+            x: left, y, widths: [width], aligns: ["center"],
+            rows: [[plainTextCell("Nenhum pagamento ou amortização financeira registada para este contrato até à presente data de emissão.", { align: "center", fontSize: 8, color: COLORS.grey, fillColor: "#f8fafc" })]],
+            outerLine: "#e2e8f0", padY: 5,
+        });
+        y += 8;
+    }
+    // 5. AUTENTICAÇÃO, TERMOS LEGAIS E ASSINATURAS
+    if (y + 65 > ctx.contentBottom) {
+        doc.addPage();
+        ctx.contentBottom = doc.page.height - doc.page.margins.bottom - 20;
+        y = doc.page.margins.top;
+    }
+    const colSign = (width - 40) / 2;
+    y = drawTable(ctx, {
+        x: left, y, widths: [colSign, 40, colSign], aligns: ["center", "center", "center"],
+        rows: [
+            [
+                plainTextCell("O MUTUÁRIO (Tomei Conhecimento)\n\n\n_____________________________________________\n" + String((cu === null || cu === void 0 ? void 0 : cu.customerName) || ""), { align: "center", fontSize: 8, bold: true }),
+                plainTextCell("", {}),
+                plainTextCell("PELA INSTITUIÇÃO FINANCEIRA (MBR Microcrédito)\n\n\n_____________________________________________\nDirecção de Crédito & Operações", { align: "center", fontSize: 8, bold: true }),
+            ],
+        ],
+        padY: 5, outerWidth: 0,
+    });
+    y += 10;
+    doc.font("Helvetica").fontSize(7).fillColor(COLORS.grey);
+    doc.text(`Documento processado por computador em ${new Date().toLocaleString("pt-MZ")}. ` +
+        "O presente Extracto de Conta reflecte a posição viva e fidedigna do crédito à data e hora da sua emissão, em estrita observância ao Regulamento de Microcrédito e normas prudenciais do Banco de Moçambique.", left, y, { width, align: "center" });
+};
+exports.buildExtractoCredito = buildExtractoCredito;
+// ── 1.1 PLANO DE AMORTIZAÇÃO INICIAL (teórico, gerado no desembolso) ───
+const buildPlanoAmortizacao = (ctx, data) => {
     const { doc, left, right } = ctx;
     const { loan, customer: cu, amortizations } = data;
     const width = right - left;
-    let y = drawCompanyHeader(ctx, "Extracto do Crédito");
-    // DADOS DO CLIENTE
+    let y = drawCompanyHeader(ctx, "Plano de Amortização");
     doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
     doc.text("DADOS DO CLIENTE", left, y, { lineBreak: false });
     y += 9 * 1.3 + 5;
@@ -383,11 +643,8 @@ const buildExtractoCredito = (ctx, data) => {
         fontSize: 8, padY: 4, outerLine: COLORS.navy, outerWidth: 1,
     });
     y += 10;
-    // RESUMO DO CRÉDITO (+ TAEG — custo total anualizado do crédito)
     const totalInterest = amortizations.reduce((s, r) => s + (parseFloat(r.rateAmount) || 0), 0);
     const contractTotal = amortizations.reduce((s, r) => s + (parseFloat(r.installment) || 0), 0);
-    // TAEG: taxa mensal implícita do fluxo (capital → 18 prestações) anualizada.
-    // Bisección em i: Σ prestacao/(1+i)^k = capital. (2% a.m. ≈ 26,82% a.a.)
     const capital = parseFloat(loan.getDataValue("amount")) || 0;
     const nInst = amortizations.length;
     let taegAnual = null;
@@ -402,7 +659,7 @@ const buildExtractoCredito = (ctx, data) => {
                 hi = mid;
         }
         const iMensal = (lo + hi) / 2;
-        taegAnual = Math.round((Math.pow(1 + iMensal, 12) - 1) * 10000) / 100; // % a.a.
+        taegAnual = Math.round((Math.pow(1 + iMensal, 12) - 1) * 10000) / 100;
     }
     doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
     doc.text("RESUMO DO CRÉDITO", left, y, { lineBreak: false });
@@ -424,12 +681,6 @@ const buildExtractoCredito = (ctx, data) => {
         padY: 4, outerLine: COLORS.navy, outerWidth: 1,
     });
     y += 10;
-    // ── BASE DO SALDO (PADRÃO MBR): saldo = CAPITAL REMANESCENTE por linha ──
-    // Nunca se usa o remainingBalance da BD (pode vir de planos antigos com a
-    // fórmula da dívida total): recalcula-se a partir do capital financiado.
-    // A soma da amortização TEM de fechar no capital exacto — a diferença de
-    // arredondamento (± cêntimos) vai para a ÚLTIMA prestação (amortização pura
-    // residual) e o saldo da última linha fecha SEMPRE em 0,00.
     const amortizacaoOf = (row) => {
         const prestacao = parseFloat(row.installment) || 0;
         const juros = parseFloat(row.rateAmount) || 0;
@@ -442,138 +693,44 @@ const buildExtractoCredito = (ctx, data) => {
     if (Math.abs(diff) >= 0.01 && amortList.length > 0) {
         amortList[amortList.length - 1] = Math.round((amortList[amortList.length - 1] + diff) * 100) / 100;
     }
-    // Saldo capital por linha: capital − Σ amortizações das linhas anteriores;
-    // a última linha é forçada a 0,00 (fecha o plano ao cêntimo).
     let saldoCapitalLinha = capitalExato;
     const saldoPorLinha = amortList.map((amort, idx) => {
         saldoCapitalLinha = Math.max(0, Math.round((saldoCapitalLinha - amort) * 100) / 100);
         return idx === amortList.length - 1 ? 0 : saldoCapitalLinha;
     });
-    // SITUAÇÃO ACTUAL — DINÂMICA (pagamentos reais, mora, atraso, próximo venc.)
-    const totalPaid = amortizations.reduce((s, r) => s + (parseFloat(r.paidAmount) || 0), 0);
-    // Saldo Remanescente = CAPITAL remanescente (padrão MBR): capital financiado
-    // menos o capital já pago (na linha, os juros são pagos primeiro e só depois
-    // o capital, limitado à amortização dessa linha). 0,00 quando todas pagas.
-    const capitalPago = amortizations.reduce((s, r, idx) => {
-        var _a;
-        const juros = parseFloat(r.rateAmount) || 0;
-        const pago = parseFloat(r.paidAmount) || 0;
-        const amort = (_a = amortList[idx]) !== null && _a !== void 0 ? _a : amortizacaoOf(r);
-        return s + Math.max(0, Math.min(amort, pago - juros));
-    }, 0);
-    const remaining = Math.max(0, Math.round((capitalExato - capitalPago) * 100) / 100);
-    const paidCount = amortizations.filter(r => Number(r.status) === 1).length;
-    const hoje = new Date().toISOString().slice(0, 10);
-    const atrasadas = amortizations.filter(r => Number(r.status) !== 1 && String(r.dueDate || "").slice(0, 10) < hoje);
-    const pendingCount = amortizations.length - paidCount;
-    const moraTotal = amortizations.reduce((s, r) => s + (Number(r.status) === 1 ? 0 : parseFloat(r.latePaymentInterest) || 0), 0);
-    const proximoVencimento = amortizations
-        .filter(r => Number(r.status) !== 1)
-        .map(r => String(r.dueDate || "").slice(0, 10))
-        .sort()[0] || null;
-    doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
-    doc.text("SITUAÇÃO ACTUAL", left, y, { lineBreak: false });
-    y += 9 * 1.3 + 5;
-    const sw = width / 4;
-    y = drawTable(ctx, {
-        x: left, y, widths: [sw, sw, sw, sw], aligns: ["center", "center", "center", "center"],
-        rows: [
-            ["Total Pago", "Saldo Remanescente", "Prestações Pagas", "Prestações Pendentes"].map(t => plainTextCell(t, { bold: true, fontSize: 7, fillColor: "#fafafa", color: t.startsWith("Total Pago") ? COLORS.green : t.startsWith("Saldo") ? COLORS.red : COLORS.navy })),
-            [
-                plainTextCell(fmtMoney(totalPaid), { bold: true, fontSize: 9, color: COLORS.green }),
-                plainTextCell(fmtMoney(remaining), { bold: true, fontSize: 9, color: COLORS.red }),
-                plainTextCell(`${paidCount} de ${amortizations.length}`, { bold: true, fontSize: 9 }),
-                plainTextCell(String(pendingCount), { bold: true, fontSize: 9, color: COLORS.orange }),
-            ],
-        ],
-        padY: 4, outerLine: COLORS.navy, outerWidth: 1,
-    });
-    y += 6;
-    // Segunda linha da situação: atraso, mora e próximo vencimento
-    // (guard: se não couber na página, segue na seguinte — Y absoluto)
-    if (y > ctx.contentBottom) {
-        doc.addPage();
-        ctx.contentBottom = doc.page.height - doc.page.margins.bottom - 20;
-        y = doc.page.margins.top;
-    }
-    y = drawTable(ctx, {
-        x: left, y, widths: [sw, sw, sw, sw], aligns: ["center", "center", "center", "center"],
-        rows: [
-            ["Em Atraso", "Mora Acumulada", "Próximo Vencimento", "Emitido em"].map(t => plainTextCell(t, { bold: true, fontSize: 7, fillColor: "#fafafa", color: t.startsWith("Em Atraso") ? COLORS.red : COLORS.navy })),
-            [
-                plainTextCell(`${atrasadas.length} prest.(ões)`, { bold: true, fontSize: 8, color: atrasadas.length > 0 ? COLORS.red : COLORS.green }),
-                plainTextCell(fmtMoney(moraTotal), { bold: true, fontSize: 8, color: moraTotal > 0 ? COLORS.red : COLORS.green }),
-                plainTextCell(proximoVencimento ? fmtDateShort(proximoVencimento) : "—", { bold: true, fontSize: 8 }),
-                plainTextCell(`${fmtDateShort(new Date())} ${new Date().toTimeString().slice(0, 5)}`, { fontSize: 8, color: COLORS.grey }),
-            ],
-        ],
-        padY: 4, outerLine: COLORS.navy, outerWidth: 1,
-    });
-    y += 10;
-    // PLANO DE AMORTIZAÇÃO — colunas Price (ordem exacta do PDF oficial)
-    // GARANTIA DE LARGURA: colunas com largura mínima de 20pt — largura negativa
-    // em doc.text({width}) faz o pdfkit entrar em LOOP INFINITO (crash OOM).
-    const planWidths = [46, 135, 110, 120, 135, 100, Math.max(20, width - 646)].map(w => Math.max(20, w));
-    if (process.env.LEGAL_DOCS_DEBUG)
-        console.log("[Extracto] fase: plano, y=", Math.round(y), "contentBottom=", Math.round(ctx.contentBottom));
+    const planWidths = [40, 82, 75, 82, 84, 80, 80];
     doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
     doc.text(`PLANO DE AMORTIZAÇÃO (${amortizations.length} prestações)`, left, y, { lineBreak: false });
     y += 9 * 1.3 + 5;
-    // (Amortizações ajustadas e saldo capital já calculados acima — a coluna
-    // Saldo usa o capital remanescente, com a última linha a fechar em 0,00.)
-    // Estado REAL por prestação: PAGO (com data do último pagamento), ATRASADO
-    // (não pago e vencida) ou PENDENTE.
-    const estadoOf = (row) => {
-        const st = Number(row.status);
-        const due = String(row.dueDate || "").slice(0, 10);
-        if (st === 1) {
-            return { label: Number(row.paidAmount) > 0 && Number(row.paidAmount) < parseFloat(row.installment) ? "PAGO (PARCIAL)" : "PAGO", color: COLORS.green, pagoEm: row.lastPaymentDate ? fmtDateShort(row.lastPaymentDate) : null };
-        }
-        if (Number(row.paidAmount) > 0)
-            return { label: "PAGO PARCIAL", color: COLORS.orange, pagoEm: row.lastPaymentDate ? fmtDateShort(row.lastPaymentDate) : null };
-        if (due && due < hoje)
-            return { label: "ATRASADO", color: COLORS.red, pagoEm: null };
-        return { label: "PENDENTE", color: COLORS.orange, pagoEm: null };
-    };
     const planRows = amortizations.map((row, idx) => {
         var _a, _b;
-        const isPaid = Number(row.status) === 1;
-        const estado = estadoOf(row);
         const amortCell = fmtMoney((_a = amortList[idx]) !== null && _a !== void 0 ? _a : amortizacaoOf(row));
         return [
             plainTextCell(String(row.installmentOrder || ""), { align: "center" }),
             plainTextCell(amortCell, { align: "right" }),
             plainTextCell(fmtMoney(parseFloat(row.rateAmount) || 0), { align: "right" }),
             plainTextCell(fmtMoney(parseFloat(row.installment) || 0), { align: "right", bold: true }),
-            plainTextCell(fmtMoney((_b = saldoPorLinha[idx]) !== null && _b !== void 0 ? _b : 0), { align: "right", color: isPaid ? COLORS.green : COLORS.red }),
+            plainTextCell(fmtMoney((_b = saldoPorLinha[idx]) !== null && _b !== void 0 ? _b : 0), { align: "right", color: COLORS.green }),
             plainTextCell(fmtDateShort(row.dueDate), { align: "center" }),
-            plainTextCell(estado.pagoEm ? `${estado.label} em ${estado.pagoEm}` : estado.label, { align: "center", bold: true, color: estado.color, fontSize: 7 }),
+            plainTextCell("CONTRATADO", { align: "center", bold: true, color: COLORS.primary, fontSize: 7 }),
         ];
     });
-    // TOTAIS — saldo final do plano: 0,00 SEMPRE (o plano fecha ao cêntimo;
-    // a última linha do saldo capital é forçada a zero), verde como no contrato.
     const saldoFinal = saldoPorLinha.length > 0 ? saldoPorLinha[saldoPorLinha.length - 1] : 0;
     planRows.push([
         plainTextCell("TOTAIS", { bold: true, color: COLORS.navy }),
         plainTextCell(fmtMoney(capitalExato), { align: "right", bold: true }),
         plainTextCell(fmtMoney(totalInterest), { align: "right", bold: true, color: COLORS.navy }),
         plainTextCell(fmtMoney(contractTotal), { align: "right", bold: true }),
-        plainTextCell(fmtMoney(saldoFinal), { align: "right", bold: true, color: saldoFinal > 0 ? COLORS.red : COLORS.green }),
+        plainTextCell(fmtMoney(saldoFinal), { align: "right", bold: true, color: COLORS.green }),
         plainTextCell("", {}),
         plainTextCell("", {}),
     ]);
-    if (process.env.LEGAL_DOCS_DEBUG)
-        console.log("[Extracto] fase: drawTable plano, rows=", planRows.length);
     y = drawTable(ctx, {
         x: left, y, widths: planWidths, aligns: ["center", "right", "right", "right", "right", "center", "center"],
-        header: ["Ordem", "Amortização", "Juros", "Prestação", "Saldo", "Vencimento", "Estado"],
+        header: ["Ordem", "Amortização", "Juros", "Prestação", "Saldo Previsto", "Vencimento", "Estado"],
         headerBg: COLORS.navy, headerTextColor: "#ffffff",
         rows: planRows, zebra: true, gridColor: "#cfd8dc",
     });
-    if (process.env.LEGAL_DOCS_DEBUG)
-        console.log("[Extracto] fase: tabela desenhada, y=", Math.round(y));
-    // Rodapé legal do extracto — Y ABSOLUTO (doc.y fica da página da tabela;
-    // moveDown aqui desenhava na página seguinte e podia disparar loop de páginas)
     let fy = doc.y + 10;
     if (fy > ctx.contentBottom) {
         doc.addPage();
@@ -582,9 +739,9 @@ const buildExtractoCredito = (ctx, data) => {
     }
     doc.font("Helvetica").fontSize(7).fillColor(COLORS.grey);
     doc.text(`Documento processado por computador em ${new Date().toLocaleString("pt-MZ")}. ` +
-        "Este extracto é DINÂMICO e reflecte a situação do crédito à data de emissão; não substitui o pacote de concessão (imutável, com hash próprio).", left, fy, { width, align: "left" });
+        "Plano inicial de amortização contratual anexo ao pacote de concessão de crédito.", left, fy, { width, align: "left" });
 };
-exports.buildExtractoCredito = buildExtractoCredito;
+exports.buildPlanoAmortizacao = buildPlanoAmortizacao;
 // ── 2. CONTRATO DE CONCESSÃO (20 cláusulas + vigésima primeira) ────────
 const buildContratoConcessao = (ctx, data) => {
     const { doc, left, right } = ctx;

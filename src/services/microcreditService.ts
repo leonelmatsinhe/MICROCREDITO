@@ -185,9 +185,21 @@ export const saveMovement = async (tenantId: number, body: any, id?: number) => 
 export const listMovements = (tenantId: number, start?: string, end?: string) => ReporteBMMapperService.listMovements(tenantId, start, end);
 export const readConfig = (tenantId: number) => ReporteBMMapperService.getCoreCreditRanges(tenantId);
 export const saveConfig = async (tenantId: number, body: any) => {
-  const minRate = num(body.taxa_juro_min), maxRate = num(body.taxa_juro_max), minTerm = Number(body.prazo_min), maxTerm = Number(body.prazo_max);
-  if (minRate < 0 || maxRate < minRate || !Number.isInteger(minTerm) || !Number.isInteger(maxTerm) || minTerm < 1 || maxTerm < minTerm || num(body.capital_inicial) < 0 || num(body.capital_actual) < 0) throw new Error("Configuração de taxas/prazos/capital inválida.");
-  await execute("INSERT INTO config_microcredito (tenant_id,taxa_juro_min,taxa_juro_max,prazo_min,prazo_max,capital_inicial,capital_actual) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE taxa_juro_min=VALUES(taxa_juro_min),taxa_juro_max=VALUES(taxa_juro_max),prazo_min=VALUES(prazo_min),prazo_max=VALUES(prazo_max),capital_inicial=VALUES(capital_inicial),capital_actual=VALUES(capital_actual)", [tenantId, minRate, maxRate, minTerm, maxTerm, num(body.capital_inicial), num(body.capital_actual)]);
+  const current = await readConfig(tenantId);
+  const minRate = body.taxa_juro_min !== undefined ? num(body.taxa_juro_min) : current.taxa_juro_min;
+  const maxRate = body.taxa_juro_max !== undefined ? num(body.taxa_juro_max) : current.taxa_juro_max;
+  const minTerm = body.prazo_min !== undefined ? Number(body.prazo_min) : current.prazo_min;
+  const maxTerm = body.prazo_max !== undefined ? Number(body.prazo_max) : current.prazo_max;
+  const capInicial = body.capital_inicial !== undefined ? num(body.capital_inicial) : current.capital_inicial;
+  const capActual = body.capital_actual !== undefined ? num(body.capital_actual) : current.capital_actual;
+
+  if (minRate < 0 || maxRate < minRate || !Number.isInteger(minTerm) || !Number.isInteger(maxTerm) || minTerm < 1 || maxTerm < minTerm || capInicial < 0 || capActual < 0) {
+    throw new Error("Configuração de taxas/prazos/capital inválida.");
+  }
+  await execute(
+    "INSERT INTO config_microcredito (tenant_id,taxa_juro_min,taxa_juro_max,prazo_min,prazo_max,capital_inicial,capital_actual) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE taxa_juro_min=VALUES(taxa_juro_min),taxa_juro_max=VALUES(taxa_juro_max),prazo_min=VALUES(prazo_min),prazo_max=VALUES(prazo_max),capital_inicial=VALUES(capital_inicial),capital_actual=VALUES(capital_actual)",
+    [tenantId, minRate, maxRate, minTerm, maxTerm, capInicial, capActual]
+  );
   return readConfig(tenantId);
 };
 
@@ -341,44 +353,147 @@ const setText = (sheet: ExcelJS.Worksheet, address: string, label: string, value
 export const buildQuarterlyWorkbook = async (report: any) => {
   const isCompiled = __dirname.includes(`${path.sep}build${path.sep}`);
   const root = isCompiled ? path.resolve(__dirname, "..", "..", "..") : path.resolve(__dirname, "..", "..");
-  const template = path.join(root, "templates", "MODELO_DE_REPORTE_TRIMESTRAL_2025_III.xlsx");
-  if (!fs.existsSync(template)) throw new Error("O modelo XLSX trimestral do Banco de Moçambique não está instalado.");
+  const candidates = [
+    path.join(root, "Reporte_BM_Trimestral.xlsx"),
+    path.join(root, "templates", "MODELO_DE_REPORTE_TRIMESTRAL_2025_III.xlsx"),
+    path.join(root, "templates", "MODELO_DE_REPORTE_TRIMESTRAL_BM.xlsx"),
+  ];
+  const template = candidates.find((p) => fs.existsSync(p));
+  if (!template) throw new Error("O modelo XLSX trimestral do Banco de Moçambique não está instalado.");
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(template);
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new Error("O modelo XLSX não contém folhas.");
   const t = report.tenant, v = report.volume;
   const format = (n: number) => round2(num(n));
-  sheet.getCell("B8").value = `DATA: ${formatDate(report.period.start)} à ${formatDate(report.period.end)} (DD/MM/AAAA)`;
+
+  const dateText = `DATA: ${formatDate(report.period.start)} à ${formatDate(report.period.end)}  (DD/MM/AAAA)`;
+  try { sheet.getCell("A8").value = dateText; } catch {}
+  try { sheet.getCell("B8").value = dateText; } catch {}
+
   setText(sheet, "A12", "Denominação: ", t.name);
   setText(sheet, "A13", "Endereço: ", t.address);
   setText(sheet, "A14", "Província: ", t.province);
-  setText(sheet, "A15", "Telefone: ", t.phone);
+  const phoneText = t.phone ? (t.phone + (t.mobile ? `  Telemóvel: ${t.mobile}` : "")) : "";
+  setText(sheet, "A15", "Telefone: ", phoneText);
   setText(sheet, "A16", "Fax: ________________________________ E-mail: ", t.email);
   setText(sheet, "A17", "Nº de Trabalhadores: ", t.workers);
   setText(sheet, "A18", "Data de Início das Actividades: ", t.startDate ? formatDate(String(t.startDate).slice(0, 10)) : "");
-  setText(sheet, "A19", "Nome do Operador: ", report.operator);
+  setText(sheet, "A19", "Nome do Operador: ", report.operator || t.operator || "");
+
+  // 2.1.1 Volume de créditos
   for (const [row, data] of [[26, v.granted], [27, v.repaid], [28, v.writtenOff], [29, v.active], [30, v.risk]] as any[]) {
-    sheet.getCell(`C${row}`).value = format(data.capital); sheet.getCell(`D${row}`).value = format(data.interest); sheet.getCell(`E${row}`).value = format(data.capital + data.interest);
+    sheet.getCell(`C${row}`).value = format(data.capital);
+    sheet.getCell(`D${row}`).value = format(data.interest);
+    sheet.getCell(`E${row}`).value = format(data.capital + data.interest);
   }
+
+  const setFormulaOrVal = (cell: ExcelJS.Cell, defaultFormula: string, val: number) => {
+    const formula = cell.formula || defaultFormula;
+    if (formula) {
+      cell.value = { formula, result: val };
+    } else {
+      cell.value = val;
+    }
+  };
+
+  // 2.1.2 Número de créditos
   sheet.getCell("E34").value = report.loanCounts.granted;
   sheet.getCell("E35").value = report.loanCounts.repaid;
+
+  // 2.1.3 Créditos concedidos por sector de actividade/finalidade
   MICRO_SECTORS.forEach((sector, i) => { sheet.getCell(`E${41+i}`).value = format(report.sectors[sector]); });
-  sheet.getCell("E48").value = format(Object.values(report.sectors).reduce((sum: number, n: any) => sum + num(n), 0));
-  sheet.getCell("E54").value = report.clients.men; sheet.getCell("E55").value = report.clients.women; sheet.getCell("E56").value = report.clients.other; sheet.getCell("E57").value = report.clients.total;
-  ["I", "II", "III", "IV"].forEach((risk, i) => { const row = 62+i, item = report.riskClasses[risk]; sheet.getCell(`C${row}`).value = format(item.capital); sheet.getCell(`D${row}`).value = format(item.interest); sheet.getCell(`E${row}`).value = format(item.capital + item.interest); });
-  sheet.getCell("C66").value = format(Object.values(report.riskClasses).reduce((sum: number, item: any) => sum + item.capital, 0));
-  sheet.getCell("D66").value = format(Object.values(report.riskClasses).reduce((sum: number, item: any) => sum + item.interest, 0)); sheet.getCell("E66").value = format(sheet.getCell("C66").value as number + (sheet.getCell("D66").value as number));
-  sheet.getCell("D71").value = report.rates.min; sheet.getCell("E71").value = report.rates.max; sheet.getCell("D72").value = report.rates.termMin; sheet.getCell("E72").value = report.rates.termMax;
-  sheet.getCell("C76").value = format(report.funding.sources.Proprio); sheet.getCell("C78").value = format(report.funding.sources.Alheio_Nacional); sheet.getCell("C79").value = format(report.funding.sources.Alheio_Estrangeiro);
-  sheet.getCell("C80").value = format(report.funding.sources.Proprio + report.funding.sources.Alheio_Nacional + report.funding.sources.Alheio_Estrangeiro);
-  sheet.getCell("C84").value = format(report.funding.period.Emprestimo); sheet.getCell("C85").value = format(report.funding.period.Donativo); sheet.getCell("C86").value = format(report.funding.period.Aumento_Capital);
-  sheet.getCell("C87").value = format(report.funding.period.Emprestimo + report.funding.period.Donativo + report.funding.period.Aumento_Capital);
-  sheet.getCell("C91").value = format(report.capital.initial); sheet.getCell("C92").value = format(report.capital.current);
-  for (let i=0;i<3;i++) { sheet.getCell(`C${97+i}`).value = format(report.assets.cash[i]); sheet.getCell(`D${97+i}`).value = format(report.assets.banks[i]); sheet.getCell(`E${97+i}`).value = format(report.assets.other[i]); }
-  for (let i=0;i<3;i++) { const [year,month]=report.period.months[i].split("-"); sheet.getCell(`${String.fromCharCode(67+i)}96`).value=`Mês ${i+1} (${month}/${year})`; }
+  const sectorTotal = Object.values(report.sectors).reduce((sum: number, n: any) => sum + num(n), 0);
+  setFormulaOrVal(sheet.getCell("E48"), "SUM(E41:E47)", format(sectorTotal));
+
+  // 2.1.4 Carteira de Clientes
+  sheet.getCell("E54").value = report.clients.men;
+  sheet.getCell("E55").value = report.clients.women;
+  sheet.getCell("E56").value = report.clients.other;
+  setFormulaOrVal(sheet.getCell("E57"), "SUM(E54:E56)", report.clients.total);
+
+  // 2.1.5 Estrutura da Carteira em Risco
+  ["I", "II", "III", "IV"].forEach((risk, i) => {
+    const row = 62 + i, item = report.riskClasses[risk];
+    sheet.getCell(`C${row}`).value = format(item.capital);
+    sheet.getCell(`D${row}`).value = format(item.interest);
+    setFormulaOrVal(sheet.getCell(`E${row}`), `SUM(C${row}:D${row})`, format(item.capital + item.interest));
+  });
+  const riskCapTot = Object.values(report.riskClasses).reduce((sum: number, item: any) => sum + item.capital, 0);
+  const riskIntTot = Object.values(report.riskClasses).reduce((sum: number, item: any) => sum + item.interest, 0);
+  setFormulaOrVal(sheet.getCell("C66"), "SUM(C62:C65)", format(riskCapTot));
+  setFormulaOrVal(sheet.getCell("D66"), "SUM(D62:D65)", format(riskIntTot));
+  setFormulaOrVal(sheet.getCell("E66"), "SUM(E62:E65)", format(riskCapTot + riskIntTot));
+
+  // 2.2 Taxas de juro e prazos
+  sheet.getCell("D71").value = report.rates.min;
+  sheet.getCell("E71").value = report.rates.max;
+  sheet.getCell("D72").value = report.rates.termMin;
+  sheet.getCell("E72").value = report.rates.termMax;
+
+  // 2.3 Fontes de financiamento
+  sheet.getCell("C76").value = format(report.funding?.sources?.Proprio || 0);
+  sheet.getCell("C78").value = format(report.funding?.sources?.Alheio_Nacional || 0);
+  sheet.getCell("C79").value = format(report.funding?.sources?.Alheio_Estrangeiro || 0);
+  const alheios = num(report.funding?.sources?.Alheio_Nacional) + num(report.funding?.sources?.Alheio_Estrangeiro);
+  setFormulaOrVal(sheet.getCell("C77"), "SUM(C78:C79)", format(alheios));
+  const fontesTot = num(report.funding?.sources?.Proprio) + alheios;
+  setFormulaOrVal(sheet.getCell("C80"), "SUM(C76:C77)", format(fontesTot));
+
+  // 2.4 Financiamentos do período
+  sheet.getCell("C84").value = format(report.funding?.period?.Emprestimo || 0);
+  sheet.getCell("C85").value = format(report.funding?.period?.Donativo || 0);
+  sheet.getCell("C86").value = format(report.funding?.period?.Aumento_Capital || 0);
+  const finTot = num(report.funding?.period?.Emprestimo) + num(report.funding?.period?.Donativo) + num(report.funding?.period?.Aumento_Capital);
+  setFormulaOrVal(sheet.getCell("C87"), "SUM(C84:C86)", format(finTot));
+
+  // 2.5 Capital
+  sheet.getCell("C91").value = format(report.capital?.initial || 0);
+  sheet.getCell("C92").value = format(report.capital?.current || 0);
+
+  // 3. Situação Financeira (Deteção Dinâmica de Linhas)
+  let situacaoRow = 94;
+  for (let r = 90; r <= 100; r++) {
+    const val = String(sheet.getCell(`A${r}`).value || sheet.getCell(`B${r}`).value || "");
+    if (/SITUA[CÇ][AÃ]O\s+FINANCEIRA/i.test(val)) {
+      situacaoRow = r;
+      break;
+    }
+  }
+  const monthHeaderRow = situacaoRow + 1;
+  const caixaRow = situacaoRow + 2;
+  const bancosRow = situacaoRow + 3;
+  const outrosRow = situacaoRow + 4;
+  const totalRow = situacaoRow + 5;
+
+  // Limpar colunas C, D, E nestas linhas
+  for (const col of ["C", "D", "E"]) {
+    sheet.getCell(`${col}${monthHeaderRow}`).value = null;
+    sheet.getCell(`${col}${caixaRow}`).value = null;
+    sheet.getCell(`${col}${bancosRow}`).value = null;
+    sheet.getCell(`${col}${outrosRow}`).value = null;
+    const totCell = sheet.getCell(`${col}${totalRow}`);
+    totCell.value = { formula: `SUM(${col}${caixaRow}:${col}${outrosRow})`, result: 0 };
+  }
+
+  const months = report.period?.months || [];
+  for (let i = 0; i < months.length && i < 3; i++) {
+    const col = String.fromCharCode(67 + i); // C, D, E
+    const [year, month] = months[i].split("-");
+    sheet.getCell(`${col}${monthHeaderRow}`).value = months.length === 1 ? `${month}/${year}` : `Mês ${i + 1} (${month}/${year})`;
+    const cashVal = format(report.assets?.cash?.[i] || 0);
+    const bankVal = format(report.assets?.banks?.[i] || 0);
+    const otherVal = format(report.assets?.other?.[i] || 0);
+    sheet.getCell(`${col}${caixaRow}`).value = cashVal;
+    sheet.getCell(`${col}${bancosRow}`).value = bankVal;
+    sheet.getCell(`${col}${outrosRow}`).value = otherVal;
+    const totVal = round2(cashVal + bankVal + otherVal);
+    const totCell = sheet.getCell(`${col}${totalRow}`);
+    totCell.value = { formula: `SUM(${col}${caixaRow}:${col}${outrosRow})`, result: totVal };
+  }
+
   if (Array.isArray(report.dataWarnings) && report.dataWarnings.length) {
-    const quality = workbook.addWorksheet("Qualidade dos dados");
+    const quality = workbook.getWorksheet("Qualidade dos dados") || workbook.addWorksheet("Qualidade dos dados");
     quality.addRow(["Avisos de mapeamento BM", "Período", `${report.period.start} — ${report.period.end}`]);
     quality.addRow(["Campo", "Estado", "Observação"]);
     report.dataWarnings.forEach((warning: string) => quality.addRow(["Dados não mapeados / ressalvas", "Revisão necessária", warning]));

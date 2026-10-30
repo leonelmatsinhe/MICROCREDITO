@@ -255,7 +255,7 @@ const groups = computed(() => {
     },
       {
         id: 'credito',
-        label: 'Gestão de Crédito',
+        label: 'Crédito',
       icon: 'account_balance_wallet',
       items: [
         { to: '/mutuarios', icon: 'groups', label: 'Mutuários' },
@@ -270,11 +270,11 @@ const groups = computed(() => {
       label: 'Financeiro',
       icon: 'payments',
       items: [
-        { to: '/pagamentos', icon: 'receipt_long', label: 'Pagamentos' },
-        { to: '/caixa-central', icon: 'account_balance_wallet', label: 'Caixa Central' },
+        { to: '/caixa-central', icon: 'account_balance_wallet', label: 'Tesouraria & Cofre' },
+        { to: '/caixa', icon: 'point_of_sale', label: 'Caixa de Balcão' },
+        { to: '/pagamentos', icon: 'receipt_long', label: 'Recebimentos' },
         { to: '/bank-accounts', icon: 'account_balance', label: 'Contas Bancárias' },
-        { to: '/caixa', icon: 'point_of_sale', label: 'Caixa' },
-        { to: '/caixa/historico', icon: 'history_toggle_off', label: 'Histórico Caixa' }
+        { to: '/caixa/historico', icon: 'history_toggle_off', label: 'Histórico de Caixas' }
       ]
     },
     {
@@ -291,7 +291,10 @@ const groups = computed(() => {
       id: 'relatorios',
       label: 'Relatórios',
       icon: 'summarize',
-      items: [{ to: '/reports/banco-mocambique', icon: 'description', label: 'Relatório BM' }]
+      items: [
+        { to: '/reports/banco-mocambique', icon: 'description', label: 'Relatório BM (Mensal)' },
+        { to: '/admin/microcredito/reportes', icon: 'table_chart', label: 'Reporte BM Trimestral' }
+      ]
     },
     {
       id: 'sistema',
@@ -326,7 +329,7 @@ const groups = computed(() => {
       },
       {
         id: 'credito',
-        label: 'Gestão de Crédito',
+        label: 'Crédito',
         icon: 'account_balance_wallet',
         items: [
           { to: '/mutuarios', icon: 'groups', label: 'Mutuários' },
@@ -361,7 +364,7 @@ const groups = computed(() => {
     },
     {
       id: 'credito',
-      label: 'Gestão de Crédito',
+      label: 'Crédito',
       icon: 'account_balance_wallet',
       items: [{ to: '/mutuarios', icon: 'groups', label: 'Mutuários' }]
     }
@@ -553,6 +556,9 @@ body.body--dark .sidebar-drawer {
   letter-spacing: 0.08em;
   color: rgba(255, 255, 255, 0.58);
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .group-avatar { color: rgba(255, 255, 255, 0.6); }

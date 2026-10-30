@@ -42,9 +42,23 @@ const projectRoot = isCompiled
 const publicDir = process.env.PUBLIC_DIR
   || path.join(projectRoot, "public-v2");
 
-// Uploads
+// Uploads (persistência de ficheiros: documentos, recibos, fotos, logotipos)
 const uploadsDir = process.env.UPLOADS_DIR
   || path.join(projectRoot, "uploads");
+
+// Assegura que o volume montado (ex.: Dokploy no VPS) tem a estrutura de pastas necessária
+[
+  uploadsDir,
+  path.join(uploadsDir, "documents"),
+  path.join(uploadsDir, "img"),
+  path.join(uploadsDir, "recibos"),
+  path.join(uploadsDir, "concessao"),
+  path.join(uploadsDir, "docs"),
+].forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 // ISOLAMENTO SINGLE-TENANT: primeiro middleware executado antes de todas as rotas
 app.use(tenantGuard);
@@ -113,6 +127,13 @@ const bootstrap = async () => {
       )
       .catch((jobError: any) =>
         console.error("[Jobs] Falha ao arrancar backfill de concessão:", jobError?.message || jobError)
+      );
+
+    // JOBS DE STAFF SMS E RECONCILIAÇÃO M-PESA
+    import("./jobs/staffSmsJobs")
+      .then(({ startStaffAndMpesaJobs }) => startStaffAndMpesaJobs())
+      .catch((jobError: any) =>
+        console.error("[Jobs] Falha ao arrancar jobs de staff e M-Pesa:", jobError?.message || jobError)
       );
 
     // Fila de SMS (BulkSMM): processar mensagens pendentes a cada 60s.

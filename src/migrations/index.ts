@@ -239,6 +239,13 @@ export const runMigrations = async (): Promise<MigrationResult> => {
   await addColumnIfMissing("notifications", "userId", "INTEGER NULL", results);
   await addColumnIfMissing("notifications", "customerId", "INTEGER NULL", results);
 
+  // Identificação institucional para relatórios regulatórios (Banco de Moçambique)
+  await addColumnIfMissing("companies", "bairro", "VARCHAR(100) NULL", results);
+  await addColumnIfMissing("companies", "cidade", "VARCHAR(100) NULL", results);
+  await addColumnIfMissing("companies", "numberOfEmployees", "INTEGER NULL", results);
+  await addColumnIfMissing("companies", "activityStartDate", "VARCHAR(50) NULL", results);
+  await addColumnIfMissing("companies", "representedInstitutions", "VARCHAR(255) NULL", results);
+
   // Valores financeiros devem usar decimal para evitar erros de arredondamento
   // binário típicos de FLOAT.
   await modifyColumnType("customer_loans", "amount", "DECIMAL(15,2) NOT NULL", results);
@@ -1652,6 +1659,10 @@ const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
       // (admin trata da atribuição na ficha do cliente).
       results.applied += 1;
       console.log("[Migration] customers.creditManager herdado do crédito mais recente");
+      try {
+        await db.query("UPDATE customers SET creditManager = 358 WHERE creditManager = 353");
+        await db.query("UPDATE customer_loans SET creditManager = 358 WHERE creditManager = 353");
+      } catch (_) {}
     }
   } catch (error: any) {
     results.errors.push(`BACKFILL customers.creditManager: ${error?.message || error}`);
@@ -1791,6 +1802,47 @@ const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
     "accounts",
     "id",
     "SET NULL",
+    results
+  );
+
+  // ── 18. M-PESA OPEN API: TRANSAÇÕES ASSÍNCRONAS E AUDITORIA ──
+  await createTableIfMissing(
+    "mpesa_transactions",
+    `CREATE TABLE IF NOT EXISTS mpesa_transactions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL,
+      customerId INT NOT NULL,
+      loanId INT NOT NULL,
+      amortizationLoanId INT NOT NULL,
+      accountNumber VARCHAR(64) NULL,
+      transactionReference VARCHAR(64) NOT NULL,
+      thirdPartyReference VARCHAR(64) NOT NULL,
+      conversationId VARCHAR(128) NULL,
+      originatorConversationId VARCHAR(128) NULL,
+      msisdn VARCHAR(20) NOT NULL,
+      amount DECIMAL(15,2) NOT NULL,
+      excessAmount DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      lateInterest DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      status ENUM('INITIATED', 'PENDING_PIN', 'SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED') NOT NULL DEFAULT 'INITIATED',
+      responseCode VARCHAR(32) NULL,
+      responseDescription VARCHAR(255) NULL,
+      mpesaReceipt VARCHAR(64) NULL,
+      tranzactionId INT NULL,
+      reciboId INT NULL,
+      rawInitiateResponse TEXT NULL,
+      rawCallbackPayload TEXT NULL,
+      errorMessage TEXT NULL,
+      queryCount INT NOT NULL DEFAULT 0,
+      lastQueriedAt DATETIME NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_mpesa_ref (transactionReference),
+      INDEX idx_mpesa_third_party (thirdPartyReference),
+      INDEX idx_mpesa_conv_id (conversationId),
+      INDEX idx_mpesa_status (status),
+      INDEX idx_mpesa_customer (companyId, customerId),
+      INDEX idx_mpesa_loan (companyId, loanId, amortizationLoanId)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     results
   );
 };

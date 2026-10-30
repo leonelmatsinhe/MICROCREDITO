@@ -245,7 +245,7 @@ const main = async () => {
   const loansAsGestorB = await call(`/api/loan/findAllLoans/all/${companyId}`, { token: gestorBToken });
   checkEqual(Number((loansAsGestorB.body?.result || [])[0]?.id), loanB, "Gestor B vê o crédito dele");
 
-  const customersAsGestorA = await call(`/api/customers/${companyId}?limit=100`, { token: gestorAToken });
+  const customersAsGestorA = await call(`/api/customers/${companyId}?limit=100&onlyMyPortfolio=true`, { token: gestorAToken });
   const customerRowsA: any[] = customersAsGestorA.body?.result?.customers || customersAsGestorA.body?.result || [];
   const namesA = JSON.stringify(customerRowsA);
   check(namesA.includes("TEST Cobrança A"), "Gestor A vê o seu cliente");

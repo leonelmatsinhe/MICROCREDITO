@@ -189,7 +189,9 @@ const openToday = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         const denominations = (_f = (_e = body.denominations) !== null && _e !== void 0 ? _e : body.denominacoes) !== null && _f !== void 0 ? _f : body.contagem_denominacoes;
         const rawBalance = (_g = body.opening_balance) !== null && _g !== void 0 ? _g : body.openingBalance;
         const hasDenominations = denominations && typeof denominations === "object" && Object.keys(denominations).length > 0;
-        if (!hasDenominations && (rawBalance === undefined || rawBalance === null || rawBalance === "")) {
+        const { isElectronicCashMode } = yield Promise.resolve().then(() => __importStar(require("../services/cashModeService")));
+        const isElectronic = yield isElectronicCashMode(companyId);
+        if (!isElectronic && !hasDenominations && (rawBalance === undefined || rawBalance === null || rawBalance === "")) {
             return res.status(400).json({
                 success: false,
                 message: "Informe a contagem do fundo de troco por denominação (notas e moedas) ou o saldo inicial (opening_balance).",
@@ -198,7 +200,11 @@ const openToday = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         const register = yield (0, cashRegisterService_1.openRegister)({
             userId,
             companyId,
-            openingBalance: Number(rawBalance),
+            openingBalance: rawBalance !== undefined && rawBalance !== null && rawBalance !== ""
+                ? Number(rawBalance)
+                : isElectronic
+                    ? 0
+                    : undefined,
             denominations: hasDenominations ? denominations : undefined,
         });
         return res.status(201).json({ success: true, result: register });
@@ -230,7 +236,9 @@ const close = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         const denominations = (_j = (_h = body.denominations) !== null && _h !== void 0 ? _h : body.denominacoes) !== null && _j !== void 0 ? _j : body.contagem_denominacoes;
         const raw = (_k = body.closing_balance_informed) !== null && _k !== void 0 ? _k : body.closingBalanceInformed;
         const hasDenominations = denominations && typeof denominations === "object" && Object.keys(denominations).length > 0;
-        if (!hasDenominations && (raw === undefined || raw === null || raw === "")) {
+        const { isElectronicCashMode } = yield Promise.resolve().then(() => __importStar(require("../services/cashModeService")));
+        const isElectronic = yield isElectronicCashMode(companyId);
+        if (!isElectronic && !hasDenominations && (raw === undefined || raw === null || raw === "")) {
             return res.status(400).json({
                 success: false,
                 message: "Informe a contagem do numerário por denominação (notas e moedas) para fechar o caixa.",

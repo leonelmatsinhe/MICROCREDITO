@@ -1,64 +1,245 @@
 <template>
   <div data-tour="mutuario-body">
-    <!-- ===================== HEADER FIXO (sticky — sem conflito com o QLayout do MainLayout) ===================== -->
-    <div class="mutuario-header sticky-header">
-      <q-toolbar>
-        <q-btn flat round dense icon="arrow_back" @click="goBack">
-          <q-tooltip>Voltar à lista</q-tooltip>
-        </q-btn>
-
-        <!-- Identidade do mutuário -->
-        <q-avatar size="38px" :color="statusColor" text-color="white" style="cursor: pointer" @click="openPassportPhoto">
+    <!-- ===================== HEADER COCKPIT 360° (Substitui a Navbar com Máximo Respiro) ===================== -->
+    <div class="mutuario-header" data-tour="mutuario-header">
+      <!-- ── TIER 1: BARRA DE NAVEGAÇÃO & IDENTIDADE DO MUTUÁRIO ── -->
+      <q-toolbar class="q-py-md q-px-lg">
+        <!-- Avatar do Mutuário -->
+        <q-avatar size="48px" :color="statusColor" text-color="white" style="cursor: pointer" class="shadow-2 q-mr-md" @click="openPassportPhoto">
           <img v-if="store.customer?.passportPhotoUrl" :src="store.customer.passportPhotoUrl" alt="Foto" style="width: 100%; height: 100%; object-fit: cover" />
-          <q-icon v-else name="person" size="18px" />
+          <q-icon v-else name="person" size="28px" />
+          <q-tooltip v-if="store.customer?.passportPhotoUrl">Clique para ampliar fotografia</q-tooltip>
         </q-avatar>
-        <div class="q-ml-sm col">
-          <div class="row items-center no-wrap">
-            <div class="text-weight-bold" style="font-size: 15px">{{ store.customer?.customerName || '...' }}</div>
-            <q-badge :color="statusColor" :label="statusText" rounded class="q-ml-sm" style="font-size: 9px" />
-            <q-badge v-if="Number(store.customer?.isSelfRegistered) === 1" color="teal" outline rounded class="q-ml-xs" style="font-size: 9px">Auto-cadastro</q-badge>
-          </div>
-          <div class="text-caption" style="opacity: 0.85; font-size: 10px">
-            Conta {{ store.customer?.accountNumber || '—' }} · {{ store.customer?.customerPhone || 'Sem telefone' }}
+
+        <!-- Nome Completo & Badges de Estado / DTI (Máximo Respiro, sem truncamento!) -->
+        <div class="col">
+          <div class="row items-center q-gutter-sm">
+            <span class="text-h5 text-weight-bolder text-white borrower-name-title">
+              {{ store.customer?.customerName || 'A carregar mutuário...' }}
+            </span>
+            <q-badge :color="statusColor" :label="statusText" rounded style="font-size: 11px; padding: 4px 10px" />
+            <q-badge
+              v-if="store.dtiStatus?.ratio > 0"
+              :color="store.dtiStatus.color"
+              rounded
+              class="text-weight-bold"
+              style="font-size: 11px; padding: 4px 10px"
+            >
+              DTI: {{ store.dtiStatus.percentStr }} · {{ store.dtiStatus.label }}
+              <q-tooltip>Taxa de Esforço: A prestação compromete {{ store.dtiStatus.percentStr }} do rendimento mensal (Padrão BM/CGAP)</q-tooltip>
+            </q-badge>
+            <q-badge v-if="Number(store.customer?.isSelfRegistered) === 1" color="teal" outline rounded class="gt-xs" style="font-size: 10px">Auto-cadastro</q-badge>
           </div>
         </div>
 
-        <!-- KPIs do header (escondidos em mobile) -->
-        <div class="gt-xs row q-gutter-lg header-kpis">
-          <div class="text-right">
-            <div class="header-kpi-label">Rendimento</div>
-            <div class="text-weight-bold" style="font-size: 13px">{{ formatMoney(store.customer?.customerMonthlySalary || 0) }}</div>
-          </div>
-          <div class="text-right">
-            <div class="header-kpi-label">Total Dívida</div>
-            <div class="text-weight-bold" style="font-size: 13px" :class="store.saldoRemanescente > 0 ? 'text-orange' : ''">
-              {{ formatMoney(store.saldoRemanescente) }}
-            </div>
-          </div>
-          <div class="text-right">
-            <div class="header-kpi-label">Capacidade Disp.</div>
-            <div class="text-weight-bold" style="font-size: 13px">
-              {{ formatMoney(Math.max(0, store.maxCapacity - currentInstallmentShare)) }}
-            </div>
-          </div>
-          <div class="text-right">
-            <div class="header-kpi-label">KYC</div>
-            <q-chip :color="store.isKycComplete ? 'positive' : 'negative'" text-color="white" dense style="font-size: 10px">
-              {{ store.isKycComplete ? 'Completo' : 'Incompleto' }}
-            </q-chip>
-          </div>
-        </div>
+        <q-space />
 
-        <!-- Acções -->
-        <q-btn flat round dense icon="lock_open" color="warning" @click="showCredentialsModal = true">
-          <q-tooltip>Enviar Credenciais</q-tooltip>
-        </q-btn>
-        <q-btn flat round dense icon="edit" color="white" @click="showEditModal = true">
-          <q-tooltip>Editar mutuário</q-tooltip>
-        </q-btn>
+        <!-- Acções Rápidas com Espaço Confortável (data-tour="mutuario-actions") -->
+        <div class="row items-center q-gutter-sm" data-tour="mutuario-actions">
+          <q-btn
+            unelevated
+            rounded
+            color="positive"
+            text-color="white"
+            icon="paid"
+            label="Registar Pagamento"
+            class="q-px-md text-weight-bold gt-xs"
+            no-caps
+            :disable="!store.activeLoanNextInstallment && store.pendingInstallments.length === 0"
+            @click="openQuickPayment"
+          >
+            <q-tooltip>Receber prestação pendente ou liquidar débito</q-tooltip>
+          </q-btn>
+
+          <q-btn
+            outline
+            rounded
+            color="orange-3"
+            icon="campaign"
+            label="Cobrança"
+            class="q-px-md text-weight-bold gt-xs"
+            no-caps
+            @click="openCollectionModal"
+          >
+            <q-tooltip>Enviar lembrete ou notificação formal via SMS ou WhatsApp Directo</q-tooltip>
+          </q-btn>
+
+          <q-btn
+            outline
+            rounded
+            color="white"
+            icon="picture_as_pdf"
+            label="Extracto PDF"
+            class="q-px-sm gt-sm"
+            no-caps
+            :loading="extracting"
+            :disable="!store.activeLoan?.id"
+            @click="printExtract"
+          >
+            <q-tooltip>Emitir Extracto da Conta Actualizado em PDF</q-tooltip>
+          </q-btn>
+
+          <!-- Menu de Mais Opções -->
+          <q-btn flat round dense icon="more_vert" color="white">
+            <q-menu anchor="bottom right" self="top right">
+              <q-list style="min-width: 220px">
+                <q-item clickable v-close-popup @click="goBack">
+                  <q-item-section avatar><q-icon name="arrow_back" color="primary" /></q-item-section>
+                  <q-item-section class="text-weight-medium">Lista de Mutuários</q-item-section>
+                </q-item>
+                <q-separator />
+                <q-item clickable v-close-popup class="lt-sm" @click="openQuickPayment">
+                  <q-item-section avatar><q-icon name="paid" color="positive" /></q-item-section>
+                  <q-item-section>Registar Pagamento</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup class="lt-sm" @click="openCollectionModal">
+                  <q-item-section avatar><q-icon name="chat" color="amber-8" /></q-item-section>
+                  <q-item-section>Enviar Cobrança</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup class="lt-md" @click="printExtract">
+                  <q-item-section avatar><q-icon name="picture_as_pdf" color="primary" /></q-item-section>
+                  <q-item-section>Baixar Extracto PDF</q-item-section>
+                </q-item>
+                <q-separator class="lt-sm" />
+                <q-item clickable v-close-popup @click="openLiquidateModal" :disable="store.pendingInstallments.length === 0">
+                  <q-item-section avatar><q-icon name="account_balance_wallet" color="teal" /></q-item-section>
+                  <q-item-section>Liquidar Dívida Total</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup @click="tab = 'creditos'">
+                  <q-item-section avatar><q-icon name="calculate" color="primary" /></q-item-section>
+                  <q-item-section>Simular Novo Crédito</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup @click="showCredentialsModal = true">
+                  <q-item-section avatar><q-icon name="lock_open" color="warning" /></q-item-section>
+                  <q-item-section>Enviar Senha do Portal</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup @click="showEditModal = true">
+                  <q-item-section avatar><q-icon name="edit" color="grey-8" /></q-item-section>
+                  <q-item-section>Editar Cadastro</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+
+          <q-separator vertical dark inset class="q-mx-xs" />
+
+          <!-- Alertas do Sistema -->
+          <div class="row items-center gt-xs">
+            <AlertBell />
+          </div>
+
+          <!-- Alternar Tema (Dark Mode) -->
+          <q-btn
+            flat
+            round
+            dense
+            :icon="uiStore.isDark ? 'light_mode' : 'dark_mode'"
+            color="white"
+            @click="uiStore.toggleDark()"
+          >
+            <q-tooltip>{{ uiStore.isDark ? 'Modo Claro' : 'Modo Escuro' }}</q-tooltip>
+          </q-btn>
+
+          <!-- Perfil do Mutuário / Iniciais -->
+          <q-avatar size="32px" color="positive" text-color="white" class="cursor-pointer shadow-1">
+            <span style="font-size: 13px; font-weight: bold">{{ userInitials }}</span>
+            <q-menu anchor="bottom right" self="top right">
+              <q-list style="min-width: 200px">
+                <q-item-label header>
+                  <div class="text-weight-bold" style="font-size: 14px">{{ authStore.userName }}</div>
+                  <div class="text-caption text-grey-6">{{ userRoleLabel }}</div>
+                </q-item-label>
+                <q-separator />
+                <q-item clickable v-close-popup to="/profile">
+                  <q-item-section avatar><q-icon name="person" size="18px" /></q-item-section>
+                  <q-item-section>Meu Perfil</q-item-section>
+                </q-item>
+                <q-item clickable v-close-popup @click="handleLogout">
+                  <q-item-section avatar><q-icon name="logout" color="negative" size="18px" /></q-item-section>
+                  <q-item-section class="text-negative">Terminar Sessão</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-avatar>
+        </div>
       </q-toolbar>
 
-      <!-- TABS -->
+      <!-- ── TIER 2: FAIXA DEDICADA DE KPIS & MÉTRICAS (Com Total Respiro) ── -->
+      <div class="kpi-ribbon-bar q-px-md q-py-sm" data-tour="mutuario-kpis">
+        <div class="row q-col-gutter-sm items-center">
+          <!-- Rendimento -->
+          <div class="col-6 col-sm-3 col-md">
+            <div class="kpi-ribbon-item">
+              <div class="kpi-ribbon-label">RENDIMENTO MENSAL</div>
+              <div class="kpi-ribbon-val">{{ formatMoney(store.customer?.customerMonthlySalary || 0) }}</div>
+              <div class="kpi-ribbon-sub">Salário comprovado</div>
+            </div>
+          </div>
+
+          <!-- Total Dívida -->
+          <div class="col-6 col-sm-3 col-md">
+            <div class="kpi-ribbon-item">
+              <div class="kpi-ribbon-label">TOTAL EM DÍVIDA</div>
+              <div class="kpi-ribbon-val" :class="store.saldoRemanescente > 0 ? 'text-amber-3' : 'text-green-3'">
+                {{ formatMoney(store.saldoRemanescente) }}
+              </div>
+              <div class="kpi-ribbon-sub">
+                {{ store.saldoRemanescente > 0 ? 'Exposição viva' : 'Regularizado' }}
+              </div>
+            </div>
+          </div>
+
+          <!-- Capacidade (1/3) -->
+          <div class="col-6 col-sm-3 col-md">
+            <div class="kpi-ribbon-item">
+              <div class="kpi-ribbon-label">CAPACIDADE LIVRE (1/3)</div>
+              <div class="kpi-ribbon-val">
+                {{ formatMoney(Math.max(0, store.maxCapacity - currentInstallmentShare)) }}
+              </div>
+              <div class="kpi-ribbon-sub">Teto de prestação segura</div>
+            </div>
+          </div>
+
+          <!-- Dossier KYC -->
+          <div class="col-6 col-sm-3 col-md cursor-pointer" @click="tab = 'docs'">
+            <div class="kpi-ribbon-item">
+              <div class="kpi-ribbon-label">DOSSIER KYC</div>
+              <div class="row items-center q-mt-xs">
+                <q-chip
+                  :color="store.isKycComplete ? 'positive' : 'negative'"
+                  text-color="white"
+                  dense
+                  icon="verified"
+                  style="font-size: 11px; margin: 0"
+                >
+                  {{ store.isKycComplete ? 'Completo' : 'Incompleto' }}
+                </q-chip>
+              </div>
+              <div class="kpi-ribbon-sub">Clique para ver documentos</div>
+            </div>
+          </div>
+
+          <!-- Situação Geral / Próximo Vencimento -->
+          <div class="col-12 col-sm-6 col-md gt-xs">
+            <div class="kpi-ribbon-item">
+              <div class="kpi-ribbon-label">SITUAÇÃO GERAL</div>
+              <div class="kpi-ribbon-val text-weight-medium" style="font-size: 13px">
+                <template v-if="store.activeLoan">
+                  {{ store.activeLoanNextInstallment ? 'Próx: ' + formatDateShort(store.activeLoanNextInstallment.dueDate) : 'Crédito em dia' }}
+                </template>
+                <template v-else>
+                  Sem crédito activo (Quitação)
+                </template>
+              </div>
+              <div class="kpi-ribbon-sub">
+                {{ store.activeLoan ? `${store.activeLoan.numberOfInstallments}x prestações` : 'Conta regularizada' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TIER 3: TABS DE NAVEGAÇÃO ── -->
       <q-tabs
         v-model="tab"
         data-tour="mutuario-tabs"
@@ -70,14 +251,14 @@
         :breakpoint="0"
       >
         <q-tab name="visao" icon="dashboard" label="Visão Geral" no-caps />
-        <q-tab name="creditos" icon="payments" label="Créditos" no-caps />
+        <q-tab name="creditos" icon="payments" label="Créditos &amp; Concessão" no-caps />
         <q-tab name="amortizacao" icon="table_chart" label="Plano de Amortização" no-caps />
         <q-tab name="docs" icon="folder_shared" no-caps>
           <q-badge v-if="!store.isKycComplete" color="negative" rounded floating style="font-size: 8px">!</q-badge>
           <div class="q-ml-xs">Documentos &amp; KYC</div>
         </q-tab>
         <q-tab name="legais" icon="gavel" label="Documentos Legais" no-caps />
-        <q-tab name="garantias" icon="security" label="Garantias & Recibos" no-caps />
+        <q-tab name="garantias" icon="security" label="Garantias &amp; Recibos" no-caps />
       </q-tabs>
     </div>
 
@@ -100,7 +281,14 @@
 
         <q-tab-panels v-else v-model="tab" animated keep-alive>
           <q-tab-panel name="visao" class="q-pa-none">
-            <TabVisaoGeral />
+            <TabVisaoGeral
+              @register-payment="openQuickPayment"
+              @liquidate="openLiquidateModal"
+              @open-collection="openCollectionModal"
+              @print-extract="printExtract"
+              @go-to-tab="tab = $event"
+              @approve-loan="openApproval"
+            />
           </q-tab-panel>
           <q-tab-panel name="creditos" class="q-pa-none">
             <TabCreditos
@@ -133,6 +321,33 @@
     <CustomerFormModal v-model="showEditModal" :customer="store.customer" @saved="onCustomerSaved" />
     <BorrowerInfoModal v-model="showBorrowerInfoModal" :loan="selectedLoanForInfo" :customer="store.customer" />
     <LoanApprovalModal v-model="showApprovalModal" :loan="approvalLoan" @approved="onLoanApproved" />
+
+    <!-- Modal de Envio de Alertas de Cobrança com 8 Templates & WhatsApp Directo -->
+    <SendMessageModal
+      v-model="showSendMessageModal"
+      :customer="store.customer"
+      :installment-data="activeInstallmentData"
+    />
+
+    <!-- Modal de Pagamento Rápido de Prestação -->
+    <RegistarPagamentoModal
+      v-model="showQuickPaymentModal"
+      :installment="quickPaymentInstallment"
+      :mode="quickPaymentMode"
+      :customer="store.customer"
+      :loan="store.activeLoan || store.contextLoan"
+      :customer-name="store.customer?.customerName"
+      :loan-id="store.activeLoan?.id || store.contextLoan?.id"
+      @paid="onQuickPaymentSuccess"
+      @pagamento-realizado="onQuickPaymentSuccess"
+    />
+
+    <!-- Modal de Liquidação Total da Dívida -->
+    <LiquidarDividaModal
+      v-model="showLiquidateModal"
+      :customer-name="store.customer?.customerName"
+      @liquidated="onQuickPaymentSuccess"
+    />
 
     <!-- ===================== MODAL: ENVIO DE CREDENCIAIS ===================== -->
     <q-dialog v-model="showCredentialsModal" persistent @show="generateNewPassword">
@@ -224,11 +439,16 @@ import { useQuasar } from 'quasar'
 import { useMutuarioStore } from '@/stores/mutuario'
 import { useCompanyStore } from '@/stores/company'
 import { useAuthStore } from '@/stores/auth'
+import { useUiStore } from '@/stores/ui'
 import { api } from '@/boot/axios'
-import { formatMoney } from '@/utils/formatters'
+import { formatMoney, formatDateShort, getInitials } from '@/utils/formatters'
+import AlertBell from '@/components/layout/AlertBell.vue'
 import CustomerFormModal from '@/components/modals/CustomerFormModal.vue'
 import BorrowerInfoModal from '@/components/modals/BorrowerInfoModal.vue'
 import LoanApprovalModal from '@/components/modals/LoanApprovalModal.vue'
+import SendMessageModal from '@/components/modals/SendMessageModal.vue'
+import RegistarPagamentoModal from '@/components/mutuario/RegistarPagamentoModal.vue'
+import LiquidarDividaModal from '@/components/mutuario/LiquidarDividaModal.vue'
 import TabVisaoGeral from '@/components/mutuario/TabVisaoGeral.vue'
 import TabCreditos from '@/components/mutuario/TabCreditos.vue'
 import TabAmortizacao from '@/components/mutuario/TabAmortizacao.vue'
@@ -242,6 +462,30 @@ const router = useRouter()
 const store = useMutuarioStore()
 const companyStore = useCompanyStore()
 const authStore = useAuthStore()
+const uiStore = useUiStore()
+
+function toggleSidebar() {
+  uiStore.setSidebarStyle(uiStore.sidebarStyle === 'mini' ? 'expanded' : 'mini')
+}
+
+const userInitials = computed(() => getInitials(authStore.userName || 'U'))
+const userRoleLabel = computed(() => {
+  const roles = { 0: 'Operador', 1: 'Administrador', 2: 'Operador', 3: 'Gestor de Crédito' }
+  return roles[authStore.userRole] || 'Utilizador'
+})
+
+function handleLogout() {
+  $q.dialog({
+    title: 'Sair',
+    message: 'Tem certeza que deseja sair?',
+    cancel: 'Não',
+    ok: { label: 'Sim, sair', color: 'negative' },
+    persistent: true
+  }).onOk(() => {
+    authStore.logout()
+    router.push('/')
+  })
+}
 
 const tab = ref('visao')
 const showEditModal = ref(false)
@@ -251,6 +495,83 @@ const selectedLoanForInfo = ref(null)
 // Aprovação/desembolso de créditos pendentes
 const showApprovalModal = ref(false)
 const approvalLoan = ref(null)
+
+// Cobrança & Mensagens (SMS Gateway / WhatsApp)
+const showSendMessageModal = ref(false)
+const activeInstallmentData = computed(() => {
+  const next = store.activeLoanNextInstallment
+  if (!next) return null
+  return {
+    installmentNumber: next.installmentOrder,
+    dueDate: next.dueDate,
+    amount: next.installment,
+    lateFee: next.latePaymentInterest,
+    daysOverdue: next.daysOverdue,
+    daysUntilDue: next.daysLeft
+  }
+})
+
+function openCollectionModal() {
+  showSendMessageModal.value = true
+}
+
+// Pagamento Rápido (Quick Pay)
+const showQuickPaymentModal = ref(false)
+const quickPaymentInstallment = ref(null)
+const quickPaymentMode = ref('full')
+
+function openQuickPayment() {
+  if (store.activeLoanNextInstallment) {
+    quickPaymentInstallment.value = store.activeLoanNextInstallment
+    quickPaymentMode.value = 'full'
+    showQuickPaymentModal.value = true
+  } else if (store.pendingInstallments.length > 0) {
+    quickPaymentInstallment.value = store.pendingInstallments[0]
+    quickPaymentMode.value = 'full'
+    showQuickPaymentModal.value = true
+  } else {
+    $q.notify({ type: 'info', message: 'Este mutuário não tem prestações pendentes no momento.', position: 'top' })
+  }
+}
+
+// Liquidação Total
+const showLiquidateModal = ref(false)
+function openLiquidateModal() {
+  if (store.pendingInstallments.length === 0) {
+    $q.notify({ type: 'info', message: 'Não há prestações pendentes para liquidar.', position: 'top' })
+    return
+  }
+  showLiquidateModal.value = true
+}
+
+async function onQuickPaymentSuccess() {
+  showQuickPaymentModal.value = false
+  showLiquidateModal.value = false
+  if (route.params.accountNumber) {
+    await store.fetchAll(route.params.accountNumber)
+  }
+}
+
+// Extracto em PDF
+const extracting = ref(false)
+async function printExtract() {
+  const loanId = store.activeLoan?.id || store.contextLoan?.id
+  if (!loanId) {
+    $q.notify({ type: 'warning', message: 'Nenhum crédito activo encontrado para emitir extracto', position: 'top' })
+    return
+  }
+  extracting.value = true
+  try {
+    const { data } = await api.get(`/api/loans/${loanId}/documents/extracto/pdf`, { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([data], { type: 'application/pdf' }))
+    window.open(url, '_blank')
+    setTimeout(() => window.URL.revokeObjectURL(url), 60000)
+  } catch (e) {
+    $q.notify({ type: 'negative', message: 'Não foi possível gerar o extracto em PDF', position: 'top' })
+  } finally {
+    extracting.value = false
+  }
+}
 
 // Credenciais do portal
 const showCredentialsModal = ref(false)
@@ -263,7 +584,7 @@ function generateNewPassword() {
   generatedPassword.value = String(Math.floor(100000 + Math.random() * 900000))
 }
 
-const companyName = computed(() => companyStore.companyName || 'Mais Mola')
+const companyName = computed(() => companyStore.companyName || 'MBR Microcrédito')
 const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
 
 async function sendCredentials() {
@@ -366,24 +687,79 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 1000;
+.mutuario-header {
+  background: linear-gradient(135deg, #064e3b 0%, #065f46 50%, #0f172a 100%);
+  color: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.mutuario-header {
-  background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 100%);
-  color: white;
+.borrower-name-title {
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+}
+
+.kpi-ribbon-bar {
+  background: rgba(0, 0, 0, 0.22);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.kpi-ribbon-item {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease;
+  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+
+.kpi-ribbon-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.75;
+  color: #e2e8f0;
+}
+
+.kpi-ribbon-val {
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffffff;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-ribbon-sub {
+  font-size: 11px;
+  opacity: 0.7;
+  color: #cbd5e1;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mutuario-tabs {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .header-kpi-label {
   font-size: 9px;
-  opacity: 0.8;
+  opacity: 0.82;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }

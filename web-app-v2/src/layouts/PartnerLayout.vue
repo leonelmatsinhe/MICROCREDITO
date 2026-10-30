@@ -141,7 +141,7 @@ const menuItems = [
   { to: '/parceiro/prestacoes-pendentes', icon: 'schedule', label: 'Prestações pendentes' },
   { to: '/parceiro/mora', icon: 'warning_amber', label: 'Juros de mora' },
   { to: '/parceiro/recebimentos', icon: 'payments', label: 'Recebimentos' },
-  { to: '/parceiro/extrato', icon: 'receipt_long', label: 'Extrato da carteira' },
+  { to: '/parceiro/extrato', icon: 'receipt_long', label: 'Extracto da carteira' },
   { to: '/parceiro/recibos', icon: 'description', label: 'Recibos' }
 ]
 

@@ -103,6 +103,12 @@ exports.CompanyModel = db_1.db.define("companies", {
     // ── Modo de caixa da empresa ──
     // PHYSICAL  = caixa de dinheiro físico (folha de contagem + conferência cega);
     // ELECTRONIC = reconciliação manual por conta bancária existente (accounts).
+    // ── Identificação regulamentar (Banco de Moçambique) ──
+    bairro: { type: sequelize_1.DataTypes.STRING(100), allowNull: true },
+    cidade: { type: sequelize_1.DataTypes.STRING(100), allowNull: true },
+    numberOfEmployees: { type: sequelize_1.DataTypes.INTEGER, allowNull: true },
+    activityStartDate: { type: sequelize_1.DataTypes.STRING(50), allowNull: true },
+    representedInstitutions: { type: sequelize_1.DataTypes.STRING(255), allowNull: true },
     cash_register_mode: {
         type: sequelize_1.DataTypes.ENUM("PHYSICAL", "ELECTRONIC"),
         allowNull: false,

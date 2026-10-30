@@ -1,55 +1,107 @@
 <template>
   <div>
-    <!-- ═══════ CABEÇALHO ═══════ -->
-    <div class="row items-center q-col-gutter-sm q-mb-md" data-tour="financing-wallets">
+    <!-- ═══════ CABEÇALHO EXECUTIVO & FERRAMENTAS ═══════ -->
+    <div class="row items-center justify-between q-col-gutter-sm q-mb-md" data-tour="financing-wallets">
       <div class="col-12 col-md">
         <div class="row items-center no-wrap">
-          <div class="panel-icon q-mr-sm"><q-icon name="savings" size="20px" color="white" /></div>
+          <div class="panel-icon q-mr-sm">
+            <q-icon name="account_balance_wallet" size="20px" color="primary" />
+          </div>
           <div>
-            <div class="text-subtitle1 text-weight-bold">Carteiras de Financiamento</div>
-            <div class="text-caption text-grey-6">
-              Dinheiro <strong>analítico</strong> por fundo/parceiro. O dinheiro real está nas contas de desembolso
-              (<strong>{{ money(saldoRealDisponivel) }}</strong> disponível).
+            <div class="text-subtitle1 text-weight-bold text-slate-900">Carteiras de Financiamento</div>
+            <div class="text-caption text-grey-7">
+              Segregação analítica de fundos e parceiros. Saldo real nas contas de desembolso:
+              <strong class="text-slate-900 font-mono">{{ money(saldoRealDisponivel) }}</strong> disponível.
             </div>
           </div>
         </div>
       </div>
-      <div class="col-12 col-md-auto q-gutter-xs no-wrap" data-tour="financing-actions">
-        <q-btn color="primary" unelevated no-caps rounded icon="add" label="Nova Carteira" @click="openForm()" />
+
+      <div class="col-12 col-md-auto row items-center q-gutter-xs no-wrap" data-tour="financing-actions">
+        <!-- Toggle Modo de Visualização (Cartões vs Planilha) -->
+        <q-btn-toggle
+          v-model="viewMode"
+          dense
+          rounded
+          unelevated
+          toggle-color="primary"
+          color="grey-2"
+          text-color="grey-8"
+          size="sm"
+          class="q-mr-xs"
+          :options="[
+            { icon: 'grid_view', value: 'cards', slot: 'cards' },
+            { icon: 'table_chart', value: 'table', slot: 'table' }
+          ]"
+        >
+          <template v-slot:cards>
+            <q-tooltip>Vista em Cartões</q-tooltip>
+          </template>
+          <template v-slot:table>
+            <q-tooltip>Vista em Planilha Comparativa</q-tooltip>
+          </template>
+        </q-btn-toggle>
+
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          rounded
+          size="sm"
+          icon="add"
+          label="Nova Carteira"
+          class="q-px-sm"
+          @click="openForm()"
+        />
+
         <q-btn
           outline
           color="primary"
           no-caps
           rounded
+          size="sm"
           icon="link"
-          :label="unclassifiedCount > 0 ? `Classificar créditos antigos (${unclassifiedCount})` : 'Classificar créditos antigos'"
+          class="q-px-sm"
+          :label="unclassifiedCount > 0 ? `Classificar pendentes (${unclassifiedCount})` : 'Classificar créditos'"
           @click="classifyDialog = true"
         >
           <q-tooltip>
-            Créditos anteriores às carteiras: ao classificar, o recibo e o relatório do financiador passam a
-            identificar a origem do capital.
+            Classificar créditos antigos para associação ao parceiro e aos relatórios regulamentares.
           </q-tooltip>
         </q-btn>
-        <q-btn outline color="deep-orange" no-caps rounded icon="cleaning_services" label="Limpar carteiras de teste" @click="openPurge" />
-        <q-btn flat round icon="refresh" color="primary" :loading="loading" @click="load">
-          <q-tooltip>Actualizar</q-tooltip>
+
+        <!-- Menu de Opções Avançadas (Remove botão perigoso do topo principal) -->
+        <q-btn flat round dense size="sm" icon="more_vert" color="grey-7">
+          <q-menu anchor="bottom right" self="top right">
+            <q-list style="min-width: 220px">
+              <q-item clickable v-close-popup @click="load">
+                <q-item-section avatar><q-icon name="refresh" size="16px" /></q-item-section>
+                <q-item-section style="font-size: 13px">Actualizar dados</q-item-section>
+              </q-item>
+              <q-separator />
+              <q-item clickable v-close-popup @click="openPurge">
+                <q-item-section avatar><q-icon name="cleaning_services" size="16px" color="deep-orange" /></q-item-section>
+                <q-item-section style="font-size: 13px" class="text-deep-orange">Limpar carteiras de teste</q-item-section>
+              </q-item>
+            </q-list>
+          </q-menu>
         </q-btn>
       </div>
     </div>
 
-    <!-- ═══════ CONSOLIDADO ═══════ -->
-    <div class="row q-col-gutter-md q-mb-md">
+    <!-- ═══════ CONSOLIDADO EXECUTIVO (4 TILES) ═══════ -->
+    <div class="row q-col-gutter-sm q-mb-md">
       <div v-for="tile in consolidated" :key="tile.label" class="col-6 col-md-3">
-        <q-card flat class="glass-tile">
-          <q-card-section class="q-pa-md">
-            <div class="row items-center no-wrap">
-              <div class="tile-icon q-mr-sm" :style="{ background: tile.bg }">
-                <q-icon :name="tile.icon" size="18px" :color="tile.color" />
+        <q-card flat bordered class="kpi-summary-card">
+          <q-card-section class="q-pa-sm">
+            <div class="row items-center justify-between no-wrap">
+              <div class="text-caption text-grey-6 text-uppercase text-weight-medium ellipsis">{{ tile.label }}</div>
+              <div class="kpi-icon-wrap" :style="{ background: tile.bg }">
+                <q-icon :name="tile.icon" size="14px" :color="tile.color" />
               </div>
-              <div style="min-width: 0">
-                <div class="text-caption text-grey-6 ellipsis">{{ tile.label }}</div>
-                <div class="text-subtitle1 text-weight-bold" :class="tile.class">{{ tile.value }}</div>
-              </div>
+            </div>
+            <div class="text-subtitle1 text-weight-bold font-mono text-slate-900 q-mt-xs">
+              {{ tile.value }}
             </div>
           </q-card-section>
         </q-card>
@@ -59,38 +111,72 @@
     <!-- ═══════ CARREGAMENTO / VAZIO ═══════ -->
     <div v-if="loading && wallets.length === 0" class="text-center q-pa-xl">
       <q-spinner-dots size="40px" color="primary" />
+      <div class="text-caption text-grey-5 q-mt-sm">A carregar carteiras analíticas...</div>
     </div>
-    <q-card v-else-if="wallets.length === 0" flat class="glass-tile text-center q-pa-xl">
-      <q-icon name="savings" size="52px" color="grey-4" />
-      <div class="text-subtitle1 text-grey-6 q-mt-sm">Ainda não existem carteiras de financiamento</div>
-      <q-btn color="primary" rounded unelevated no-caps label="Criar primeira carteira" class="q-mt-md" @click="openForm()" />
+
+    <q-card v-else-if="wallets.length === 0" flat bordered class="text-center q-pa-xl empty-card">
+      <q-icon name="savings" size="56px" color="grey-4" />
+      <div class="text-subtitle1 text-grey-7 text-weight-medium q-mt-md">Ainda não existem carteiras de financiamento</div>
+      <div class="text-caption text-grey-5 q-mb-md">Cadastre a primeira carteira para segregar o capital alocado por fundo ou parceiro.</div>
+      <q-btn color="primary" rounded unelevated no-caps label="Criar primeira carteira" icon="add" @click="openForm()" />
     </q-card>
 
-    <!-- ═══════ CARTOES POR CARTEIRA ═══════ -->
-    <div v-else class="row q-col-gutter-md">
+    <!-- ═══════ VISTA 1: CARTÕES EXECUTIVOS (CARDS) ═══════ -->
+    <div v-else-if="viewMode === 'cards'" class="row q-col-gutter-md">
       <div v-for="w in wallets" :key="w.id" class="col-12 col-md-6 col-xl-4">
-        <q-card flat class="wallet-card" :class="{ 'wallet-off': !Number(w.is_ativa) }">
-          <!-- header gradiente -->
-          <div class="wallet-head" :class="`head-${w.cor_badge || 'blue'}`">
-            <div class="row items-center no-wrap">
-              <q-badge :color="w.cor_badge || 'blue'" :label="w.codigo" class="q-mr-sm" />
-              <div class="col ellipsis text-weight-bold text-white" style="font-size: 13px">
-                {{ w.parceiro_nome || w.nome }}
+        <q-card flat bordered class="enterprise-wallet-card" :class="{ 'wallet-inactive': !Number(w.is_ativa) }">
+          <!-- Topo do Card: Identificação Institucional -->
+          <div class="card-header q-pa-sm">
+            <div class="row items-start justify-between no-wrap">
+              <div class="col" style="min-width: 0">
+                <div class="row items-center q-gutter-x-xs no-wrap q-mb-xs">
+                  <span class="code-badge font-mono">{{ w.codigo }}</span>
+                  <q-badge
+                    v-if="!Number(w.is_ativa)"
+                    color="grey-4"
+                    text-color="grey-8"
+                    label="Inactiva"
+                    class="text-weight-bold"
+                    style="font-size: 10px"
+                  />
+                  <q-badge
+                    v-if="Number(w.tem_portal)"
+                    :color="Number(w.portal_ativo) ? 'teal-1' : 'grey-2'"
+                    :text-color="Number(w.portal_ativo) ? 'teal-9' : 'grey-7'"
+                    label="Portal Activo"
+                    style="font-size: 10px; border: 1px solid rgba(0,0,0,0.06)"
+                  />
+                  <q-badge
+                    v-if="Number(w.is_parceiro_externo)"
+                    color="blue-1"
+                    text-color="blue-9"
+                    label="Parceiro Externo"
+                    style="font-size: 10px; border: 1px solid rgba(0,0,0,0.06)"
+                  />
+                </div>
+                <div class="text-subtitle2 text-weight-bold text-slate-900 ellipsis" :title="w.parceiro_nome || w.nome">
+                  {{ w.parceiro_nome || w.nome }}
+                </div>
+                <div class="text-caption text-grey-6 ellipsis" :title="w.nome">
+                  {{ w.nome }}
+                </div>
               </div>
-              <q-btn flat round dense size="sm" icon="more_vert" color="white" class="wallet-menu">
+
+              <!-- Menu de Acções -->
+              <q-btn flat round dense size="sm" icon="more_vert" color="grey-7">
                 <q-menu anchor="bottom right" self="top right">
-                  <q-list style="min-width: 210px">
-                    <q-item clickable v-close-popup @click="openForm(w)">
-                      <q-item-section avatar><q-icon name="edit" size="16px" /></q-item-section>
-                      <q-item-section style="font-size: 13px">Editar carteira</q-item-section>
-                    </q-item>
+                  <q-list style="min-width: 200px">
                     <q-item clickable v-close-popup @click="openDetail(w)">
-                      <q-item-section avatar><q-icon name="insights" size="16px" /></q-item-section>
-                      <q-item-section style="font-size: 13px">Ver detalhes</q-item-section>
+                      <q-item-section avatar><q-icon name="insights" size="16px" color="primary" /></q-item-section>
+                      <q-item-section style="font-size: 13px">Ver Extracto Completo</q-item-section>
                     </q-item>
                     <q-item clickable v-close-popup @click="openReport(w)">
-                      <q-item-section avatar><q-icon name="assessment" size="16px" /></q-item-section>
-                      <q-item-section style="font-size: 13px">Relatório do financiador</q-item-section>
+                      <q-item-section avatar><q-icon name="assessment" size="16px" color="teal-8" /></q-item-section>
+                      <q-item-section style="font-size: 13px">Relatório do Financiador</q-item-section>
+                    </q-item>
+                    <q-item clickable v-close-popup @click="openForm(w)">
+                      <q-item-section avatar><q-icon name="edit" size="16px" /></q-item-section>
+                      <q-item-section style="font-size: 13px">Editar Carteira</q-item-section>
                     </q-item>
                     <q-separator />
                     <q-item clickable v-close-popup @click="toggleActive(w)">
@@ -107,110 +193,215 @@
                 </q-menu>
               </q-btn>
             </div>
-            <div class="text-caption wallet-head-sub ellipsis">{{ w.nome }}</div>
-            <div class="row items-center q-gutter-xs q-mt-xs">
-              <q-badge v-if="w.taxa_juro !== null" outline color="white" :label="`Taxa ${(Number(w.taxa_juro) * 100).toFixed(1)}%`" style="font-size: 9px" />
-              <q-badge v-if="Number(w.tem_portal)" :color="Number(w.portal_ativo) ? 'green-4' : 'grey-5'" text-color="white" label="Portal" style="font-size: 9px" />
-              <q-badge v-if="Number(w.is_parceiro_externo)" outline color="white" label="Parceiro externo" style="font-size: 9px" />
-              <q-badge v-if="!Number(w.is_ativa)" color="grey-8" text-color="white" label="Inactiva" style="font-size: 9px" />
-            </div>
           </div>
 
-          <q-card-section class="q-pa-md">
-            <!-- Grid 2x2 -->
-            <div class="row q-col-gutter-sm">
-              <div class="col-6">
-                <div class="kpi-label">Alocado</div>
-                <div class="kpi-value">{{ w.allocated_amount === null ? 'Sem limite' : money(w.allocated_amount) }}</div>
+          <q-separator />
+
+          <q-card-section class="q-pa-sm">
+            <!-- BLOCO 1: DISPONIBILIDADE & CAPITAL -->
+            <div class="metrics-block q-mb-sm">
+              <div class="block-title">Capital & Alocação</div>
+              <div class="row q-col-gutter-xs">
+                <div class="col-4">
+                  <div class="metric-label">Alocado</div>
+                  <div class="metric-val font-mono">{{ w.allocated_amount === null ? 'Sem limite' : money(w.allocated_amount) }}</div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-label">Desembolsado</div>
+                  <div class="metric-val font-mono text-primary">{{ money(w.disbursed) }}</div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-label">Disponível</div>
+                  <div class="metric-val font-mono" :class="availClass(w)">
+                    {{ w.saldo_analitico === null ? 'Sem limite' : money(w.saldo_analitico) }}
+                  </div>
+                </div>
               </div>
-              <div class="col-6">
-                <div class="kpi-label">Desembolsado</div>
-                <div class="kpi-value text-primary">{{ money(w.disbursed) }}</div>
-              </div>
-              <div class="col-6">
-                <div class="kpi-label">Disponível</div>
-                <div class="kpi-value" :class="availClass(w)">{{ w.saldo_analitico === null ? 'Sem limite' : money(w.saldo_analitico) }}</div>
-              </div>
-              <div class="col-6">
-                <div class="kpi-label">Recebimentos</div>
-                <div class="kpi-value text-positive">{{ money(w.total_recebimentos) }}</div>
+
+              <!-- Barra de Utilização -->
+              <div v-if="w.allocated_amount !== null" class="q-mt-xs">
+                <div class="row items-center justify-between text-caption text-grey-6" style="font-size: 10px">
+                  <span>{{ Math.round((Number(w.utilizacao) || 0) * 100) }}% alocado utilizado</span>
+                  <span class="font-mono">{{ money(w.disbursed) }} / {{ money(w.allocated_amount) }}</span>
+                </div>
+                <q-linear-progress
+                  :value="Number(w.utilizacao) || 0"
+                  rounded
+                  size="5px"
+                  class="q-mt-xs"
+                  :color="barColor(w)"
+                  track-color="grey-2"
+                />
               </div>
             </div>
 
-            <div v-if="w.allocated_amount !== null" class="q-mt-sm">
-              <div class="row items-center justify-between text-caption text-grey-6">
-                <span>{{ Math.round((Number(w.utilizacao) || 0) * 100) }}% utilizado</span>
-                <span>{{ money(w.disbursed) }} / {{ money(w.allocated_amount) }}</span>
+            <!-- BLOCO 2: RECEBIMENTOS & RETORNO -->
+            <div class="metrics-block q-mb-sm">
+              <div class="block-title">Cobrança & Rendimento</div>
+              <div class="row q-col-gutter-xs">
+                <div class="col-4">
+                  <div class="metric-label">Total Recebido</div>
+                  <div class="metric-val font-mono text-positive">{{ money(w.total_recebimentos) }}</div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-label">Juros Recebidos</div>
+                  <div class="metric-val font-mono text-positive">{{ money(w.total_juros_recebidos) }}</div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-label">Mora Gerada</div>
+                  <div class="metric-val font-mono" :class="Number(w.mora_gerada) > 0 ? 'text-negative' : 'text-grey-7'">
+                    {{ money(w.mora_gerada) }}
+                  </div>
+                </div>
               </div>
-              <q-linear-progress
-                :value="Number(w.utilizacao) || 0"
-                rounded size="7px" class="q-mt-xs"
-                :color="barColor(w)" track-color="grey-3"
-              />
             </div>
 
-            <!-- Linha 2: dentro da carteira -->
-            <q-separator class="q-my-sm" />
-            <div class="row q-col-gutter-sm">
-              <div class="col-4">
-                <div class="kpi-label"><q-icon name="account_balance_wallet" size="11px" /> Créditos</div>
-                <div class="kpi-mini">{{ numero(w.num_creditos) }}</div>
-              </div>
-              <div class="col-4">
-                <div class="kpi-label"><q-icon name="task_alt" size="11px" /> Reembolsados</div>
-                <div class="kpi-mini">{{ numero(w.prestacoes_pagas) }}/{{ numero(w.prestacoes_total) }}</div>
-              </div>
-              <div class="col-4">
-                <div class="kpi-label"><q-icon name="percent" size="11px" /> Taxa média</div>
-                <div class="kpi-mini">{{ w.taxa_media === null ? '—' : `${(Number(w.taxa_media) * 100).toFixed(1)}%` }}</div>
-              </div>
-              <div class="col-4">
-                <div class="kpi-label"><q-icon name="savings" size="11px" /> Juros gerados</div>
-                <div class="kpi-mini">{{ money(w.juros_gerados) }}</div>
-              </div>
-              <div class="col-4">
-                <div class="kpi-label"><q-icon name="payments" size="11px" /> Juros recebidos</div>
-                <div class="kpi-mini text-positive">{{ money(w.total_juros_recebidos) }}</div>
-              </div>
-              <div class="col-4">
-                <div class="kpi-label"><q-icon name="warning_amber" size="11px" /> Mora gerada</div>
-                <div class="kpi-mini" :class="Number(w.mora_gerada) > 0 ? 'text-negative' : ''">{{ money(w.mora_gerada) }}</div>
-              </div>
-              <div class="col-6">
-                <div class="kpi-label"><q-icon name="trending_up" size="11px" /> Previsão de lucro</div>
-                <div class="kpi-mini text-deep-purple">{{ money(w.previsao_lucro) }}</div>
-              </div>
-              <div class="col-6">
-                <div class="kpi-label"><q-icon name="pending_actions" size="11px" /> Saldo a receber</div>
-                <div class="kpi-mini text-deep-orange">{{ money(w.saldo_a_receber) }}</div>
+            <!-- BLOCO 3: QUALIDADE & CARTEIRA ATIVA -->
+            <div class="metrics-block">
+              <div class="block-title">Posição da Carteira</div>
+              <div class="row q-col-gutter-xs">
+                <div class="col-4">
+                  <div class="metric-label">Créditos</div>
+                  <div class="metric-val font-mono">{{ numero(w.num_creditos) }} <span class="text-caption text-grey-5 font-normal">({{ numero(w.num_clientes) }} cli)</span></div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-label">Saldo a Receber</div>
+                  <div class="metric-val font-mono text-amber-9">{{ money(w.saldo_a_receber) }}</div>
+                </div>
+                <div class="col-4">
+                  <div class="metric-label">Taxa Média</div>
+                  <div class="metric-val font-mono">{{ w.taxa_media === null ? '—' : `${(Number(w.taxa_media) * 100).toFixed(1)}%` }}</div>
+                </div>
               </div>
             </div>
           </q-card-section>
 
           <q-separator />
-          <q-card-actions class="q-px-md q-py-xs">
-            <q-icon name="info" size="14px" color="grey-6" class="q-mr-xs" />
-            <span class="text-caption text-grey-6">
-              {{ numero(w.num_creditos) }} crédito(s) · {{ numero(w.num_clientes) }} cliente(s) · juros {{ money(w.total_juros_recebidos) }} · mora {{ money(w.total_mora_recebida) }}
-              <span v-if="Number(w.prestacoes_atraso) > 0" class="text-negative"> · {{ numero(w.prestacoes_atraso) }} em atraso</span>
-            </span>
-            <q-space />
-            <q-btn flat dense no-caps size="sm" color="primary" label="Ver detalhes" @click="openDetail(w)" />
-          </q-card-actions>
+
+          <div class="card-footer q-px-sm q-py-xs row items-center justify-between text-caption text-grey-6">
+            <div>
+              {{ numero(w.prestacoes_pagas) }}/{{ numero(w.prestacoes_total) }} prestações
+              <span v-if="Number(w.prestacoes_atraso) > 0" class="text-negative text-weight-bold">
+                · {{ numero(w.prestacoes_atraso) }} em atraso
+              </span>
+            </div>
+            <q-btn
+              flat
+              dense
+              no-caps
+              size="sm"
+              color="primary"
+              label="Ver Extracto"
+              icon-right="chevron_right"
+              @click="openDetail(w)"
+            />
+          </div>
         </q-card>
       </div>
     </div>
 
+    <!-- ═══════ VISTA 2: PLANILHA EXECUTIVA (COMPARATIVA) ═══════ -->
+    <q-card v-else flat bordered class="table-card">
+      <q-table
+        :rows="wallets"
+        :columns="tableColumns"
+        row-key="id"
+        flat
+        dense
+        separator="horizontal"
+        :rows-per-page-options="[15, 25, 50]"
+        class="wallets-table"
+      >
+        <template v-slot:body-cell-codigo="props">
+          <q-td :props="props">
+            <span class="code-badge font-mono">{{ props.row.codigo }}</span>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-nome="props">
+          <q-td :props="props">
+            <div class="text-weight-bold text-slate-900" style="font-size: 12px">{{ props.row.parceiro_nome || props.row.nome }}</div>
+            <div class="text-caption text-grey-6">{{ props.row.nome }}</div>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-allocated="props">
+          <q-td :props="props" class="font-mono text-right">
+            {{ props.row.allocated_amount === null ? 'Sem limite' : money(props.row.allocated_amount) }}
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-disbursed="props">
+          <q-td :props="props" class="font-mono text-right text-primary text-weight-medium">
+            {{ money(props.row.disbursed) }}
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-utilizacao="props">
+          <q-td :props="props" class="text-center font-mono">
+            <span v-if="props.row.allocated_amount !== null">
+              {{ Math.round((Number(props.row.utilizacao) || 0) * 100) }}%
+            </span>
+            <span v-else class="text-grey-5">—</span>
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-recebimentos="props">
+          <q-td :props="props" class="font-mono text-right text-positive">
+            {{ money(props.row.total_recebimentos) }}
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-a_receber="props">
+          <q-td :props="props" class="font-mono text-right text-amber-9">
+            {{ money(props.row.saldo_a_receber) }}
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-juros="props">
+          <q-td :props="props" class="font-mono text-right">
+            {{ money(props.row.total_juros_recebidos) }}
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-status="props">
+          <q-td :props="props" class="text-center">
+            <q-badge
+              :color="Number(props.row.is_ativa) ? 'teal-1' : 'grey-3'"
+              :text-color="Number(props.row.is_ativa) ? 'teal-9' : 'grey-7'"
+              :label="Number(props.row.is_ativa) ? 'Activa' : 'Inactiva'"
+              style="font-size: 10px; border: 1px solid rgba(0,0,0,0.06)"
+            />
+          </q-td>
+        </template>
+
+        <template v-slot:body-cell-actions="props">
+          <q-td :props="props" class="text-center no-wrap">
+            <q-btn flat round dense size="sm" icon="insights" color="primary" @click="openDetail(props.row)">
+              <q-tooltip>Ver extracto analítico</q-tooltip>
+            </q-btn>
+            <q-btn flat round dense size="sm" icon="assessment" color="teal-8" @click="openReport(props.row)">
+              <q-tooltip>Relatório do financiador</q-tooltip>
+            </q-btn>
+            <q-btn flat round dense size="sm" icon="edit" color="grey-7" @click="openForm(props.row)">
+              <q-tooltip>Editar carteira</q-tooltip>
+            </q-btn>
+          </q-td>
+        </template>
+      </q-table>
+    </q-card>
+
     <!-- ═══════ DIALOG: CRIAR/EDITAR ═══════ -->
     <q-dialog v-model="formDialog" persistent>
       <q-card class="dialog-xl">
-        <q-card-section class="row items-center dialog-head">
+        <q-card-section class="row items-center bg-slate-900 text-white q-py-sm">
           <q-icon :name="form.id ? 'edit' : 'add'" size="20px" class="q-mr-sm" />
-          <div class="text-h6">{{ form.id ? 'Editar Carteira' : 'Nova Carteira de Financiamento' }}</div>
+          <div class="text-subtitle1 text-weight-bold">{{ form.id ? 'Editar Carteira de Financiamento' : 'Nova Carteira de Financiamento' }}</div>
           <q-space />
-          <q-btn flat round dense icon="close" @click="formDialog = false" />
+          <q-btn flat round dense icon="close" color="white" @click="formDialog = false" />
         </q-card-section>
-        <q-card-section class="q-gutter-y-md scroll" style="max-height: 68vh">
+
+        <q-card-section class="q-gutter-y-md scroll q-pa-md" style="max-height: 68vh">
           <div class="row q-col-gutter-sm">
             <div class="col-12 col-sm-4">
               <q-input v-model="form.codigo" outlined dense label="Código *" hint="Ex.: KMAD, PME_12" :rules="[(v) => !!v || 'Obrigatório']" />
@@ -239,12 +430,12 @@
               <q-input v-model.number="form.taxa_juro" type="number" step="0.1" outlined dense label="Taxa de juro esperada (%)" hint="Ex.: 12 para 12% ao mês." />
             </div>
             <div class="col-12 col-sm-6">
-              <q-select v-model="form.cor_badge" :options="colorOptions" outlined dense emit-value map-options label="Cor do badge" />
+              <q-select v-model="form.cor_badge" :options="colorOptions" outlined dense emit-value map-options label="Cor temática" />
             </div>
           </div>
 
           <q-separator />
-          <div class="text-subtitle2">Parceiro financiador externo</div>
+          <div class="text-subtitle2 text-weight-bold text-slate-800">Parceiro Financiador Externo</div>
           <q-toggle v-model="form.is_parceiro_externo" label="Esta carteira pertence a um parceiro externo" dense />
           <template v-if="form.is_parceiro_externo">
             <div class="row q-col-gutter-sm">
@@ -269,9 +460,10 @@
 
           <q-toggle v-model="form.is_ativa" label="Carteira activa" dense />
         </q-card-section>
-        <q-card-actions align="right" class="q-px-md q-pb-md">
+        <q-separator />
+        <q-card-actions align="right" class="q-px-md q-py-sm">
           <q-btn flat no-caps label="Cancelar" :disable="saving" @click="formDialog = false" />
-          <q-btn unelevated no-caps rounded color="primary" :label="form.id ? 'Guardar' : 'Criar carteira'" :loading="saving" @click="submitForm" />
+          <q-btn unelevated no-caps color="primary" :label="form.id ? 'Guardar' : 'Criar carteira'" :loading="saving" @click="submitForm" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -290,8 +482,8 @@
         <q-card-section v-else class="q-gutter-y-sm">
           <div class="row q-col-gutter-sm text-center">
             <div v-for="dep in dependencyTiles" :key="dep.label" class="col-4">
-              <div class="kpi-label">{{ dep.label }}</div>
-              <div class="kpi-mini" :class="dep.class">{{ dep.value }}</div>
+              <div class="metric-label">{{ dep.label }}</div>
+              <div class="text-subtitle2 font-mono text-weight-bold" :class="dep.class">{{ dep.value }}</div>
             </div>
           </div>
           <q-banner v-if="!dependencies?.pode_apagar" dense rounded class="bg-orange-1 text-orange-10">
@@ -326,14 +518,14 @@
     <!-- ═══════ DIALOG: LIMPAR CARTEIRAS DE TESTE ═══════ -->
     <q-dialog v-model="purgeDialog">
       <q-card class="dialog-lg">
-        <q-card-section class="row items-center dialog-head">
-          <q-icon name="cleaning_services" size="20px" class="q-mr-sm" />
-          <div class="text-h6">Limpar carteiras de teste</div>
+        <q-card-section class="row items-center bg-slate-900 text-white q-py-sm">
+          <q-icon name="cleaning_services" size="20px" class="q-mr-sm text-deep-orange" />
+          <div class="text-subtitle1 text-weight-bold">Limpeza de Carteiras de Teste</div>
           <q-space />
-          <q-btn flat round dense icon="close" @click="purgeDialog = false" />
+          <q-btn flat round dense icon="close" color="white" @click="purgeDialog = false" />
         </q-card-section>
-        <q-card-section>
-          <div class="text-caption text-grey-6 q-mb-sm">
+        <q-card-section class="q-pa-md">
+          <div class="text-caption text-grey-7 q-mb-sm">
             Carteiras <strong>sem qualquer movimento</strong> (0 créditos, 0 recebimentos, 0 prestações, 0 utilizadores)
             com código <code>TESTE…</code> ou criadas nos últimos 7 dias.
           </div>
@@ -348,7 +540,7 @@
               </q-item-section>
               <q-item-section>
                 <q-item-label>
-                  <q-badge :color="candidate.cor_badge || 'grey'" :label="candidate.codigo" class="q-mr-sm" />
+                  <span class="code-badge font-mono q-mr-sm">{{ candidate.codigo }}</span>
                   {{ candidate.nome }}
                 </q-item-label>
                 <q-item-label caption>
@@ -362,7 +554,7 @@
         <q-card-actions align="right" class="q-px-md q-pb-md">
           <q-btn flat no-caps label="Cancelar" @click="purgeDialog = false" />
           <q-btn
-            unelevated no-caps rounded color="deep-orange" label="Apagar selecionadas"
+            unelevated no-caps color="deep-orange" label="Apagar selecionadas"
             :disable="purgeSelection.length === 0" :loading="saving" @click="confirmPurge"
           />
         </q-card-actions>
@@ -372,22 +564,24 @@
     <!-- ═══════ DIALOG: DETALHES ═══════ -->
     <q-dialog v-model="detailDialog">
       <q-card class="dialog-lg">
-        <q-card-section class="row items-center dialog-head">
-          <q-badge :color="detailWallet?.cor_badge || 'blue'" :label="detailWallet?.codigo" class="q-mr-sm" />
-          <div class="text-h6 ellipsis">{{ detailWallet?.nome }}</div>
+        <q-card-section class="row items-center bg-slate-900 text-white q-py-sm">
+          <span class="code-badge font-mono q-mr-sm bg-white text-slate-900">{{ detailWallet?.codigo }}</span>
+          <div class="text-subtitle1 text-weight-bold ellipsis">{{ detailWallet?.nome }}</div>
           <q-space />
-          <q-btn flat round dense icon="close" @click="detailDialog = false" />
+          <q-btn flat round dense icon="close" color="white" @click="detailDialog = false" />
         </q-card-section>
-        <q-card-section class="scroll" style="max-height: 70vh">
-          <div class="row q-col-gutter-md">
+        <q-card-section class="scroll q-pa-md" style="max-height: 70vh">
+          <div class="row q-col-gutter-sm">
             <div v-for="item in detailItems" :key="item.label" class="col-6 col-sm-4">
-              <q-card flat class="glass-tile q-pa-sm">
-                <div class="kpi-label">{{ item.label }}</div>
-                <div class="text-subtitle2 text-weight-bold" :class="item.class">{{ item.value }}</div>
+              <q-card flat bordered class="q-pa-sm" style="border-radius: 8px">
+                <div class="metric-label">{{ item.label }}</div>
+                <div class="text-subtitle2 font-mono text-weight-bold" :class="item.class">{{ item.value }}</div>
               </q-card>
             </div>
           </div>
-          <div v-if="detailWallet?.descricao" class="text-caption text-grey-6 q-mt-md">{{ detailWallet.descricao }}</div>
+          <div v-if="detailWallet?.descricao" class="text-caption text-grey-7 q-mt-md bg-grey-1 q-pa-sm rounded-borders">
+            {{ detailWallet.descricao }}
+          </div>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -405,23 +599,19 @@ import { useAuthStore } from '@/stores/auth'
 import ClassifyLoansDialog from '@/components/financing/ClassifyLoansDialog.vue'
 import { useWalletsStore } from '@/stores/wallets'
 
-/**
- * CARTEIRAS DE FINANCIAMENTO (Admin) — CRUD + KPIs + regras de apagar.
- *  · sem movimento → pode ser APAGADA (com dupla confirmação);
- *  · com movimento → só pode ser DESACTIVADA (histórico preservado);
- *  · carteiras de teste sem movimento podem ser limpas em lote.
- */
 const $q = useQuasar()
 const router = useRouter()
 const authStore = useAuthStore()
 const walletsStore = useWalletsStore()
+
+// Modo de visualização: 'cards' ou 'table'
+const viewMode = ref('cards')
 
 const formDialog = ref(false)
 const deleteDialog = ref(false)
 const purgeDialog = ref(false)
 const detailDialog = ref(false)
 const classifyDialog = ref(false)
-// Quantos créditos ainda não têm carteira (mostrado no botão de classificação).
 const unclassifiedCount = ref(0)
 const deleting = ref(null)
 const detailWallet = ref(null)
@@ -445,30 +635,47 @@ const numero = (value) => Number(value) || 0
 
 const consolidated = computed(() => [
   {
-    label: 'Capital alocado (analítico)',
+    label: 'Capital Alocado',
     value: money(summary.value.capital_alocado),
     icon: 'account_balance',
-    color: 'blue-7', bg: 'rgba(37,99,235,0.12)', class: 'text-primary'
+    color: 'primary',
+    bg: '#eff6ff'
   },
   {
-    label: 'Desembolsado (todas as carteiras)',
+    label: 'Total Desembolsado',
     value: money(summary.value.total_desembolsado),
     icon: 'arrow_upward',
-    color: 'deep-purple', bg: 'rgba(124,58,237,0.12)', class: 'text-deep-purple'
+    color: 'indigo-8',
+    bg: '#eef2ff'
   },
   {
-    label: 'Recebimentos (todas as carteiras)',
+    label: 'Total Recebimentos',
     value: money(summary.value.total_recebimentos),
     icon: 'arrow_downward',
-    color: 'green-7', bg: 'rgba(5,150,105,0.12)', class: 'text-positive'
+    color: 'positive',
+    bg: '#ecfdf5'
   },
   {
-    label: 'Saldo real para desembolsos',
+    label: 'Saldo Real Disponível',
     value: money(saldoRealDisponivel.value),
     icon: 'account_balance_wallet',
-    color: 'deep-orange', bg: 'rgba(234,88,12,0.12)', class: 'text-deep-orange'
+    color: 'teal-8',
+    bg: '#f0fdfa'
   }
 ])
+
+const tableColumns = [
+  { name: 'codigo', label: 'Código', field: 'codigo', align: 'left', sortable: true },
+  { name: 'nome', label: 'Carteira / Parceiro', field: 'nome', align: 'left', sortable: true },
+  { name: 'allocated', label: 'Alocado', field: 'allocated_amount', align: 'right', sortable: true },
+  { name: 'disbursed', label: 'Desembolsado', field: 'disbursed', align: 'right', sortable: true },
+  { name: 'utilizacao', label: 'Utilização', field: 'utilizacao', align: 'center', sortable: true },
+  { name: 'recebimentos', label: 'Recebido', field: 'total_recebimentos', align: 'right', sortable: true },
+  { name: 'a_receber', label: 'A Receber', field: 'saldo_a_receber', align: 'right', sortable: true },
+  { name: 'juros', label: 'Juros', field: 'total_juros_recebidos', align: 'right', sortable: true },
+  { name: 'status', label: 'Estado', field: 'is_ativa', align: 'center' },
+  { name: 'actions', label: 'Acções', field: () => '', align: 'center' }
+]
 
 const dependencyTiles = computed(() => {
   const d = dependencies.value || {}
@@ -497,10 +704,10 @@ const detailItems = computed(() => {
     { label: 'Prestações em atraso', value: numero(w.prestacoes_atraso), class: Number(w.prestacoes_atraso) > 0 ? 'text-negative' : '' },
     { label: 'Juros gerados', value: money(w.juros_gerados) },
     { label: 'Juros recebidos', value: money(w.total_juros_recebidos), class: 'text-positive' },
-    { label: 'Previsão de lucro', value: money(w.previsao_lucro), class: 'text-deep-purple' },
+    { label: 'Previsão de lucro', value: money(w.previsao_lucro), class: 'text-indigo-8' },
     { label: 'Mora gerada', value: money(w.mora_gerada) },
     { label: 'Mora recebida', value: money(w.total_mora_recebida) },
-    { label: 'Saldo a receber', value: money(w.saldo_a_receber), class: 'text-deep-orange' },
+    { label: 'Saldo a receber', value: money(w.saldo_a_receber), class: 'text-amber-9' },
     { label: 'Último desembolso', value: w.ultimo_desembolso ? String(w.ultimo_desembolso).slice(0, 10) : '—' }
   ]
 })
@@ -527,12 +734,14 @@ const emptyForm = () => ({
 const form = ref(emptyForm())
 
 const round = (value) => Math.round((Number(value) || 0) * 100) / 100
+
 const barColor = (w) => {
   const used = Number(w.utilizacao) || 0
   if (used >= 1) return 'negative'
-  if (used >= 0.85) return 'orange'
-  return 'positive'
+  if (used >= 0.85) return 'amber-9'
+  return 'primary'
 }
+
 const availClass = (w) => {
   if (w.saldo_analitico === null) return 'text-grey-7'
   return Number(w.saldo_analitico) > 0 ? 'text-positive' : 'text-negative'
@@ -541,7 +750,6 @@ const availClass = (w) => {
 async function load() {
   try {
     await walletsStore.fetchWallets(authStore.companyId)
-    // Contagem de créditos ainda sem carteira (alimenta o botão de classificação).
     const pendentes = await walletsStore.fetchUnclassifiedLoans(authStore.companyId)
     unclassifiedCount.value = Array.isArray(pendentes) ? pendentes.length : 0
   } catch {
@@ -585,8 +793,6 @@ async function submitForm() {
     return
   }
 
-  // Guarda contra apagar a base histórica por engano: basta limpar o campo no
-  // formulário para o desembolsado analítico da carteira ir a zero.
   if (f.id) {
     const baseOriginal = Number(wallets.value.find((row) => Number(row.id) === Number(f.id))?.initial_disbursed_amount) || 0
     const baseNova = Number(f.initial_disbursed_amount) || 0
@@ -736,103 +942,149 @@ onMounted(load)
 
 <style lang="scss" scoped>
 .panel-icon {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.kpi-summary-card {
+  border-radius: 10px;
+  background: #ffffff;
+  border-color: #e2e8f0;
+}
+
+.kpi-icon-wrap {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.enterprise-wallet-card {
   border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, $primary, #16a34a);
-  box-shadow: 0 6px 16px rgba($primary, 0.25);
-}
-
-.glass-tile {
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.tile-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.wallet-card {
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  background: #fff;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  transition: all 0.2s ease;
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    border-color: #cbd5e1;
   }
 }
 
-.wallet-off {
-  opacity: 0.62;
+.wallet-inactive {
+  opacity: 0.65;
+  background: #f8fafc;
 }
 
-.wallet-head {
-  padding: 14px 16px 12px;
-  color: #fff;
-
-  &.head-blue { background: linear-gradient(135deg, #1d4ed8, #3b82f6); }
-  &.head-orange, &.head-deep-orange { background: linear-gradient(135deg, #c2410c, #fb923c); }
-  &.head-green { background: linear-gradient(135deg, #15803d, #34d399); }
-  &.head-grey { background: linear-gradient(135deg, #334155, #64748b); }
-  &.head-purple { background: linear-gradient(135deg, #6d28d9, #a78bfa); }
-  &.head-teal { background: linear-gradient(135deg, #0f766e, #2dd4bf); }
-  &.head-brown { background: linear-gradient(135deg, #78350f, #b45309); }
-  &.head-pink { background: linear-gradient(135deg, #be185d, #f472b6); }
-  &.head-cyan { background: linear-gradient(135deg, #0e7490, #22d3ee); }
+.card-header {
+  background: #fafbfc;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
 }
 
-.wallet-head-sub {
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 2px;
-}
-
-.wallet-menu {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.kpi-label {
-  font-size: 10px;
-  color: $grey-6;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.kpi-value {
-  font-size: 14px;
+.code-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  font-size: 11px;
   font-weight: 700;
 }
 
-.kpi-mini {
+.metrics-block {
+  background: #f8fafc;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+}
+
+.block-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  margin-bottom: 3px;
+}
+
+.metric-label {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.metric-val {
   font-size: 12px;
   font-weight: 600;
+  color: #0f172a;
 }
 
-.dialog-xl { width: 720px; max-width: 95vw; border-radius: 18px; }
-.dialog-lg { width: 620px; max-width: 95vw; border-radius: 18px; }
-.dialog-md { width: 460px; max-width: 95vw; border-radius: 18px; }
-
-.dialog-head {
-  background: linear-gradient(135deg, $primary, #16a34a);
-  color: #fff;
+.card-footer {
+  background: #ffffff;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
+
+.table-card {
+  border-radius: 10px;
+  background: #ffffff;
+  border-color: #e2e8f0;
+  overflow: hidden;
+}
+
+.wallets-table {
+  :deep(.q-table thead th) {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+    background-color: #f1f5f9;
+    padding: 8px 10px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  :deep(.q-table tbody td) {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-color: #f1f5f9;
+  }
+}
+
+.dialog-xl { width: 720px; max-width: 95vw; border-radius: 14px; }
+.dialog-lg { width: 620px; max-width: 95vw; border-radius: 14px; }
+.dialog-md { width: 460px; max-width: 95vw; border-radius: 14px; }
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-slate-800 { color: #1e293b; }
+.text-slate-900 { color: #0f172a; }
 
 body.body--dark {
-  .wallet-card { background: $gray-800; border-color: $gray-700; }
-  .glass-tile { background: rgba(30, 41, 59, 0.7); border-color: rgba(255, 255, 255, 0.06); }
+  .enterprise-wallet-card, .kpi-summary-card, .table-card {
+    background: #1e293b;
+    border-color: #334155;
+  }
+  .card-header, .card-footer, .metrics-block {
+    background: #0f172a;
+  }
+  .text-slate-900, .metric-val {
+    color: #f8fafc;
+  }
+  .code-badge {
+    background: #334155;
+    border-color: #475569;
+    color: #f8fafc;
+  }
 }
 </style>

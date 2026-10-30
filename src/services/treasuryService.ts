@@ -311,6 +311,30 @@ export const registerMovement = async (input: MovementInput): Promise<any> => {
       }
     }
 
+    // ── VALIDAÇÃO DE SALDO FÍSICO NA GAVETA (SAÍDA DE NUMERÁRIO) ──
+    if (
+      !isElectronic(paymentMethod) &&
+      type === "SAIDA" &&
+      !["DIFERENCA_CAIXA"].includes(String(category))
+    ) {
+      const fundoAbertura = register.getDataValue("counted_open");
+      const naGaveta = round2(
+        (Number(fundoAbertura != null ? fundoAbertura : register.getDataValue("opening_balance")) || 0) +
+          (Number(register.getDataValue("total_cash_in")) || 0) -
+          (Number(register.getDataValue("total_cash_out")) || 0)
+      );
+      if (round2(amount) > naGaveta) {
+        throw {
+          code: "INSUFFICIENT_CASH",
+          message:
+            `Numerário insuficiente na gaveta do caixa (disponível: ${naGaveta.toFixed(2)} MZN; solicitado: ${round2(amount).toFixed(2)} MZN). ` +
+            `Efectue um REFORÇO DE CAIXA a partir do Cofre Central antes de realizar a saída.`,
+          dinheiro_em_caixa: naGaveta,
+          solicitado: round2(amount),
+        };
+      }
+    }
+
     // ── Passo 2: validações de método/conta ──
     let account: any = null;
     if (isElectronic(paymentMethod)) {
@@ -399,6 +423,25 @@ export const registerMovement = async (input: MovementInput): Promise<any> => {
     await recalculateRegisterTotals(register.getDataValue("id"), transaction);
 
     await transaction.commit();
+
+    // ── RAZÃO CONTABILÍSTICO (Partidas Dobradas): Despesas Operacionais (OPEX) ──
+    if (type === "SAIDA" && !["DESEMBOLSO", "DEPOSITO_BANCO"].includes(String(category))) {
+      try {
+        const { recordExpenseLedger } = await import("./generalLedgerService");
+        await recordExpenseLedger({
+          companyId,
+          cashMovementId: movement.getDataValue("id"),
+          category,
+          amount,
+          paymentMethod,
+          bankAccountId,
+          description: finalDescription,
+          userId: userId || undefined,
+        });
+      } catch (ledgerErr: any) {
+        console.error("[GeneralLedger] Erro ao lançar despesa no razão:", ledgerErr?.message || ledgerErr);
+      }
+    }
 
     if (automatic) {
       console.log(

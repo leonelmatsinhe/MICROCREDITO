@@ -28,7 +28,6 @@
             placeholder="Data início"
             mask="##/##/####"
             style="width: 135px"
-            bg-color="white"
             :error="dateError !== ''"
             :loading="loading"
             @blur="applyDraftDates"
@@ -58,7 +57,6 @@
             placeholder="Data fim"
             mask="##/##/####"
             style="width: 135px"
-            bg-color="white"
             :error="dateError !== ''"
             @blur="applyDraftDates"
             @keyup.enter="applyDraftDates"
@@ -244,9 +242,14 @@ function clearFilters() {
 
 body.body--dark {
   .filter-card {
-    background: rgba(30, 41, 59, 0.7);
-    border-color: rgba(255, 255, 255, 0.06);
+    background: #162032 !important;
+    border-color: rgba(255, 255, 255, 0.08);
   }
-  .period-label { color: #e5e7eb; }
+  .quick-toggle {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .period-label {
+    color: #e5e7eb;
+  }
 }
 </style>

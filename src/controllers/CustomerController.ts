@@ -69,8 +69,15 @@ const findAllCustomers = async (req: Request, res: Response) => {
 
   try {
     // Condição base: filtrar por empresa
-    // SPRINT 6: o Gestor só vê a SUA carteira (customers.creditManager).
-    const whereClause: any = { companyId: id, ...gestorScopeWhere(await actorFromRequest(req)) };
+    // Opção A (Regra de Negócio): A tela geral de Mutuários (/mutuarios) permite
+    // aos Gestores de Crédito consultar e pesquisar toda a base cadastral da empresa
+    // (para simulações, histórico e concessões). O escopo estrito de carteira aplica-se
+    // quando explicitamente solicitado (?onlyMyPortfolio=true) ou em "A Minha Carteira".
+    const onlyMyPortfolio = req.query.onlyMyPortfolio === "true";
+    const whereClause: any = { companyId: id };
+    if (onlyMyPortfolio) {
+      Object.assign(whereClause, gestorScopeWhere(await actorFromRequest(req)));
+    }
 
     if (bairro.trim()) {
       whereClause.customerBairro = { [Op.like]: `%${bairro.trim()}%` };
