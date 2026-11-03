@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="pt-MZ">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mais Mola — Proposta Comercial e Especificação Técnica</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    :root {
+      --navy: #0f172a;
+      --navy-card: #1e293b;
+      --navy-border: #334155;
+      --blue: #2563eb;
+      --blue-light: #60a5fa;
+      --blue-bg: #eff6ff;
+      --blue-border: #bfdbfe;
+      --text-main: #1e293b;
+      --text-muted: #475569;
+      --card-bg: #f8fafc;
+      --border: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text-main);
+      background: #e2e8f0;
+      line-height: 1.45;
+      padding: 24px 12px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .toolbar {
+      max-width: 210mm;
+      margin: 0 auto 16px auto;
+      background: #ffffff;
+      padding: 12px 20px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+    }
+
+    .toolbar-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .btn-print {
+      background: var(--blue);
+      color: #ffffff;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-print:hover {
+      background: #1d4ed8;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto 20px auto;
+      background: #ffffff;
+      padding: 16mm 18mm 14mm 18mm;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    /* Header */
+    .doc-header {
+      border-bottom: 2.5px solid var(--navy);
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+    }
+
+    .doc-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.3px;
+      margin-bottom: 4px;
+    }
+
+    .doc-subtitle {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--blue);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    /* Section Headings */
+    .section-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--navy);
+      text-transform: uppercase;
+      border-left: 3.5px solid var(--blue);
+      padding-left: 9px;
+      margin: 14px 0 9px 0;
+      letter-spacing: 0.2px;
+    }
+
+    p {
+      font-size: 11.3px;
+      color: #334155;
+      margin-bottom: 8px;
+    }
+
+    /* Benefits Box */
+    .benefits-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-left: 3.5px solid var(--blue);
+      border-radius: 6px;
+      padding: 11px 15px;
+      margin: 10px 0 14px 0;
+    }
+
+    .benefits-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .benefits-box ul,
+    .feature-card ul,
+    .finance-box ul {
+      margin-left: 16px;
+      font-size: 10.8px;
+      color: #334155;
+    }
+
+    .benefits-box li,
+    .feature-card li,
+    .finance-box li {
+      margin-bottom: 4px;
+    }
+
+    /* Flow Diagram (Dark Card matching Tá Valer PDF) */
+    .flow-container {
+      background: var(--navy);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 8px 0 14px 0;
+      color: #f8fafc;
+    }
+
+    .flow-step {
+      background: var(--navy-card);
+      border: 1px solid var(--navy-border);
+      border-radius: 5px;
+      padding: 6px 12px;
+      text-align: center;
+      font-size: 10.5px;
+      font-weight: 500;
+      color: #f1f5f9;
+    }
+
+    .flow-arrow {
+      text-align: center;
+      color: var(--blue-light);
+      font-size: 9px;
+      line-height: 1.1;
+      margin: 3px 0;
+    }
+
+    .flow-branches {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 2px 0;
+    }
+
+    .flow-branch {
+      background: var(--navy-card);
+      border: 1px solid var(--navy-border);
+      border-radius: 5px;
+      padding: 7px 8px;
+      text-align: center;
+    }
+
+    .flow-branch-title {
+      font-size: 10.2px;
+      font-weight: 700;
+      color: var(--blue-light);
+      margin-bottom: 3px;
+    }
+
+    .flow-branch-desc {
+      font-size: 9.4px;
+      color: #cbd5e1;
+      line-height: 1.3;
+    }
+
+    /* Profiles Table */
+    .roles-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 10.6px;
+    }
+
+    .roles-table th {
+      background: var(--navy);
+      color: #ffffff;
+      text-align: left;
+      padding: 7px 11px;
+      font-weight: 700;
+      font-size: 10.5px;
+    }
+
+    .roles-table td {
+      padding: 8px 11px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      color: #334155;
+    }
+
+    .roles-table tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    .roles-table td:first-child {
+      font-weight: 700;
+      color: var(--navy);
+      width: 26%;
+    }
+
+    /* Core Features Grid (Page 2) */
+    .features-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 8px;
+      margin-bottom: 12px;
+    }
+
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 13px 15px;
+    }
+
+    .feature-card-full {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 13px 15px;
+      margin-bottom: 16px;
+    }
+
+    .feature-title {
+      font-size: 11.8px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 7px;
+    }
+
+    /* Section 5 Box */
+    .finance-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 14px 16px;
+      margin-top: 8px;
+      margin-bottom: 16px;
+    }
+
+    .finance-box p {
+      font-size: 11.2px;
+      margin-bottom: 8px;
+    }
+
+    .sub-list {
+      margin-top: 4px;
+      margin-left: 18px;
+      list-style-type: circle;
+    }
+
+    /* Contact Box (Section 6) */
+    .contact-box {
+      background: var(--blue-bg);
+      border: 1px solid var(--blue-border);
+      border-radius: 7px;
+      padding: 14px 16px;
+      margin-top: 8px;
+    }
+
+    .contact-box p {
+      font-size: 11.2px;
+      color: var(--navy);
+      margin-bottom: 7px;
+    }
+
+    .contact-box ul {
+      margin-left: 16px;
+      font-size: 11px;
+      color: var(--navy);
+    }
+
+    .contact-box li {
+      margin-bottom: 4px;
+    }
+
+    /* Footer */
+    .page-footer {
+      border-top: 1px solid var(--border);
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.8px;
+      color: #64748b;
+      margin-top: auto;
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .toolbar {
+        display: none !important;
+      }
+      .page {
+        margin: 0;
+        box-shadow: none;
+        page-break-after: always;
+        height: 297mm;
+      }
+      .page:last-child {
+        page-break-after: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <div class="toolbar-title">Mais Mola — Proposta Comercial e Especificação Técnica (2 Páginas)</div>
+    <button class="btn-print" onclick="window.print()">Imprimir / Guardar em PDF</button>
+  </div>
+
+  <!-- ================= PÁGINA 1 ================= -->
+  <div class="page">
+    <div>
+      <header class="doc-header">
+        <div class="doc-title">Mais Mola - Sistema Completo de Gestão para Instituições de Microcrédito</div>
+        <div class="doc-subtitle">PROPOSTA COMERCIAL E ESPECIFICAÇÃO TÉCNICA DA SOLUÇÃO</div>
+      </header>
+
+      <div class="section-title">1. VISÃO GERAL DA SOLUÇÃO</div>
+      <p>
+        O <strong>Mais Mola</strong> é uma plataforma integrada de gestão operacional, financeira e prudencial desenvolvida especialmente para otimizar a concessão de crédito, o controlo de cobranças, a tesouraria diária e a governação de instituições de microcrédito, operadores de microfinanças e fundos de financiamento.
+      </p>
+      <p>
+        A solução conecta todos os pontos da operação em tempo real: do cadastro documental (KYC), simulação prudencial e gestão da carteira pelo <strong>Gestor de Crédito</strong>, passando pela aprovação, desembolso, fecho de caixa e reporte regulatório pelo <strong>Administrador</strong>, até à prestação de contas transparente no <strong>Portal de Parceiros e Financiadores</strong>.
+      </p>
+
+      <div class="benefits-box">
+        <div class="benefits-title">Benefícios Principais</div>
+        <ul>
+          <li><strong>Rigor Prudencial e Redução de Incumprimento:</strong> Validação obrigatória de KYC, teste automático do limite de esforço de 1/3 do rendimento e cobertura de garantias reais (capital + juros).</li>
+          <li><strong>Controlo Financeiro e Tesouraria Auditável:</strong> Abertura e fecho de caixa diário cego, validação dupla de desembolso (carteira analítica vs. saldo real) e conciliação multi-conta.</li>
+          <li><strong>Transparência para Parceiros Financiadores:</strong> Portal dedicado (<em>read-only</em>) por carteira de investimento para consulta em tempo real do capital alocado, lucros, prestações, mora e recibos.</li>
+          <li><strong>Conformidade Legal e Regulatória (BM &amp; AT):</strong> Emissão automática de contratos e recibos sequenciais com QR Code, além do reporte oficial mensal e trimestral no modelo do Banco de Moçambique.</li>
+        </ul>
+      </div>
+
+      <div class="section-title">2. FLUXO OPERACIONAL DO CRÉDITO</div>
+      <div class="flow-container">
+        <div class="flow-step">[ Cadastro do Mutuário (PF / Empresa) + Validação Obrigatória da Checklist KYC (BI, NUIT, Rendimentos) ]</div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-step">[ Simulação do Plano (Tabela Price) + Teste de Capacidade (Regra de 1/3) + Registo de Garantias Reais ]</div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-step">[ Submissão do Pedido pelo Gestor ➔ Validação Dupla de Capital (Carteira de Financiamento + Conta Real) ]</div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-step">[ Aprovação e Desembolso Seguro (M-Pesa / e-Mola / Transferência Bancária / Caixa Físico) ]</div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-step">[ Geração Automática do Pacote Legal Imutável (Contrato, Termo, Garantias e Plano) com Hash &amp; QR Code ]</div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-step">[ Gestão de Prestações: Em Curso ➔ Alertas de Vencimento / Cálculo de Mora Diária ➔ Amortização ]</div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-branches">
+          <div class="flow-branch">
+            <div class="flow-branch-title">( Administrador )</div>
+            <div class="flow-branch-desc">Controlo de Caixa, Contas Bancárias, Recibos Legais e Reportes ao BM</div>
+          </div>
+          <div class="flow-branch">
+            <div class="flow-branch-title">( Gestor de Crédito )</div>
+            <div class="flow-branch-desc">Acompanhamento da Carteira, Cobranças, Mora Diária e Garantias</div>
+          </div>
+          <div class="flow-branch">
+            <div class="flow-branch-title">( Portal de Financiadores )</div>
+            <div class="flow-branch-desc">Monitorização em Tempo Real do Capital Alocado, Retorno e Extratos</div>
+          </div>
+        </div>
+        <div class="flow-arrow">▼</div>
+        <div class="flow-step">[ Emissão de Recibo Sequencial Legal (REC-AAAA-00001) + Fecho Diário de Caixa e Relatórios Oficiais ]</div>
+      </div>
+
+      <div class="section-title">3. PERFIS E PAPÉIS DE UTILIZADORES</div>
+      <p>O Mais Mola oferece permissões estruturadas e segregação de funções de acordo com o papel de cada interveniente na instituição:</p>
+
+      <table class="roles-table">
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            <th>Descrição das Responsabilidades e Acessos</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Administrador (Admin)</td>
+            <td>Acesso irrestrito à governação da instituição: abertura e fecho do caixa diário, gestão de tesouraria e contas bancárias/carteiras móveis, criação de carteiras de financiamento e taxas de juro, aprovação e desembolso de créditos, registo global de pagamentos, configuração de multas/SMS, gestão de equipa/parceiros, auditoria de sistema (<em>logs</em> com IP) e emissão dos relatórios do Banco de Moçambique (BM) e de financiadores.</td>
+          </tr>
+          <tr>
+            <td>Gestor de Crédito</td>
+            <td>Gestão ativa da carteira comercial e análise de risco: cadastro de mutuários (PF e Empresas), carregamento e validação da checklist documental (KYC), simulação de planos de amortização (Price), submissão de propostas (com parecer obrigatório caso exceda 1/3 do rendimento), registo fotográfico e avaliação de garantias, análise de pedidos, acompanhamento diário de prestações a vencer ou em mora e emissão do pacote de documentos legais.</td>
+          </tr>
+          <tr>
+            <td>Portal de Parceiros / Financiadores</td>
+            <td>Ambiente exclusivo e isolado (<em>read-only</em>) para investidores e fundos externos acompanharem a sua própria carteira de capital: visualização de KPIs (capital alocado, desembolsado, disponível, juros gerados/recebidos, previsão de lucro e mora), consulta de créditos concedidos, prestações pagas e pendentes, evolução mensal, exportação de extratos em Excel e download de recibos fiscais em PDF.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <footer class="page-footer">
+      <span>Mais Mola — Proposta Comercial e Especificação Técnica</span>
+      <span>Página 1 de 2</span>
+    </footer>
+  </div>
+
+  <!-- ================= PÁGINA 2 ================= -->
+  <div class="page">
+    <div>
+      <div class="section-title" style="margin-top: 0;">4. FUNCIONALIDADES CORE</div>
+
+      <div class="features-grid-2">
+        <div class="feature-card">
+          <div class="feature-title">4.1. Gestão de Crédito e Risco (Gestor de Crédito)</div>
+          <ul>
+            <li><strong>Dossier KYC com Bloqueio Automático:</strong> Impede a criação ou desembolso de qualquer crédito sem os documentos base obrigatórios (BI/Passaporte, NUIT e Comprovativo de Rendimentos).</li>
+            <li><strong>Simulador Price e Regra de 1/3:</strong> Cálculo instantâneo do plano de amortização com alerta visual de capacidade financeira, exigência de parecer em PDF para exceções e validação de garantias (valor &ge; capital + juros).</li>
+            <li><strong>Pacote Contratual e Cobrança:</strong> Emissão automática do Contrato de Concessão, Termo de Responsabilidade, Declaração de Garantias e Extrato atualizado, aliado ao painel de vencimentos e mora diária.</li>
+          </ul>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-title">4.2. Administração, Tesouraria e Governança (Admin)</div>
+          <ul>
+            <li><strong>Validação Dupla no Desembolso:</strong> Cruza o limite analítico disponível na <em>Carteira de Financiamento</em> com o saldo real disponível nas <em>Contas de Desembolso</em> (Bancos, M-Pesa, e-Mola ou Cofre).</li>
+            <li><strong>Engenharia de Produtos e Carteiras:</strong> Criação de múltiplas fontes de capital (fundos próprios, linhas bancárias ou parceiros externos), vinculação de taxas de juro (% a.m.) e taxas administrativas.</li>
+            <li><strong>Rastreabilidade e Auditoria Completa:</strong> Histórico imutável de todas as ações críticas (logins, aprovações, pagamentos, estornos e configurações) com utilizador, data/hora e endereço IP.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="feature-card-full">
+        <div class="feature-title">4.3. Portal de Parceiros e Financiadores (Transparência ao Investidor)</div>
+        <ul>
+          <li>Painel exclusivo de leitura (<em>read-only</em>) com isolamento rigoroso no servidor: cada parceiro acede apenas aos dados da sua carteira de financiamento associada.</li>
+          <li>Monitorização em tempo real do capital alocado, barra de utilização do fundo, total desembolsado, saldo disponível, juros recebidos, previsão de lucro e mora acumulada/pendente.</li>
+          <li>Consulta detalhada de créditos desembolsados, prestações pagas e em atraso, exportação do extrato financeiro em Excel e download direto dos recibos fiscais em PDF.</li>
+        </ul>
+      </div>
+
+      <div class="section-title">5. CONTROLO FINANCEIRO, TESOURARIA E CONFORMIDADE (BM / AT)</div>
+      <div class="finance-box">
+        <p>O módulo financeiro e regulatório do Mais Mola garante controlo total sobre o fluxo de caixa e conformidade legal da instituição:</p>
+        <ul>
+          <li><strong>Controlo de Caixa Diário e Cofre Central:</strong> Abertura obrigatória de caixa com contagem de fundo de maneio por denominações, registo automático de desembolsos/reembolsos, transferências entre cofre e bancos, e fecho de caixa cego com apuramento de diferenças.</li>
+          <li><strong>Múltiplos Canais e Modalidades de Recebimento:</strong> Suporte a M-Pesa, e-Mola, Transferência Bancária, Cheque e Numerário, permitindo pagamentos totais, parciais (com recálculo automático de saldo), com desconto justificado ou liquidação total antecipada numa única operação atómica.</li>
+          <li>
+            <strong>Relatórios Gerenciais, Fiscais e Regulatórios:</strong>
+            <ul class="sub-list">
+              <li><strong>Reporte Oficial ao Banco de Moçambique (BM):</strong> Geração automática do Relatório Mensal e da Ficha de Reporte Trimestral em Excel (fiel ao modelo oficial do BM) e PDF, com desagregação por sector de atividade, género e Classes de Risco (I a IV / PAR).</li>
+              <li><strong>Prestação de Contas a Financiadores:</strong> Relatório isolado por carteira exportável em Excel (2 abas: Desembolsos e Recebimentos) e envio direto por e-mail ao parceiro.</li>
+              <li><strong>Recibos Fiscais Sequenciais:</strong> Numeração anual sem saltos (<code>REC-AAAA-00001</code>), decomposição de capital, juros, mora e saldo remanescente, selo eletrónico SHA-256 e validação pública por QR Code.</li>
+              <li><strong>Exportações Operacionais:</strong> Extração instantânea de grelhas de mutuários, créditos, prestações e recebimentos em PDF e Excel.</li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+
+      <div class="section-title">6. INFORMAÇÕES DE CONTACTO</div>
+      <div class="contact-box">
+        <p>Para demonstrações, suporte ou contratação do sistema Mais Mola, entre em contacto:</p>
+        <ul>
+          <li><strong>Responsável Comercial:</strong> Leonel Matsinhe</li>
+          <li><strong>Telefone / WhatsApp:</strong> 870740202</li>
+          <li><strong>E-mail:</strong> leonelmatsinhe@gmail.com</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer class="page-footer">
+      <span>Mais Mola — Proposta Comercial e Especificação Técnica</span>
+      <span>Página 2 de 2</span>
+    </footer>
+  </div>
+
+</body>
+</html>

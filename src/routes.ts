@@ -297,6 +297,13 @@ import { tablePdf } from "./controllers/TablePdfController";
 import { isAdmin, isCompanyAdmin, isLoanAdmin, isPartner, isSessionUser, isStaff } from "./middlewares/roles";
 import { exportCustomersExcel, exportLoansExcel, exportPaymentsExcel, exportInstallmentsExcel } from "./controllers/ExcelExportController";
 import * as MicrocreditController from "./controllers/MicrocreditController";
+import {
+  getInstallmentRenewalQuote,
+  downloadInstallmentRenewalMinutaPdf,
+  renewSingleInstallmentLoan,
+  listLoanRenewals,
+  downloadRenewalDocument,
+} from "./controllers/LoanRenewalController";
 
 
 const routes = express.Router();
@@ -308,6 +315,7 @@ routes.use(bankAccountRoutes);
 // AI BOT — DESACTIVADO: rota /api/ai-bot removida (assistente de IA desligado).
 // routes.use(aiBotRoutes);
 const documentUpload = multer(multerConfig).single("file");
+const renewalSignedDocUpload = multer(multerConfig).single("signedDocument");
 
 routes.get("/logo/:image", (req: Request, res: Response) => {
   // Suporta tanto "filename" como "/documents/filename"
@@ -621,6 +629,12 @@ routes.put("/api/tranzaction/:id", updateTranzaction);
 routes.get("/api/tranzaction/loan/reference-check", auth, checkReference);
 // PAGAMENTOS V2 — quote oficial server-side (o frontend deixa de calcular mora)
 routes.get("/api/installments/:id/quote", auth, getInstallmentQuote);
+// RENOVAÇÃO DE CRÉDITO POR PAGAMENTO DE JUROS (exclusivo para créditos de 1 prestação)
+routes.get("/api/installments/:id/renewal-quote", auth, getInstallmentRenewalQuote);
+routes.get("/api/installments/:id/renewal-minuta/pdf", auth, downloadInstallmentRenewalMinutaPdf);
+routes.post("/api/installments/:id/renew", auth, renewalSignedDocUpload, renewSingleInstallmentLoan);
+routes.get("/api/loans/:loanId/renewals", auth, listLoanRenewals);
+routes.get("/api/renewals/:renewalId/document/:kind", auth, downloadRenewalDocument);
 // ESTORNO FORMAL — só ADMIN; motivo obrigatório; transacção atómica
 routes.post("/api/tranzaction/:id/reverse", auth, reverseTranzaction);
 // Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA

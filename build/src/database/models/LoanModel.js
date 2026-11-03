@@ -80,4 +80,10 @@ exports.LoanModel = db_1.db.define("customer_loans", {
         allowNull: true,
         comment: "Carteira de financiamento (analítica) de origem do capital deste crédito",
     },
+    renewalCount: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: "Número de renovações efectuadas (apenas aplicável a créditos de 1 prestação)",
+    },
 });

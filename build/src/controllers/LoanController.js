@@ -890,7 +890,7 @@ const findAllLoansOverview = (req, res) => __awaiter(void 0, void 0, void 0, fun
         // do valor de cada prestação em aberto (status 0/-1), deduzindo o pago.
         const amortizations = (yield AmortizationLoanModel_1.AmorizationLoanModel.findAll({
             where: { loanId: { [sequelize_1.Op.in]: loanIds } },
-            attributes: ["loanId", "installment", "paidAmount", "status", "dueDate"],
+            attributes: ["loanId", "amortization", "rateAmount", "installment", "paidAmount", "status", "dueDate"],
             raw: true,
         }));
         const amortByLoan = {};

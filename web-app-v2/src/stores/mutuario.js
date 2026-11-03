@@ -31,7 +31,11 @@ export const useMutuarioStore = defineStore('mutuario', {
     liquidating: false,
     simulation: null,          // resultado do POST /api/loan/simulate
     quote: null,               // quote oficial da prestação (GET /api/installments/:id/quote)
-    quoteLoading: false
+    quoteLoading: false,
+    renewalQuote: null,        // quote oficial de renovação (GET /api/installments/:id/renewal-quote)
+    renewalQuoteLoading: false,
+    renewals: [],              // histórico de renovações do crédito em contexto
+    renewalsLoading: false
   }),
 
   getters: {
@@ -69,7 +73,8 @@ export const useMutuarioStore = defineStore('mutuario', {
     currentInstallmentAmount() {
       const list = this.contextInstallments.length > 0 ? this.contextInstallments : this.installments
       if (list.length > 0) {
-        return Number(list[0]?.installment) || 0
+        const currentPending = list.find(i => Number(i.status) !== 1) || list[list.length - 1]
+        return Number(currentPending?.installment) || 0
       }
       if (this.activeLoan) {
         const rate = Number(this.activeLoan.interestRate) || 0
@@ -468,6 +473,63 @@ export const useMutuarioStore = defineStore('mutuario', {
       if (payload?.loanId) {
         await Promise.all([this.fetchPlanFor(payload.loanId), this.fetchLoans()])
       }
+      return data
+    },
+
+    // ── RENOVAÇÃO DE CRÉDITO POR PAGAMENTO DE JUROS (exclusivo 1 prestação) ──
+    async fetchRenewalQuote(installmentId, params = {}) {
+      this.renewalQuoteLoading = true
+      try {
+        const { data } = await api.get(`/api/installments/${installmentId}/renewal-quote`, {
+          params
+        })
+        if (data.success) {
+          this.renewalQuote = data.result
+          return data.result
+        }
+        throw new Error(data.message || 'Erro ao calcular cotação de renovação')
+      } finally {
+        this.renewalQuoteLoading = false
+      }
+    },
+
+    async fetchLoanRenewals(loanId) {
+      if (!loanId) {
+        this.renewals = []
+        return []
+      }
+      this.renewalsLoading = true
+      try {
+        const { data } = await api.get(`/api/loans/${loanId}/renewals`)
+        if (data && data.success && Array.isArray(data.result)) {
+          this.renewals = data.result
+          return data.result
+        }
+        this.renewals = []
+        return []
+      } catch {
+        this.renewals = []
+        return []
+      } finally {
+        this.renewalsLoading = false
+      }
+    },
+
+    async renewInstallment(installmentId, formData, loanId) {
+      const { data } = await api.post(`/api/installments/${installmentId}/renew`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      if (!data.success) throw new Error(data.message || 'Erro ao renovar contrato de crédito')
+      const targetLoanId = loanId || this.contextLoan?.id || this.activeLoan?.id
+      const acc = this.customer?.accountNumber
+      await Promise.all([
+        targetLoanId ? this.fetchPlanFor(targetLoanId) : Promise.resolve(),
+        targetLoanId ? this.fetchLoanRenewals(targetLoanId) : Promise.resolve(),
+        this.fetchLoans(),
+        this.fetchAmortization(),
+        acc ? this.fetchChecklist(acc) : Promise.resolve(),
+        acc ? this.fetchTransactions(acc) : Promise.resolve()
+      ])
       return data
     },
 

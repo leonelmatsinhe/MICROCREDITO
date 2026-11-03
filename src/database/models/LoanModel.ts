@@ -79,4 +79,10 @@ export const LoanModel = db.define("customer_loans", {
     allowNull: true,
     comment: "Carteira de financiamento (analítica) de origem do capital deste crédito",
   },
+  renewalCount: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    comment: "Número de renovações efectuadas (apenas aplicável a créditos de 1 prestação)",
+  },
 });

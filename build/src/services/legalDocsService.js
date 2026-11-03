@@ -1008,7 +1008,7 @@ const buildTermoCompromisso = (ctx, data) => {
     para(ctx, "Sendo expressão da verdade e sem qualquer coação, firmo presente.", { size: 10 });
     doc.moveDown(1.2);
     doc.font("Helvetica").fontSize(10).fillColor("#000000");
-    doc.text(`Mukhatine, ${fmtDateShort(l.getDataValue("updatedAt") || l.getDataValue("dateCreated"))}`, { width, align: "center" });
+    doc.text(`Maputo, ${fmtDateShort(l.getDataValue("updatedAt") || l.getDataValue("dateCreated"))}`, { width, align: "center" });
     doc.moveDown(3);
     doc.text("……………………………………………………………………………………", { width, align: "center" });
     doc.moveDown(0.4);

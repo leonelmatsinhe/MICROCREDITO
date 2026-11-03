@@ -5,6 +5,9 @@
       <q-card-section class="row items-center q-gutter-sm">
         <q-icon name="account_balance_wallet" size="20px" color="primary" />
         <div class="text-subtitle1 text-weight-bold">Plano de Amortização</div>
+        <q-badge v-if="Number(contextLoan?.renewalCount) > 0" color="deep-purple" class="q-ml-xs" rounded>
+          {{ contextLoan.renewalCount }}x Renovado
+        </q-badge>
         <q-space />
         <q-select
           v-model="selectedLoanId"
@@ -36,6 +39,13 @@
       <!-- Acções -->
       <div class="row q-gutter-sm q-mb-md justify-end">
         <q-btn
+          v-if="isSingleInstallmentLoan && canRegisterPayment(authStore.userRole)"
+          unelevated color="deep-purple" icon="autorenew"
+          :label="pendingInterestAlreadyPaidInstallment ? 'Formalizar Renovação (Juros Pagos)' : 'Renovar Crédito (Juros)'"
+          no-caps rounded
+          @click="openRenewalModal(store.pendingInstallments[0])"
+        />
+        <q-btn
           v-if="canRegisterPayment(authStore.userRole)"
           unelevated color="positive" icon="paid"
           label="Liquidar Dívida Total" no-caps rounded
@@ -47,6 +57,36 @@
         <q-btn unelevated color="primary" icon="picture_as_pdf" label="Baixar Extracto Atualizado (PDF)" no-caps rounded :disable="contextInstallments.length === 0" :loading="extracting" @click="printCreditExtract" />
         <q-btn outline color="grey-7" icon="description" label="Documentos Legais" no-caps rounded @click="$emit('go-to-legais')" />
       </div>
+
+      <!-- Banner de Renovação Pendente quando os juros já foram pagos como Pago Parcial -->
+      <q-banner
+        v-if="pendingInterestAlreadyPaidInstallment && canRegisterPayment(authStore.userRole)"
+        rounded
+        class="bg-deep-purple-1 text-deep-purple-10 q-mb-md"
+        style="border: 1px solid #b39ddb"
+      >
+        <template v-slot:avatar>
+          <q-icon name="autorenew" color="deep-purple" size="28px" />
+        </template>
+        <div class="text-weight-bold">
+          Juros do Período Liquidados ({{ formatMoney(pendingInterestAlreadyPaidInstallment.paidAmount) }}) — Renovação de Contrato Disponível
+        </div>
+        <div class="text-caption">
+          Este crédito de prestação única já teve o valor de juros pago. Pode formalizar a renovação do contrato para o próximo mês (com opção de isentar ou perdoar a mora acumulada) anexando o Termo de Renovação assinado pelo cliente.
+        </div>
+        <template v-slot:action>
+          <q-btn
+            unelevated
+            color="deep-purple"
+            icon="upload_file"
+            label="Formalizar Renovação"
+            no-caps
+            dense
+            class="q-px-sm"
+            @click="openRenewalModal(pendingInterestAlreadyPaidInstallment)"
+          />
+        </template>
+      </q-banner>
 
       <!-- Tabela pendentes -->
       <div v-if="store.pendingInstallments.length > 0" class="q-mb-lg">
@@ -90,6 +130,9 @@
               <q-btn v-if="canRegisterPayment(authStore.userRole)" dense flat round icon="content_cut" size="sm" color="teal" @click="openPayment(props.row, 'partial')">
                 <q-tooltip>Pagamento parcial</q-tooltip>
               </q-btn>
+              <q-btn v-if="isSingleInstallmentLoan && canRegisterPayment(authStore.userRole)" dense flat round icon="autorenew" size="sm" color="deep-purple" @click="openRenewalModal(props.row)">
+                <q-tooltip>Renovar Contrato (Pagar Juros + Documento Assinado)</q-tooltip>
+              </q-btn>
               <q-btn v-if="canRegisterPayment(authStore.userRole)" dense flat round icon="sell" size="sm" color="primary" @click="openPayment(props.row, 'discount')">
                 <q-tooltip>Pagar com desconto</q-tooltip>
               </q-btn>
@@ -121,6 +164,7 @@
               <q-btn dense outline color="orange" label="Pagar" no-caps @click="openPayment(row, 'full')" />
               <q-btn dense outline color="teal" label="Parcial" no-caps @click="openPayment(row, 'partial')" />
               <q-btn dense outline color="primary" label="Desconto" no-caps @click="openPayment(row, 'discount')" />
+              <q-btn v-if="isSingleInstallmentLoan" dense unelevated color="deep-purple" icon="autorenew" label="Renovar" no-caps @click="openRenewalModal(row)" />
             </q-card-actions>
           </q-card>
         </div>
@@ -230,6 +274,15 @@
     <!-- Visualizador do recibo legal (PDF servido pelo backend) -->
     <ReciboViewerDialog v-model="reciboViewerOpen" :recibo="reciboViewer" />
 
+    <!-- Modal de Renovação de Crédito por Pagamento de Juros (Exclusivo 1 Prestação) -->
+    <RenovarCreditoModal
+      v-model="showRenewalModal"
+      :installment="renewalInstallment"
+      :loan="contextLoan"
+      :customer="store.customer"
+      @renewed="onRenovacaoRealizada"
+    />
+
     <!-- Modal de Envio de Alertas de Cobrança com 8 Templates & WhatsApp Directo -->
     <SendMessageModal
       v-model="showMessageModal"
@@ -253,6 +306,7 @@ import ReciboViewerDialog from '@/components/recibos/ReciboViewerDialog.vue'
 import RegistarPagamentoModal from '@/components/mutuario/RegistarPagamentoModal.vue'
 import LiquidarDividaModal from '@/components/mutuario/LiquidarDividaModal.vue'
 import SendMessageModal from '@/components/modals/SendMessageModal.vue'
+import RenovarCreditoModal from '@/components/mutuario/RenovarCreditoModal.vue'
 
 const $q = useQuasar()
 const store = useMutuarioStore()
@@ -341,6 +395,16 @@ async function baixarUltimoRecibo() {
 }
 
 const showLiquidateDialog = ref(false)
+const showPaymentModal = ref(false)
+const showRenewalModal = ref(false)
+const renewalInstallment = ref(null)
+const reciboLoadingId = ref(null)
+const reciboViewerOpen = ref(false)
+const reciboViewer = ref(null)
+const sucessoPagamento = ref(false)
+const ultimoPagamento = ref(null)
+const baixandoRecibo = ref(false)
+const extracting = ref(false)
 const showPaymentModal = ref(false)
 const paymentMode = ref('full') // full | partial | discount
 const currentInstallment = ref(null)
@@ -446,6 +510,39 @@ const paidColumns = [
 ]
 
 function openPayment(installment, mode) {
+  currentInstallment.value = installment
+  paymentMode.value = mode
+  showPaymentModal.value = true
+}
+
+const isSingleInstallmentLoan = computed(() => {
+  if (!contextLoan.value || Number(contextLoan.value.status) !== 1) return false
+  return Number(contextLoan.value.numberOfInstallments) === 1 && store.pendingInstallments.length === 1
+})
+
+const pendingInterestAlreadyPaidInstallment = computed(() => {
+  if (!isSingleInstallmentLoan.value) return null
+  const inst = store.pendingInstallments[0]
+  if (!inst) return null
+  const paid = Number(inst.paidAmount) || 0
+  const rate = Number(inst.rateAmount) || 0
+  return rate > 0 && paid >= rate - 0.01 ? inst : null
+})
+
+function openRenewalModal(installment) {
+  renewalInstallment.value = installment || store.pendingInstallments[0] || null
+  if (!renewalInstallment.value) return
+  showRenewalModal.value = true
+}
+
+function onRenovacaoRealizada(res) {
+  if (res?.recibo) {
+    ultimoPagamento.value = { tranzactionId: res.tranzactionId || null, recibo: res.recibo }
+    sucessoPagamento.value = true
+  }
+}
+
+function _unusedOldOpenPayment(installment, mode) {
   currentInstallment.value = installment
   paymentMode.value = mode
   showPaymentModal.value = true

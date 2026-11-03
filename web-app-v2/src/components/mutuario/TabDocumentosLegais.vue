@@ -59,6 +59,69 @@
            pacote imutável de cima. Os documentos legais saem SEMPRE do pacote
            de concessão; o extracto dinâmico fica na secção abaixo.) -->
 
+      <!-- ═══ ADITAMENTOS DE RENOVAÇÃO DE CONTRATO (CRÉDITOS DE 1 PRESTAÇÃO) ═══ -->
+      <q-card v-if="store.renewals && store.renewals.length > 0" flat bordered class="q-mb-md" style="border-radius: 12px; border-color: #d1c4e9">
+        <q-card-section>
+          <div class="row items-center q-mb-sm">
+            <q-icon name="autorenew" size="20px" color="deep-purple" class="q-mr-sm" />
+            <div class="text-subtitle1 text-weight-bold text-deep-purple-9">
+              Aditamentos de Renovação do Contrato ({{ store.renewals.length }})
+            </div>
+            <q-badge color="deep-purple-1" text-color="deep-purple-9" class="q-ml-sm">
+              Renovação por Liquidação de Juros
+            </q-badge>
+          </div>
+          <div class="row q-col-gutter-sm">
+            <div class="col-12 col-md-6" v-for="ren in store.renewals" :key="ren.id">
+              <q-card flat bordered style="border-radius: 10px; background: #faf8ff">
+                <q-card-section class="q-py-sm">
+                  <div class="row items-center justify-between q-mb-xs">
+                    <div class="text-subtitle2 text-weight-bold text-deep-purple-9">
+                      {{ ren.renewalNumber }}ª Renovação · {{ formatDateShort(ren.renewalDate) }}
+                    </div>
+                    <q-badge color="positive" outline>
+                      Novo Venc.: {{ formatDateShort(ren.newDueDate) }}
+                    </q-badge>
+                  </div>
+                  <div class="text-caption text-grey-8">
+                    Capital Transitado: <strong>{{ formatMoney(ren.principalAmount) }}</strong> ·
+                    Juros Pagos: <strong class="text-positive">{{ formatMoney(ren.interestPaid) }}</strong>
+                    <template v-if="Number(ren.moraCharged) > 0">
+                      · Mora Cobrada: <strong class="text-negative">{{ formatMoney(ren.moraCharged) }}</strong>
+                    </template>
+                    <template v-if="Number(ren.moraWaived) > 0">
+                      · Mora Perdoada: <strong class="text-teal">{{ formatMoney(ren.moraWaived) }}</strong>
+                    </template>
+                  </div>
+                  <div class="row q-gutter-xs q-mt-sm">
+                    <q-btn
+                      v-if="ren.generatedDocFile"
+                      outline
+                      dense
+                      no-caps
+                      color="deep-purple"
+                      icon="picture_as_pdf"
+                      label="Termo Gerado (PDF)"
+                      @click="abrirDocRenovacao(ren.id, 'generated')"
+                    />
+                    <q-btn
+                      v-if="ren.signedDocFile"
+                      unelevated
+                      dense
+                      no-caps
+                      color="deep-purple"
+                      icon="verified"
+                      label="Documento Assinado (Upload)"
+                      @click="abrirDocRenovacao(ren.id, 'signed')"
+                    />
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+        </q-card-section>
+      </q-card>
+
       <!-- Extracto do crédito -->
       <q-card flat bordered class="q-mt-md" style="border-radius: 12px">
         <q-card-section>
@@ -411,7 +474,11 @@ async function loadLoanData(loanId) {
     } catch { amortization.value = [] }
 
     // Pacote de concessão (fluxo 1 — imutável)
-    await fetchConcessao()
+    // Pacote de concessão (fluxo 1 — imutável) e histórico de renovações
+    await Promise.all([
+      fetchConcessao(),
+      store.fetchLoanRenewals(loanId)
+    ])
   } catch (e) {
     console.error('Erro ao carregar dados do crédito:', e)
     $q.notify({ type: 'negative', message: 'Erro ao carregar dados do crédito', position: 'top' })
@@ -435,6 +502,24 @@ onMounted(() => {
 
 // ── Gerar PDF do extracto — geração no BACKEND (pdfkit, layout do PDF oficial)
 // via blob autenticado (rota existente GET /api/loans/:id/documents/extracto/pdf).
+async function abrirDocRenovacao(renewalId, kind) {
+  try {
+    const response = await api.get(`/api/renewals/${renewalId}/document/${kind}`, {
+      responseType: 'blob'
+    })
+    const mime = response.headers?.['content-type'] || 'application/pdf'
+    const url = URL.createObjectURL(new Blob([response.data], { type: mime }))
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (e) {
+    $q.notify({
+      type: 'negative',
+      message: e.response?.data?.message || 'Não foi possível abrir o documento da renovação.',
+      position: 'top'
+    })
+  }
+}
+
 async function gerarExtracto() {
   if (!loan.value?.id) return
   generating.value = 'extracto'

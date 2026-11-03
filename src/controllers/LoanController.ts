@@ -955,7 +955,7 @@ const findAllLoansOverview = async (req: Request, res: Response) => {
     // do valor de cada prestação em aberto (status 0/-1), deduzindo o pago.
     const amortizations: any[] = (await AmorizationLoanModel.findAll({
       where: { loanId: { [Op.in]: loanIds } },
-      attributes: ["loanId", "installment", "paidAmount", "status", "dueDate"],
+      attributes: ["loanId", "amortization", "rateAmount", "installment", "paidAmount", "status", "dueDate"],
       raw: true,
     })) as any[];
     const amortByLoan: Record<number, any[]> = {};

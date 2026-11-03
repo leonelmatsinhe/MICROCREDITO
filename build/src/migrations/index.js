@@ -1524,6 +1524,40 @@ const migratePaymentsV2 = (results) => __awaiter(void 0, void 0, void 0, functio
     yield addIndexIfMissing("cash_registers", "idx_cash_registers_mode_day", ["companyId", "mode", "opening_date"], results);
     // FK real para a tabela de contas JÁ existente (`accounts`).
     yield addForeignKeyIfMissing("cash_registers", "fk_cash_registers_bank_account", "bank_account_id", "accounts", "id", "SET NULL", results);
+    // ── 19. RENOVAÇÃO DE CRÉDITO POR PAGAMENTO DE JUROS (CRÉDITOS DE 1 PRESTAÇÃO) ──
+    yield addColumnIfMissing("customer_loans", "renewalCount", "INT NOT NULL DEFAULT 0", results);
+    yield createTableIfMissing("loan_renewals", `CREATE TABLE IF NOT EXISTS loan_renewals (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL,
+      loanId INT NOT NULL,
+      customerId INT NOT NULL,
+      accountNumber INT NOT NULL,
+      fromInstallmentId INT NOT NULL,
+      toInstallmentId INT NOT NULL,
+      tranzactionId INT NULL,
+      renewalNumber INT NOT NULL DEFAULT 1,
+      principalAmount DECIMAL(15,2) NOT NULL,
+      interestPaid DECIMAL(15,2) NOT NULL,
+      moraCalculated DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      moraCharged DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      moraWaived DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+      newInterestAmount DECIMAL(15,2) NOT NULL,
+      newInstallmentAmount DECIMAL(15,2) NOT NULL,
+      previousDueDate DATE NOT NULL,
+      newDueDate DATE NOT NULL,
+      renewalDate DATE NOT NULL,
+      generatedDocFile VARCHAR(255) NULL,
+      signedDocFile VARCHAR(255) NOT NULL,
+      notes TEXT NULL,
+      createdBy INT NULL,
+      createdByName VARCHAR(150) NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_loan_renewals_loan (companyId, loanId),
+      INDEX idx_loan_renewals_customer (companyId, accountNumber),
+      INDEX idx_loan_renewals_from_inst (fromInstallmentId),
+      INDEX idx_loan_renewals_to_inst (toInstallmentId)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`, results);
     // ── 18. M-PESA OPEN API: TRANSAÇÕES ASSÍNCRONAS E AUDITORIA ──
     yield createTableIfMissing("mpesa_transactions", `CREATE TABLE IF NOT EXISTS mpesa_transactions (
       id INT AUTO_INCREMENT PRIMARY KEY,
