@@ -94,6 +94,7 @@ const TablePdfController_1 = require("./controllers/TablePdfController");
 const roles_1 = require("./middlewares/roles");
 const ExcelExportController_1 = require("./controllers/ExcelExportController");
 const MicrocreditController = __importStar(require("./controllers/MicrocreditController"));
+const LoanRenewalController_1 = require("./controllers/LoanRenewalController");
 const routes = express_1.default.Router();
 exports.routes = routes;
 // CAIXA DIÁRIO — sub-router isolado (tabelas cash_registers / cash_movements)
@@ -103,6 +104,7 @@ routes.use(bankAccountRoutes_1.bankAccountRoutes);
 // AI BOT — DESACTIVADO: rota /api/ai-bot removida (assistente de IA desligado).
 // routes.use(aiBotRoutes);
 const documentUpload = (0, multer_1.default)(multer_2.multerConfig).single("file");
+const renewalSignedDocUpload = (0, multer_1.default)(multer_2.multerConfig).single("signedDocument");
 routes.get("/logo/:image", (req, res) => {
     // Suporta tanto "filename" como "/documents/filename"
     const raw = req.params.image || '';
@@ -389,6 +391,12 @@ routes.put("/api/tranzaction/:id", TranzactionController_1.updateTranzaction);
 routes.get("/api/tranzaction/loan/reference-check", auth_1.auth, TranzactionController_1.checkReference);
 // PAGAMENTOS V2 — quote oficial server-side (o frontend deixa de calcular mora)
 routes.get("/api/installments/:id/quote", auth_1.auth, TranzactionController_1.getInstallmentQuote);
+// RENOVAÇÃO DE CRÉDITO POR PAGAMENTO DE JUROS (exclusivo para créditos de 1 prestação)
+routes.get("/api/installments/:id/renewal-quote", auth_1.auth, LoanRenewalController_1.getInstallmentRenewalQuote);
+routes.get("/api/installments/:id/renewal-minuta/pdf", auth_1.auth, LoanRenewalController_1.downloadInstallmentRenewalMinutaPdf);
+routes.post("/api/installments/:id/renew", auth_1.auth, renewalSignedDocUpload, LoanRenewalController_1.renewSingleInstallmentLoan);
+routes.get("/api/loans/:loanId/renewals", auth_1.auth, LoanRenewalController_1.listLoanRenewals);
+routes.get("/api/renewals/:renewalId/document/:kind", auth_1.auth, LoanRenewalController_1.downloadRenewalDocument);
 // ESTORNO FORMAL — só ADMIN; motivo obrigatório; transacção atómica
 routes.post("/api/tranzaction/:id/reverse", auth_1.auth, TranzactionController_1.reverseTranzaction);
 // Pagamento de prestação: exige caixa ABERTO hoje — movimentos ENTRADA

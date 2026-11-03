@@ -405,7 +405,6 @@ const sucessoPagamento = ref(false)
 const ultimoPagamento = ref(null)
 const baixandoRecibo = ref(false)
 const extracting = ref(false)
-const showPaymentModal = ref(false)
 const paymentMode = ref('full') // full | partial | discount
 const currentInstallment = ref(null)
 const selectedLoanId = ref(null)
