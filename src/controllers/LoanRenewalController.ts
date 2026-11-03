@@ -16,7 +16,8 @@ import {
   getFirstCashAccount,
   ReembolsoAccount,
 } from "../services/bankAccountResolver";
-import { getOpenRegisterAnyMode, recordPayment } from "../services/cashRegisterService";
+import { getOpenRegister, recordPayment } from "../services/cashRegisterService";
+import { isElectronicCashMode } from "../services/cashModeService";
 import { recordRepaymentLedger } from "../services/generalLedgerService";
 import { methodToTreasury } from "../utils/paymentMethodMap";
 import { actorFromRequest } from "../utils/requestActor";
@@ -164,6 +165,8 @@ export const renewSingleInstallmentLoan = async (req: Request, res: Response) =>
 
     const actor = await actorFromRequest(req);
     const body = req.body || {};
+    const actorUserId = Number((actor as any)?.userId || (actor as any)?.id) || null;
+    const staffName = String(body.staffName || (actor as any)?.name || "Operador");
     const payDate = body.payDate
       ? String(body.payDate).slice(0, 10)
       : new Date().toISOString().slice(0, 10);
@@ -212,15 +215,20 @@ export const renewSingleInstallmentLoan = async (req: Request, res: Response) =>
 
     if (needsPaymentNow) {
       // Verificar se o caixa do dia está aberto para receber o pagamento dos juros/mora
-      openRegister = await getOpenRegisterAnyMode(quote.companyId, quote.payDate);
-      if (!openRegister) {
-        removeUploadedFileSafely(uploadedFile);
-        return res.status(403).json({
-          success: false,
-          code: "CASH_REGISTER_CLOSED",
-          error: "Caixa fechado. Abra o caixa do dia antes de registar o pagamento da renovação.",
-          message: "Caixa fechado. Abra o caixa do dia antes de registar o pagamento da renovação.",
-        });
+      const isElectronic = await isElectronicCashMode(quote.companyId);
+      if (isElectronic) {
+        openRegister = { mode: "ELECTRONIC", id: null, bank_account_id: null };
+      } else {
+        openRegister = await getOpenRegister(actorUserId || 0, quote.companyId);
+        if (!openRegister) {
+          removeUploadedFileSafely(uploadedFile);
+          return res.status(403).json({
+            success: false,
+            code: "CASH_REGISTER_CLOSED",
+            error: "Caixa fechado. Abra o caixa do dia antes de registar o pagamento da renovação.",
+            message: "Caixa fechado. Abra o caixa do dia antes de registar o pagamento da renovação.",
+          });
+        }
       }
 
       const candidateAccountId =
@@ -304,8 +312,6 @@ export const renewSingleInstallmentLoan = async (req: Request, res: Response) =>
     let emittedRecibo: any = null;
     let renewalRecord: any = null;
     let newInstallmentRecord: any = null;
-    const staffName = String(body.staffName || (actor as any)?.name || "Operador");
-    const actorUserId = Number((actor as any)?.userId || (actor as any)?.id) || null;
 
     await db.transaction(async (t) => {
       const lockedInst: any = await AmorizationLoanModel.findOne({
