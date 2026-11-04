@@ -4,6 +4,7 @@ import path from "path";
 import { db } from "../database/db";
 import { AmorizationLoanModel } from "../database/models/AmortizationLoanModel";
 import { LoanModel } from "../database/models/LoanModel";
+import { CustomerModel } from "../database/models/CustomerModel";
 import { CustomerDocumentsModel } from "../database/models/CustomerDocumentsModel";
 import { TranzactionModel } from "../database/models/TranzactionModel";
 import { DebtModel } from "../database/models/DebtModel";
@@ -308,6 +309,27 @@ export const renewSingleInstallmentLoan = async (req: Request, res: Response) =>
     }
     fs.writeFileSync(path.join(docsDir, generatedDocFile), pdfBuffer);
 
+    // Obter telefone do cliente para conformidade com a tabela tranzactions (phoneNumber NOT NULL)
+    let customerPhone = String(body.phoneNumber || "").trim();
+    if (!customerPhone && (quote.customerId || quote.accountNumber)) {
+      try {
+        const custRecord: any = quote.customerId
+          ? await CustomerModel.findByPk(quote.customerId, { attributes: ["customerPhone"] })
+          : await CustomerModel.findOne({
+              where: { accountNumber: quote.accountNumber },
+              attributes: ["customerPhone"],
+            });
+        if (custRecord) {
+          customerPhone = String(custRecord.getDataValue("customerPhone") || "").trim();
+        }
+      } catch (custErr) {
+        console.warn("[executeLoanRenewal] Aviso ao buscar telefone do cliente:", custErr);
+      }
+    }
+    if (!customerPhone) {
+      customerPhone = "—";
+    }
+
     let createdTxId: number | null = null;
     let emittedRecibo: any = null;
     let renewalRecord: any = null;
@@ -353,6 +375,7 @@ export const renewSingleInstallmentLoan = async (req: Request, res: Response) =>
             amortizationLoanId: installmentId,
             accountNumber: quote.accountNumber,
             customerId: quote.customerId,
+            phoneNumber: customerPhone,
             tranzactionReference: cleanReference,
             amount: quote.totalToPayNow,
             totalAmount: quote.totalToPayNow,

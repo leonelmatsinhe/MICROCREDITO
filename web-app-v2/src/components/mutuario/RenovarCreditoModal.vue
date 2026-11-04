@@ -1,10 +1,16 @@
 <template>
-  <q-dialog v-model="show" persistent>
-    <q-card class="renovar-modal">
+  <q-dialog
+    v-model="show"
+    persistent
+    :maximized="isMaximized"
+    transition-show="scale"
+    transition-hide="scale"
+  >
+    <q-card class="renovar-modal" :class="{ 'renovar-modal--maximized': isMaximized }">
       <!-- ── HEADER ── -->
       <q-card-section class="rm-header row items-center no-wrap">
         <div class="rm-header__icon">
-          <q-icon name="autorenew" size="24px" />
+          <q-icon name="autorenew" size="26px" />
         </div>
         <div class="col q-ml-md">
           <div class="rm-header__title">
@@ -14,10 +20,23 @@
             {{ customerDisplayName }} · Crédito #{{ effectiveLoan?.id }} · {{ quote?.renewalNumber || 1 }}ª Renovação (Exclusivo 1 Prestação)
           </div>
         </div>
-        <q-btn icon="close" flat round dense color="white" @click="close" />
+        <div class="row items-center q-gutter-xs">
+          <q-btn
+            :icon="isMaximized ? 'fullscreen_exit' : 'fullscreen'"
+            flat
+            round
+            dense
+            color="white"
+            @click="isMaximized = !isMaximized"
+          >
+            <q-tooltip>{{ isMaximized ? 'Restaurar tamanho normal' : 'Expandir para ecrã inteiro (Full Screen)' }}</q-tooltip>
+          </q-btn>
+          <q-btn icon="close" flat round dense color="white" @click="close" />
+        </div>
       </q-card-section>
 
-      <q-card-section class="q-pt-md q-pb-sm rm-body">
+      <!-- ── CORPO COM 2 COLUNAS DE ALTO RESPIRO ── -->
+      <q-card-section class="rm-body">
         <!-- Alerta se o crédito não for elegível -->
         <q-banner
           v-if="quote && !quote.eligible"
@@ -25,7 +44,7 @@
           class="bg-red-1 text-red-10 q-mb-md"
         >
           <template v-slot:avatar>
-            <q-icon name="block" color="negative" />
+            <q-icon name="block" color="negative" size="28px" />
           </template>
           <div class="text-weight-bold">Crédito Não Elegível para Renovação</div>
           <div class="text-caption">{{ quote.ineligibleReason }}</div>
@@ -44,138 +63,143 @@
             Juros do Período Já Recebidos ({{ formatMoney(quote.alreadyPaid) }})
           </div>
           <div class="text-caption">
-            O cliente já efectuou o pagamento correspondente aos juros desta prestação. Ao anexar o documento assinado e confirmar, a {{ quote.installmentOrder }}ª prestação será dada como liquidada pelos juros e o capital de <strong>{{ formatMoney(quote.principalAmount) }}</strong> transitará para a {{ quote.nextInstallmentOrder }}ª prestação.
+            O cliente já liquidou os juros devidos desta prestação. Ao anexar o documento assinado e confirmar, a {{ quote.installmentOrder }}ª prestação será formalizada como concluída e o capital de <strong>{{ formatMoney(quote.principalAmount) }}</strong> transitará para a {{ quote.nextInstallmentOrder }}ª prestação sem nova cobrança de juros retroactivos.
           </div>
         </q-banner>
 
-        <!-- ── QUADRO RESUMO FINANCEIRO DA RENOVAÇÃO ── -->
-        <div class="rm-summary q-mb-md">
-          <div class="rm-summary__row">
-            <span>Capital Mantido (Transita para o Novo Mês)</span>
-            <strong class="text-primary">{{ formatMoney(quote?.principalAmount || 0) }}</strong>
-          </div>
-          <div class="rm-summary__row">
-            <span>Juros do Período Actual ({{ quote?.installmentOrder || '1' }}ª Prestação)</span>
-            <strong>
-              {{ formatMoney(quote?.interestAmount || 0) }}
-              <q-badge v-if="quote?.isInterestAlreadyPaid" color="positive" class="q-ml-xs" label="JÁ PAGO" />
-            </strong>
-          </div>
-          <div class="rm-summary__row" v-if="(quote?.alreadyPaid || 0) > 0 && !quote?.isInterestAlreadyPaid">
-            <span>Valor Já Pago Parcialmente</span>
-            <strong class="text-positive">- {{ formatMoney(quote.alreadyPaid) }}</strong>
-          </div>
-          <div class="rm-summary__row" v-if="!quote?.isInterestAlreadyPaid">
-            <span>Juros em Falta para Liquidar Agora</span>
-            <strong class="text-orange-9">{{ formatMoney(quote?.interestRemainingToPay || 0) }}</strong>
-          </div>
-          <div class="rm-summary__row" v-if="(quote?.moraCalculated || 0) > 0">
-            <span>Juros de Mora Apurados ({{ quote.moraDays }} dias de atraso)</span>
-            <strong class="text-negative">{{ formatMoney(quote.moraCalculated) }}</strong>
-          </div>
-          <div class="rm-summary__row" v-if="(quote?.moraWaived || 0) > 0">
-            <span>Mora Isentada / Perdoada</span>
-            <strong class="text-positive">- {{ formatMoney(quote.moraWaived) }}</strong>
-          </div>
-          <q-separator class="q-my-xs" />
-          <div class="rm-summary__total">
-            <span>Total a Cobrar Agora na Renovação</span>
-            <strong>{{ formatMoney(quote?.totalToPayNow || 0) }}</strong>
-          </div>
-        </div>
+        <div class="row q-col-gutter-lg">
+          <!-- ════════ COLUNA 1: DIAGNÓSTICO FINANCEIRO & NOVO CICLO ════════ -->
+          <div class="col-12 col-md-6 column q-gutter-y-md">
+            <!-- 1. QUADRO RESUMO FINANCEIRO DA RENOVAÇÃO -->
+            <div class="rm-card rm-card--summary">
+              <div class="rm-card__header row items-center justify-between">
+                <div class="row items-center">
+                  <q-icon name="calculate" size="20px" color="primary" class="q-mr-xs" />
+                  <span class="text-weight-bold text-subtitle2">Resumo Financeiro da Operação</span>
+                </div>
+                <q-badge color="deep-purple" rounded :label="`${quote?.renewalNumber || 1}ª Renovação`" />
+              </div>
 
-        <!-- ── TRATAMENTO DE JUROS DE MORA (SE HOUVER MORA) ── -->
-        <div v-if="(quote?.moraCalculated || 0) > 0" class="rm-section q-mb-md">
-          <div class="rm-section__title">
-            <q-icon name="gavel" size="18px" color="deep-orange" class="q-mr-xs" />
-            Opções de Juros de Mora na Renovação ({{ formatMoney(quote.moraCalculated) }})
-          </div>
-          <div class="row q-col-gutter-sm q-mt-xs">
-            <div class="col-12">
-              <q-btn-toggle
-                v-model="form.moraMode"
-                spread
-                no-caps
-                unelevated
-                toggle-color="deep-purple"
-                color="grey-2"
-                text-color="grey-9"
-                :options="[
-                  { label: 'Cobrar Mora Integral', value: 'charge', icon: 'payments' },
-                  { label: 'Isentar / Perdoar 100%', value: 'waive', icon: 'volunteer_activism' },
-                  { label: 'Perdoar Parcialmente', value: 'discount', icon: 'percent' }
-                ]"
-                @update:model-value="refreshQuote"
-              />
-            </div>
-            <div v-if="form.moraMode === 'discount'" class="col-12 col-sm-6 q-mt-xs">
-              <q-input
-                v-model.number="form.moraCustomAmount"
-                type="number"
-                dense
-                outlined
-                min="0"
-                :max="quote.moraCalculated"
-                step="0.01"
-                label="Valor de Mora a Cobrar (MZN)"
-                suffix="MZN"
-                @update:model-value="refreshQuote"
-              />
-            </div>
-            <div v-if="form.moraMode === 'discount'" class="col-12 col-sm-6 q-mt-xs flex items-center">
-              <div class="text-caption text-positive text-weight-bold">
-                Mora Perdoada: {{ formatMoney(Math.max(0, (quote?.moraCalculated || 0) - (Number(form.moraCustomAmount) || 0))) }}
+              <div class="rm-summary__content q-mt-sm">
+                <div class="rm-summary__row">
+                  <span>Capital Mantido (Transita para o Próximo Mês)</span>
+                  <strong class="text-primary text-weight-bold">{{ formatMoney(quote?.principalAmount || 0) }}</strong>
+                </div>
+
+                <div class="rm-summary__row">
+                  <span>Juros do Período Actual ({{ quote?.installmentOrder || '1' }}ª Prestação)</span>
+                  <strong>
+                    {{ formatMoney(quote?.interestAmount || 0) }}
+                    <q-badge v-if="quote?.isInterestAlreadyPaid" color="positive" class="q-ml-xs" label="JÁ LIQUIDADO" />
+                  </strong>
+                </div>
+
+                <div class="rm-summary__row" v-if="(quote?.alreadyPaid || 0) > 0 && !quote?.isInterestAlreadyPaid">
+                  <span>Valor Já Pago Parcialmente</span>
+                  <strong class="text-positive">- {{ formatMoney(quote.alreadyPaid) }}</strong>
+                </div>
+
+                <div class="rm-summary__row" v-if="!quote?.isInterestAlreadyPaid">
+                  <span>Juros em Falta para Liquidar</span>
+                  <strong class="text-orange-9 text-weight-bold">{{ formatMoney(quote?.interestRemainingToPay || 0) }}</strong>
+                </div>
+
+                <div class="rm-summary__row" v-if="(quote?.moraCalculated || 0) > 0">
+                  <span>Juros de Mora Apurados ({{ quote.moraDays }} dias)</span>
+                  <strong class="text-negative">{{ formatMoney(quote.moraCalculated) }}</strong>
+                </div>
+
+                <div class="rm-summary__row" v-if="(quote?.moraWaived || 0) > 0">
+                  <span>Mora Isentada / Perdoada</span>
+                  <strong class="text-positive">- {{ formatMoney(quote.moraWaived) }}</strong>
+                </div>
+
+                <q-separator class="q-my-sm" />
+
+                <div class="rm-summary__total row items-center justify-between">
+                  <div class="column">
+                    <span class="text-caption text-grey-7 text-uppercase text-weight-bold">Total a Cobrar Agora</span>
+                    <span class="text-caption text-grey-6">Liquidação de juros e mora</span>
+                  </div>
+                  <div class="text-h6 text-weight-bolder text-deep-purple-9">
+                    {{ formatMoney(quote?.totalToPayNow || 0) }}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- ── DATAS E NOVO CICLO RENOVADO ── -->
-        <q-form ref="formRef" class="row q-col-gutter-sm" @submit.prevent="submitRenewal">
-          <div class="col-12 col-sm-6">
-            <q-input
-              v-model="form.payDate"
-              dense
-              outlined
-              type="date"
-              label="Data de Efectivação da Renovação *"
-              @update:model-value="refreshQuote"
-            >
-              <template v-slot:prepend><q-icon name="event" size="18px" /></template>
-            </q-input>
-          </div>
+            <!-- 2. TRATAMENTO DE JUROS DE MORA (SE HOUVER MORA) -->
+            <div v-if="(quote?.moraCalculated || 0) > 0" class="rm-card rm-card--mora">
+              <div class="rm-card__header row items-center">
+                <q-icon name="gavel" size="20px" color="deep-orange" class="q-mr-xs" />
+                <span class="text-weight-bold text-subtitle2">Opções de Juros de Mora ({{ formatMoney(quote.moraCalculated) }})</span>
+              </div>
 
-          <div class="col-12 col-sm-6">
-            <q-input
-              v-model="form.newDueDate"
-              dense
-              outlined
-              type="date"
-              label="Nova Data de Vencimento (+1 Mês) *"
-              :rules="[v => (!!v && v > form.payDate) || 'Deve ser posterior à data da renovação']"
-              @update:model-value="refreshQuote"
-            >
-              <template v-slot:prepend><q-icon name="event_repeat" size="18px" color="deep-purple" /></template>
-            </q-input>
-          </div>
+              <div class="q-mt-sm">
+                <q-btn-toggle
+                  v-model="form.moraMode"
+                  spread
+                  no-caps
+                  unelevated
+                  toggle-color="deep-purple"
+                  color="grey-2"
+                  text-color="grey-9"
+                  :options="[
+                    { label: 'Cobrar Integral', value: 'charge', icon: 'payments' },
+                    { label: 'Isentar / Perdoar 100%', value: 'waive', icon: 'volunteer_activism' },
+                    { label: 'Perdão Parcial', value: 'discount', icon: 'percent' }
+                  ]"
+                  @update:model-value="refreshQuote"
+                />
 
-          <!-- Resumo da Nova Prestação que será gerada -->
-          <div class="col-12">
-            <div class="rm-next-cycle">
-              <div class="row items-center justify-between">
-                <div>
-                  <div class="text-caption text-deep-purple-9 text-weight-bold text-uppercase">
-                    Nova Prestação Gerada ({{ quote?.nextInstallmentOrder || '2' }}ª Prestação)
+                <div v-if="form.moraMode === 'discount'" class="row q-col-gutter-sm q-mt-xs items-center">
+                  <div class="col-12 col-sm-6">
+                    <q-input
+                      v-model.number="form.moraCustomAmount"
+                      type="number"
+                      dense
+                      outlined
+                      min="0"
+                      :max="quote.moraCalculated"
+                      step="0.01"
+                      label="Valor de Mora a Cobrar"
+                      suffix="MZN"
+                      @update:model-value="refreshQuote"
+                    />
                   </div>
-                  <div class="text-body2 text-grey-9">
-                    Capital: <strong>{{ formatMoney(quote?.principalAmount || 0) }}</strong> +
-                    Novos Juros: <strong>{{ formatMoney(quote?.newInterestAmount || 0) }}</strong>
-                    · Vencimento: <strong>{{ formatDateShort(form.newDueDate) }}</strong>
+                  <div class="col-12 col-sm-6">
+                    <div class="text-caption text-positive text-weight-bold q-pa-xs">
+                      Mora Perdoada: {{ formatMoney(Math.max(0, (quote?.moraCalculated || 0) - (Number(form.moraCustomAmount) || 0))) }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3. PROJECÇÃO DA NOVA PRESTAÇÃO GERADA -->
+            <div class="rm-card rm-card--cycle">
+              <div class="rm-card__header row items-center justify-between">
+                <div class="row items-center">
+                  <q-icon name="event_repeat" size="20px" color="deep-purple" class="q-mr-xs" />
+                  <span class="text-weight-bold text-subtitle2 text-deep-purple-9">
+                    Nova Prestação Gerada ({{ quote?.nextInstallmentOrder || '2' }}ª Prestação)
+                  </span>
+                </div>
+                <q-badge color="deep-purple-1" text-color="deep-purple-10" label="Próximo Vencimento" />
+              </div>
+
+              <div class="q-mt-sm row items-center justify-between">
+                <div>
+                  <div class="text-caption text-grey-7">Composição do Próximo Ciclo:</div>
+                  <div class="text-body2 text-grey-9 q-mt-xs">
+                    Capital Transitado: <strong>{{ formatMoney(quote?.principalAmount || 0) }}</strong><br />
+                    Novos Juros do Período: <strong>{{ formatMoney(quote?.newInterestAmount || 0) }}</strong><br />
+                    Vencimento: <strong class="text-deep-purple-9">{{ formatDateShort(form.newDueDate) }}</strong>
                   </div>
                 </div>
                 <div class="text-right">
-                  <div class="text-caption text-grey-7">Total no Novo Vencimento</div>
-                  <div class="text-subtitle1 text-weight-bolder text-deep-purple-9">
+                  <div class="text-caption text-grey-7">Total a Vencer</div>
+                  <div class="text-h6 text-weight-bolder text-deep-purple-9">
                     {{ formatMoney(quote?.newInstallmentAmount || 0) }}
                   </div>
                 </div>
@@ -183,68 +207,109 @@
             </div>
           </div>
 
-          <!-- ── DADOS DE RECEBIMENTO (APENAS QUANDO HÁ VALOR A PAGAR AGORA) ── -->
-          <template v-if="(quote?.totalToPayNow || 0) > 0.009">
-            <div class="col-12 q-mt-xs">
-              <div class="rm-section__title">
-                <q-icon name="account_balance_wallet" size="18px" color="primary" class="q-mr-xs" />
-                Recebimento de Juros / Mora ({{ formatMoney(quote.totalToPayNow) }})
+          <!-- ════════ COLUNA 2: PRAZOS, RECEBIMENTO & FORMALIZAÇÃO ════════ -->
+          <div class="col-12 col-md-6 column q-gutter-y-md">
+            <!-- 1. PRAZOS E DATAS -->
+            <div class="rm-card">
+              <div class="rm-card__header row items-center">
+                <q-icon name="today" size="20px" color="primary" class="q-mr-xs" />
+                <span class="text-weight-bold text-subtitle2">Prazos da Renovação</span>
+              </div>
+              <div class="row q-col-gutter-sm q-mt-xs">
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model="form.payDate"
+                    dense
+                    outlined
+                    type="date"
+                    label="Data de Efectivação *"
+                    @update:model-value="refreshQuote"
+                  >
+                    <template v-slot:prepend><q-icon name="event" size="18px" /></template>
+                  </q-input>
+                </div>
+                <div class="col-12 col-sm-6">
+                  <q-input
+                    v-model="form.newDueDate"
+                    dense
+                    outlined
+                    type="date"
+                    label="Novo Vencimento (+1 Mês) *"
+                    :rules="[v => (!!v && v > form.payDate) || 'Deve ser posterior à data da renovação']"
+                    @update:model-value="refreshQuote"
+                  >
+                    <template v-slot:prepend><q-icon name="event_repeat" size="18px" color="deep-purple" /></template>
+                  </q-input>
+                </div>
               </div>
             </div>
 
-            <div class="col-12 col-sm-6">
-              <q-select
-                v-model="form.paymentMethod"
-                dense
-                outlined
-                :options="paymentMethodOptions"
-                label="Método de pagamento *"
-                emit-value
-                map-options
-              >
-                <template v-slot:prepend><q-icon name="payments" size="18px" /></template>
-              </q-select>
+            <!-- 2. DADOS DE RECEBIMENTO (SE HOUVER VALOR A COBRAR AGORA) -->
+            <div v-if="(quote?.totalToPayNow || 0) > 0.009" class="rm-card rm-card--payment">
+              <div class="rm-card__header row items-center justify-between">
+                <div class="row items-center">
+                  <q-icon name="account_balance_wallet" size="20px" color="teal-9" class="q-mr-xs" />
+                  <span class="text-weight-bold text-subtitle2">
+                    Recebimento de Juros / Mora ({{ formatMoney(quote.totalToPayNow) }})
+                  </span>
+                </div>
+                <q-badge color="teal" label="Pagamento Necessário" />
+              </div>
+
+              <div class="row q-col-gutter-sm q-mt-xs">
+                <div class="col-12 col-sm-6">
+                  <q-select
+                    v-model="form.paymentMethod"
+                    dense
+                    outlined
+                    :options="paymentMethodOptions"
+                    label="Método de pagamento *"
+                    emit-value
+                    map-options
+                  >
+                    <template v-slot:prepend><q-icon name="payments" size="18px" /></template>
+                  </q-select>
+                </div>
+
+                <div class="col-12 col-sm-6">
+                  <q-select
+                    v-model="selectedBankAccount"
+                    dense
+                    outlined
+                    :options="filteredAccounts"
+                    :option-label="accountOptionLabel"
+                    option-value="id"
+                    label="Conta de destino (carteira real) *"
+                  >
+                    <template v-slot:prepend><q-icon name="account_balance" size="18px" color="primary" /></template>
+                  </q-select>
+                </div>
+
+                <div class="col-12" v-if="Number(form.paymentMethod) !== 1">
+                  <q-input
+                    v-model="form.tranzactionReference"
+                    dense
+                    outlined
+                    label="Referência do comprovativo (M-Pesa / e-Mola / Talão) *"
+                    :rules="[v => !!(v && String(v).trim()) || 'Referência obrigatória para pagamentos digitais/bancários']"
+                  >
+                    <template v-slot:prepend><q-icon name="tag" size="18px" /></template>
+                  </q-input>
+                </div>
+              </div>
             </div>
 
-            <div class="col-12 col-sm-6">
-              <q-select
-                v-model="selectedBankAccount"
-                dense
-                outlined
-                :options="filteredAccounts"
-                :option-label="accountOptionLabel"
-                option-value="id"
-                label="Conta de destino (carteira real) *"
-              >
-                <template v-slot:prepend><q-icon name="account_balance" size="18px" color="primary" /></template>
-              </q-select>
-            </div>
-
-            <div class="col-12" v-if="Number(form.paymentMethod) !== 1">
-              <q-input
-                v-model="form.tranzactionReference"
-                dense
-                outlined
-                label="Referência do comprovativo (M-Pesa / e-Mola / Talão) *"
-                :rules="[v => !!(v && String(v).trim()) || 'Referência obrigatória para pagamentos digitais/bancários']"
-              >
-                <template v-slot:prepend><q-icon name="tag" size="18px" /></template>
-              </q-input>
-            </div>
-          </template>
-
-          <!-- ── PASSO 1 & PASSO 2: TERMO DE RENOVAÇÃO E UPLOAD OBRIGATÓRIO ── -->
-          <div class="col-12 q-mt-sm">
-            <div class="rm-doc-box">
+            <!-- 3. FORMALIZAÇÃO CONTRATUAL OBRIGATÓRIA (DOWNLOAD + UPLOAD) -->
+            <div class="rm-card rm-doc-box">
               <div class="row items-center justify-between q-col-gutter-sm q-mb-sm">
                 <div class="col-12 col-sm-7">
-                  <div class="text-subtitle2 text-weight-bold text-slate-900">
-                    <q-icon name="assignment_Late" color="deep-purple" size="18px" class="q-mr-xs" />
+                  <div class="text-subtitle2 text-weight-bold text-deep-purple-10">
+                    <q-icon name="assignment" color="deep-purple" size="20px" class="q-mr-xs" />
                     Formalização Contratual Obrigatória
                   </div>
-                  <div class="text-caption text-grey-8">
-                    1º Imprima o Termo de Renovação e Confissão de Dívida para assinatura do cliente.<br />
-                    2º Faça o upload obrigatório do documento assinado (PDF ou Foto).
+                  <div class="text-caption text-grey-8 q-mt-xs">
+                    <strong>Passo 1:</strong> Imprima o Termo de Renovação para o cliente assinar.<br />
+                    <strong>Passo 2:</strong> Faça o upload do documento assinado (PDF ou Foto).
                   </div>
                 </div>
                 <div class="col-12 col-sm-5 text-right">
@@ -271,7 +336,7 @@
                 bg-color="white"
                 accept=".pdf,.jpg,.jpeg,.png"
                 :max-files="1"
-                label="2. Anexar Termo de Renovação Assinado pelo Cliente (Obrigatório) *"
+                label="2. Anexar Termo de Renovação Assinado (Obrigatório) *"
                 hint="Formatos aceites: PDF, JPG ou PNG (máx. 5 MB)"
                 :rules="[v => !!v || 'O upload do documento de compromisso assinado é obrigatório']"
               >
@@ -280,32 +345,35 @@
                 </template>
               </q-file>
             </div>
-          </div>
 
-          <div class="col-12">
-            <q-input
-              v-model="form.notes"
-              dense
-              outlined
-              type="textarea"
-              rows="2"
-              label="Observações da Renovação (opcional)"
-            />
+            <!-- 4. OBSERVAÇÕES -->
+            <div class="rm-card">
+              <q-input
+                v-model="form.notes"
+                dense
+                outlined
+                type="textarea"
+                rows="2"
+                label="Observações da Renovação (opcional)"
+                placeholder="Ex.: Acordo acordado em balcão para transição de capital..."
+              />
+            </div>
           </div>
-        </q-form>
+        </div>
       </q-card-section>
 
       <!-- ── FOOTER ── -->
       <q-separator />
-      <q-card-actions align="right" class="q-pa-md">
-        <q-btn flat label="Cancelar" color="grey-7" no-caps @click="close" />
+      <q-card-actions align="right" class="q-pa-md rm-footer">
+        <q-btn flat label="Cancelar" color="grey-7" no-caps @click="close" class="q-px-md" />
         <q-btn
           unelevated
           color="deep-purple"
           icon="autorenew"
           label="Confirmar Renovação do Contrato"
           no-caps
-          class="rm-confirm-btn"
+          class="rm-confirm-btn q-px-lg"
+          size="md"
           :loading="submitting || store.renewalQuoteLoading"
           :disable="!form.signedDocument || (quote && !quote.eligible)"
           @click="submitRenewal"
@@ -337,6 +405,8 @@ const $q = useQuasar()
 const store = useMutuarioStore()
 const authStore = useAuthStore()
 const bankStore = useBankStore()
+
+const isMaximized = ref(false)
 
 const show = computed({
   get: () => props.modelValue,
@@ -499,6 +569,17 @@ const submitRenewal = async () => {
       fd.append('bank_account_id', String(selectedBankAccount.value.id))
       fd.append('tranzactionReference', String(form.value.tranzactionReference || '').trim())
     }
+    // Telefone do cliente para assegurar conformidade do registo na BD
+    const custPhone =
+      effectiveCustomer.value?.customerPhone ||
+      effectiveCustomer.value?.phone ||
+      props.customer?.customerPhone ||
+      props.customer?.phone ||
+      ''
+    if (custPhone) {
+      fd.append('phoneNumber', custPhone)
+    }
+
     fd.append('staffName', authStore.userName || '')
     if (form.value.notes) {
       fd.append('notes', form.value.notes)
@@ -533,21 +614,32 @@ const close = () => {
 
 <style scoped>
 .renovar-modal {
-  width: 640px;
-  max-width: 96vw;
+  width: 1040px;
+  max-width: 95vw;
   border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.25s ease-in-out;
+}
+
+.renovar-modal--maximized {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
 }
 
 .rm-header {
   background: linear-gradient(135deg, #4527a0 0%, #283593 100%);
   color: #fff;
-  padding: 16px 20px;
+  padding: 16px 24px;
 }
 
 .rm-header__icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.16);
   display: flex;
   align-items: center;
@@ -555,81 +647,92 @@ const close = () => {
 }
 
 .rm-header__title {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
+  letter-spacing: -0.2px;
 }
 
 .rm-header__sub {
-  font-size: 12px;
-  opacity: 0.85;
+  font-size: 13px;
+  opacity: 0.88;
 }
 
 .rm-body {
-  max-height: 76vh;
+  max-height: 80vh;
   overflow-y: auto;
+  padding: 24px;
+  background: #fafbfd;
 }
 
-.rm-summary {
-  background: #f8fafc;
+.renovar-modal--maximized .rm-body {
+  max-height: calc(100vh - 140px);
+}
+
+.rm-card {
+  background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 12px 16px;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.rm-card--summary {
+  background: #ffffff;
+  border-left: 4px solid #5e35b1;
+}
+
+.rm-card--mora {
+  background: #fffaf0;
+  border: 1px solid #fed7aa;
+}
+
+.rm-card--cycle {
+  background: #fbf9ff;
+  border: 1px solid #d1c4e9;
+  border-left: 4px solid #7e57c2;
+}
+
+.rm-card--payment {
+  background: #f8fdfc;
+  border: 1px solid #99f6e4;
+  border-left: 4px solid #0d9488;
+}
+
+.rm-card__header {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
 }
 
 .rm-summary__row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
-  font-size: 13px;
+  padding: 5px 0;
+  font-size: 13.5px;
   color: #475569;
 }
 
 .rm-summary__total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 6px;
-  font-size: 15px;
-  color: #1e293b;
-}
-
-.rm-section {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-radius: 10px;
-  padding: 10px 14px;
-}
-
-.rm-section__title {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #334155;
-  display: flex;
-  align-items: center;
-}
-
-.rm-next-cycle {
-  background: #ede7f6;
-  border: 1px solid #d1c4e9;
-  border-radius: 10px;
-  padding: 10px 14px;
+  padding-top: 8px;
 }
 
 .rm-doc-box {
-  background: #f5f3ff;
+  background: #f8f6ff;
   border: 1.5px dashed #7c3aed;
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 14px;
+  padding: 16px 18px;
 }
 
 .border-green {
   border: 1px solid #86efac;
 }
 
+.rm-footer {
+  background: #ffffff;
+}
+
 .rm-confirm-btn {
   font-weight: 700;
-  padding: 6px 18px;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 </style>
