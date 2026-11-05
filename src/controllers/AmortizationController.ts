@@ -371,17 +371,17 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
     );
     const disburseUserId = Number(decodedDisburse?.id) || undefined;
 
-    // -- DESEMBOLSO AUTOM�TICO M-PESA B2C (se solicitado) --
+    // ── DESEMBOLSO AUTOMÁTICO M-PESA B2C (se solicitado) ──
     let b2cMpesaReceipt: string | null = null;
-    if (payMethod === 'MPESA' && (bodyAny?.auto_mpesa_disbursement === true || bodyAny?.auto_mpesa_disbursement === 'true')) {
+    if (payMethod === "MPESA" && (bodyAny?.auto_mpesa_disbursement === true || bodyAny?.auto_mpesa_disbursement === "true")) {
       try {
-        const { executeB2CDisbursement } = await import('../services/MpesaOpenApiService');
-        const { CustomerModel } = await import('../database/models/CustomerModel');
+        const { executeB2CDisbursement } = await import("../services/MpesaOpenApiService");
+        const { CustomerModel } = await import("../database/models/CustomerModel");
 
-        let targetPhone = String(bodyAny?.disbursement_phone || '').trim();
+        let targetPhone = String(bodyAny?.disbursement_phone || "").trim();
         if (!targetPhone) {
           const custRecord: any = await CustomerModel.findByPk(Number(customerId));
-          targetPhone = String(custRecord?.customerPhone || '').trim();
+          targetPhone = String(custRecord?.customerPhone || "").trim();
         }
 
         const b2cRes = await executeB2CDisbursement({
@@ -396,17 +396,17 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
         if (!b2cRes.success) {
           return res.status(400).json({
             success: false,
-            error: 'MPESA_B2C_REJECTED',
+            error: "MPESA_B2C_REJECTED",
             message: `Desembolso M-Pesa B2C rejeitado: ${b2cRes.message}`,
           });
         }
         b2cMpesaReceipt = b2cRes.mpesaReceipt || null;
       } catch (b2cErr: any) {
-        console.error('[DESEMBOLSO B2C] Erro:', b2cErr?.message || b2cErr);
+        console.error("[DESEMBOLSO B2C] Erro:", b2cErr?.message || b2cErr);
         return res.status(400).json({
           success: false,
-          error: 'MPESA_B2C_FAILED',
-          message: b2cErr?.message || 'Erro ao processar o desembolso autom�tico via M-Pesa.',
+          error: "MPESA_B2C_FAILED",
+          message: b2cErr?.message || "Erro ao processar o desembolso automático via M-Pesa.",
         });
       }
     }
@@ -508,7 +508,7 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
           role: timelineUser ? Number(timelineUser.userRole) : null,
           companyId: Number(companyId),
         },
-        notes: `Desembolso via ${String((req.body as any)?.payment_method || "CASH")}`,
+        notes: b2cMpesaReceipt ? `Desembolso automático via M-Pesa B2C (Recibo: ${b2cMpesaReceipt})` : `Desembolso via ${String((req.body as any)?.payment_method || "CASH")}`,
       });
     } catch (timelineError: any) {
       console.error("[Alçadas] Falha ao registar desembolso na linha do tempo:", timelineError?.message || timelineError);
@@ -558,7 +558,8 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
     return bulckInsert != null && bulckInsert.length > 0
       ? res.status(200).json({
         success: true,
-        message: "Plano de amortização criado com sucesso",
+        message: b2cMpesaReceipt ? `Crédito desembolsado com sucesso via M-Pesa (Recibo: ${b2cMpesaReceipt})!` : "Plano de amortização criado com sucesso",
+        mpesaReceipt: b2cMpesaReceipt,
         installmentsCount: bulckInsert.length
       })
       : res.status(500).json({

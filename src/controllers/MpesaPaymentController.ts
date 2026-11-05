@@ -125,7 +125,7 @@ export const b2Customer = async (req: Request, res: Response) => {
     if (!companyId || !loanId || !customerId || !amount || !phone) {
       return res.status(400).json({
         success: false,
-        message: 'Todos os parâmetros são obrigatórios (companyId, loanId, customerId, amount, phone).',
+        message: "Todos os parÃ¢metros sÃ£o obrigatÃ³rios (companyId, loanId, customerId, amount, phone).",
       });
     }
 
@@ -135,14 +135,14 @@ export const b2Customer = async (req: Request, res: Response) => {
       customerId: Number(customerId),
       amount: Number(amount),
       phone: String(phone),
-      accountNumber: String(accountNumber || ''),
+      accountNumber: String(accountNumber || ""),
     });
 
     return res.status(result.success ? 200 : 400).json(result);
   } catch (err: any) {
     return res.status(400).json({
       success: false,
-      message: err?.message || 'Erro ao processar o desembolso B2C.',
+      message: err?.message || "Erro ao processar o desembolso B2C.",
     });
   }
 };
