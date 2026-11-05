@@ -161,6 +161,7 @@ routes.post("/api/mpesa/c2b/initiate", roles_1.isStaff, MpesaPaymentController_1
 routes.post("/api/mpesa/c2b/callback", MpesaPaymentController_1.mpesaCallbackWebhook);
 routes.get("/api/mpesa/c2b/status/:mpesaTxId", roles_1.isStaff, MpesaPaymentController_1.getTransactionStatus);
 routes.post("/api/mpesa/c2b/query-vodacom/:mpesaTxId", roles_1.isStaff, MpesaPaymentController_1.queryVodacomStatus);
+routes.get("/api/mpesa/customer-name", roles_1.isStaff, MpesaPaymentController_1.getCustomerName);
 // Notification Routes (públicas para o portal do cliente)
 routes.get("/api/notifications/customer/:companyId/:customerId", NotificationController_1.getCustomerNotifications);
 routes.get("/api/notifications/customer/unread/:companyId/:customerId", NotificationController_1.getCustomerUnreadCount);

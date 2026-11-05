@@ -1067,3 +1067,227 @@ export const executeB2CDisbursement = async (params: {
     };
   }
 };
+
+/**
+ * Mascara o nome no padrao M-Pesa (ex: "Joao Alberto" -> "J**o A*****o")
+ */
+export const maskCustomerName = (fullName: string): string => {
+  if (!fullName) return "";
+  const parts = fullName.trim().split(/\s+/);
+  return parts
+    .map((part) => {
+      if (part.length <= 2) return part;
+      const first = part[0];
+      const last = part[part.length - 1];
+      const stars = "*".repeat(Math.max(1, part.length - 2));
+      return `${first}${stars}${last}`;
+    })
+    .join(" ");
+};
+
+/**
+ * Compara nome mascarado retornado pela Vodacom com o nome registado do mutuario
+ */
+export const checkCustomerNameMatch = (
+  maskedName: string,
+  realName: string
+): "MATCH" | "MISMATCH" | "UNKNOWN" => {
+  if (!maskedName || !realName) return "UNKNOWN";
+
+  const normalize = (str: string) =>
+    str
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const maskedWords = normalize(maskedName).split(/\s+/).filter(Boolean);
+  const realWords = normalize(realName).split(/\s+/).filter(Boolean);
+
+  if (maskedWords.length === 0 || realWords.length === 0) return "UNKNOWN";
+
+  // Comparar inicial do primeiro nome
+  const firstMaskedChar = maskedWords[0][0];
+  const firstRealChar = realWords[0][0];
+  if (firstMaskedChar !== firstRealChar) {
+    return "MISMATCH";
+  }
+
+  // Comparar inicial do ultimo nome (apelido/sobrenome)
+  const lastMaskedChar = maskedWords[maskedWords.length - 1][0];
+  const lastRealChar = realWords[realWords.length - 1][0];
+  if (lastMaskedChar !== lastRealChar) {
+    return "MISMATCH";
+  }
+
+  return "MATCH";
+};
+
+/**
+ * Consulta o titular mascarado de uma conta M-Pesa (Anti-Fraude Vodacom)
+ * Documentacao oficial: https://developer.mpesa.vm.co.mz/apis/7/8/
+ */
+export const queryCustomerMaskedName = async (params: {
+  companyId: number;
+  phone: string;
+  customerId?: number;
+}): Promise<{
+  success: boolean;
+  customerName?: string | null;
+  maskedName?: string | null;
+  borrowerName?: string | null;
+  matchStatus: "MATCH" | "MISMATCH" | "UNKNOWN";
+  responseCode?: string;
+  responseDescription?: string;
+  isMock?: boolean;
+}> => {
+  const { companyId, phone, customerId } = params;
+
+  let cleanPhone = String(phone || "").replace(/\D/g, "");
+  if (cleanPhone.length === 9 && (cleanPhone.startsWith("84") || cleanPhone.startsWith("85"))) {
+    cleanPhone = `258${cleanPhone}`;
+  }
+
+  if (!/^258(84|85)\d{7}$/.test(cleanPhone)) {
+    return {
+      success: false,
+      matchStatus: "UNKNOWN",
+      responseCode: "INVALID_PHONE",
+      responseDescription: "Numero de telemovel invalido. Deve ser um contacto Vodacom M-Pesa (84 ou 85).",
+    };
+  }
+
+  // Buscar nome do mutuario se customerId estiver presente
+  let borrowerName: string | null = null;
+  if (customerId) {
+    try {
+      const customer: any = await CustomerModel.findOne({
+        where: { id: customerId, companyId },
+      });
+      if (customer && customer.name) {
+        borrowerName = String(customer.name).trim();
+      }
+    } catch (err: any) {
+      console.warn("[M-Pesa Anti-Fraud] Nao foi possivel obter o mutuario no banco:", err?.message);
+    }
+  }
+
+  const config = getMpesaConfig();
+
+  // MODO MOCK / SANDBOX DE DESENVOLVIMENTO
+  if (config.isMock) {
+    const realNameToMask = borrowerName || "Joao Alberto";
+    const masked = maskCustomerName(realNameToMask);
+    return {
+      success: true,
+      customerName: masked,
+      maskedName: masked,
+      borrowerName,
+      matchStatus: "MATCH",
+      responseCode: "INS-0",
+      responseDescription: "Titular consultado com sucesso via M-Pesa (Ambiente Sandbox/Simulacao).",
+      isMock: true,
+    };
+  }
+
+  // MODO REAL: Comunicacao com a Open API da Vodacom
+  try {
+    const token = generateBearerToken(config.publicKey, config.apiKey);
+    const thirdPartyRef = `QCN${Date.now().toString().slice(-8)}`;
+    const url = `https://${config.host}:18353/ipg/v1x/queryCustomerName/`;
+
+    let data: any = null;
+
+    try {
+      const response = await axios.get(url, {
+        params: {
+          input_CustomerMSISDN: cleanPhone,
+          input_ServiceProviderCode: config.serviceProviderCode,
+          input_ThirdPartyReference: thirdPartyRef,
+        },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Origin: config.origin,
+        },
+        timeout: 15000,
+      });
+      data = response.data || {};
+    } catch (getErr: any) {
+      if (getErr.response?.status === 405) {
+        // Se a rota no ambiente requerer POST
+        const postRes = await axios.post(
+          url,
+          {
+            input_CustomerMSISDN: cleanPhone,
+            input_ServiceProviderCode: config.serviceProviderCode,
+            input_ThirdPartyReference: thirdPartyRef,
+          },
+          {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              Origin: config.origin,
+            },
+            timeout: 15000,
+          }
+        );
+        data = postRes.data || {};
+      } else {
+        throw getErr;
+      }
+    }
+
+    const respCode = String(data?.output_ResponseCode || "");
+    const respDesc = String(data?.output_ResponseDesc || "");
+    const customerMaskedName = data?.output_CustomerName || null;
+
+    const isSuccess =
+      respCode === "INS-0" ||
+      respCode === "INS-000000" ||
+      Boolean(customerMaskedName);
+
+    if (isSuccess && customerMaskedName) {
+      const matchStatus = borrowerName
+        ? checkCustomerNameMatch(customerMaskedName, borrowerName)
+        : "UNKNOWN";
+
+      return {
+        success: true,
+        customerName: customerMaskedName,
+        maskedName: customerMaskedName,
+        borrowerName,
+        matchStatus,
+        responseCode: respCode,
+        responseDescription: respDesc || "Titular verificado com sucesso.",
+        isMock: false,
+      };
+    } else {
+      return {
+        success: false,
+        customerName: null,
+        maskedName: null,
+        borrowerName,
+        matchStatus: "UNKNOWN",
+        responseCode: respCode || "INS-2006",
+        responseDescription: respDesc || "Titular M-Pesa nao encontrado para este numero.",
+        isMock: false,
+      };
+    }
+  } catch (apiError: any) {
+    const errorData = apiError.response?.data || {};
+    const respCode = errorData.output_ResponseCode || "ERR_HTTP";
+    const respDesc = errorData.output_ResponseDesc || apiError.message || "Erro na consulta do titular a Vodacom.";
+
+    console.error("[M-Pesa Anti-Fraud] Erro ao consultar titular:", respDesc);
+    return {
+      success: false,
+      customerName: null,
+      maskedName: null,
+      borrowerName,
+      matchStatus: "UNKNOWN",
+      responseCode: String(respCode),
+      responseDescription: String(respDesc),
+      isMock: false,
+    };
+  }
+};

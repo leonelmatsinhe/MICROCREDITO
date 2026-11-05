@@ -137,7 +137,7 @@ import { addTranzactionBulk } from "./controllers/TranzactionBulkController";
 
 import { getAllLoanGuarantees, createGuarantee, deleteGuarantee } from "./controllers/GuaranteesController"
 
-import { b2Customer, c2Business, initiateC2B, mpesaCallbackWebhook, getTransactionStatus, queryVodacomStatus } from "./controllers/MpesaPaymentController";
+import { b2Customer, c2Business, initiateC2B, mpesaCallbackWebhook, getTransactionStatus, queryVodacomStatus, getCustomerName } from "./controllers/MpesaPaymentController";
 
 import { multerConfig } from "./config/multer";
 import { auth } from "./middlewares/auth";
@@ -381,6 +381,7 @@ routes.post("/api/mpesa/c2b/initiate", isStaff, initiateC2B);
 routes.post("/api/mpesa/c2b/callback", mpesaCallbackWebhook);
 routes.get("/api/mpesa/c2b/status/:mpesaTxId", isStaff, getTransactionStatus);
 routes.post("/api/mpesa/c2b/query-vodacom/:mpesaTxId", isStaff, queryVodacomStatus);
+routes.get("/api/mpesa/customer-name", isStaff, getCustomerName);
 
 // Notification Routes (públicas para o portal do cliente)
 routes.get("/api/notifications/customer/:companyId/:customerId", getCustomerNotifications);

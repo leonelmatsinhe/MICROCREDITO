@@ -279,7 +279,7 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         // conta de origem — bloqueia o crédito se não houver dinheiro.
         const bodyAny = req.body;
         const payMethod = String((bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.payment_method) || "CASH").toUpperCase();
-        const disburseAccountId = (bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.bank_account_id) ? Number(bodyAny.bank_account_id) : null;
+        let disburseAccountId = (bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.bank_account_id) ? Number(bodyAny.bank_account_id) : null;
         if (payMethod !== "CASH" && disburseAccountId) {
             const { getBalance } = yield Promise.resolve().then(() => __importStar(require("../services/bankAccountService")));
             const available = yield getBalance(Number(companyId), disburseAccountId);
@@ -367,6 +367,83 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         const jwtDisburse = yield Promise.resolve().then(() => __importStar(require("jsonwebtoken")));
         const decodedDisburse = jwtDisburse.verify((req.headers.authorization || "").split(" ")[1] || "", process.env.APP_SECRET + "");
         const disburseUserId = Number(decodedDisburse === null || decodedDisburse === void 0 ? void 0 : decodedDisburse.id) || undefined;
+        // Validacao estrita da conta de origem quando desembolso for M-Pesa
+        if (payMethod === "MPESA") {
+            const { AccountModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/AccountModel")));
+            if (disburseAccountId) {
+                const originAcc = yield AccountModel.findOne({
+                    where: { id: disburseAccountId, companyId: Number(companyId) },
+                });
+                if (originAcc) {
+                    const accName = String(originAcc.bank_name || "").toLowerCase();
+                    const isMpesa = accName.includes("mpesa") ||
+                        accName.includes("m-pesa") ||
+                        originAcc.type === "MOBILE_MONEY";
+                    if (!isMpesa) {
+                        return res.status(400).json({
+                            success: false,
+                            error: "INVALID_ORIGIN_ACCOUNT",
+                            message: "Para desembolsos via M-Pesa, a conta de origem deve ser obrigatoriamente uma conta M-Pesa.",
+                        });
+                    }
+                }
+            }
+            else {
+                // Auto-detectar conta M-Pesa da empresa
+                const { Op } = yield Promise.resolve().then(() => __importStar(require("sequelize")));
+                const mpesaAcc = yield AccountModel.findOne({
+                    where: {
+                        companyId: Number(companyId),
+                        is_active: 1,
+                        [Op.or]: [
+                            { bank_name: { [Op.iLike || Op.like]: "%mpesa%" } },
+                            { bank_name: { [Op.iLike || Op.like]: "%m-pesa%" } },
+                            { type: "MOBILE_MONEY" },
+                        ],
+                    },
+                });
+                if (mpesaAcc) {
+                    disburseAccountId = mpesaAcc.id;
+                }
+            }
+        }
+        // ── DESEMBOLSO AUTOMÁTICO M-PESA B2C (se solicitado) ──
+        let b2cMpesaReceipt = null;
+        if (payMethod === "MPESA" && ((bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.auto_mpesa_disbursement) === true || (bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.auto_mpesa_disbursement) === "true")) {
+            try {
+                const { executeB2CDisbursement } = yield Promise.resolve().then(() => __importStar(require("../services/MpesaOpenApiService")));
+                const { CustomerModel } = yield Promise.resolve().then(() => __importStar(require("../database/models/CustomerModel")));
+                let targetPhone = String((bodyAny === null || bodyAny === void 0 ? void 0 : bodyAny.disbursement_phone) || "").trim();
+                if (!targetPhone) {
+                    const custRecord = yield CustomerModel.findByPk(Number(customerId));
+                    targetPhone = String((custRecord === null || custRecord === void 0 ? void 0 : custRecord.customerPhone) || "").trim();
+                }
+                const b2cRes = yield executeB2CDisbursement({
+                    companyId: Number(companyId),
+                    loanId: Number(loanId),
+                    customerId: Number(customerId),
+                    amount: Number(amount),
+                    phone: targetPhone,
+                    accountNumber: String(accountNumber),
+                });
+                if (!b2cRes.success) {
+                    return res.status(400).json({
+                        success: false,
+                        error: "MPESA_B2C_REJECTED",
+                        message: `Desembolso M-Pesa B2C rejeitado: ${b2cRes.message}`,
+                    });
+                }
+                b2cMpesaReceipt = b2cRes.mpesaReceipt || null;
+            }
+            catch (b2cErr) {
+                console.error("[DESEMBOLSO B2C] Erro:", (b2cErr === null || b2cErr === void 0 ? void 0 : b2cErr.message) || b2cErr);
+                return res.status(400).json({
+                    success: false,
+                    error: "MPESA_B2C_FAILED",
+                    message: (b2cErr === null || b2cErr === void 0 ? void 0 : b2cErr.message) || "Erro ao processar o desembolso automático via M-Pesa.",
+                });
+            }
+        }
         try {
             const { recordDisbursement } = yield Promise.resolve().then(() => __importStar(require("../services/cashRegisterService")));
             yield recordDisbursement({
@@ -445,7 +522,7 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
                     role: timelineUser ? Number(timelineUser.userRole) : null,
                     companyId: Number(companyId),
                 },
-                notes: `Desembolso via ${String(((_c = req.body) === null || _c === void 0 ? void 0 : _c.payment_method) || "CASH")}`,
+                notes: b2cMpesaReceipt ? `Desembolso automático via M-Pesa B2C (Recibo: ${b2cMpesaReceipt})` : `Desembolso via ${String(((_c = req.body) === null || _c === void 0 ? void 0 : _c.payment_method) || "CASH")}`,
             });
         }
         catch (timelineError) {
@@ -490,7 +567,8 @@ const createAmortizationLoan = (req, res) => __awaiter(void 0, void 0, void 0, f
         return bulckInsert != null && bulckInsert.length > 0
             ? res.status(200).json({
                 success: true,
-                message: "Plano de amortização criado com sucesso",
+                message: b2cMpesaReceipt ? `Crédito desembolsado com sucesso via M-Pesa (Recibo: ${b2cMpesaReceipt})!` : "Plano de amortização criado com sucesso",
+                mpesaReceipt: b2cMpesaReceipt,
                 installmentsCount: bulckInsert.length
             })
             : res.status(500).json({

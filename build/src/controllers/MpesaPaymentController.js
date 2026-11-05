@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.c2Business = exports.b2Customer = exports.queryVodacomStatus = exports.getTransactionStatus = exports.mpesaCallbackWebhook = exports.initiateC2B = void 0;
+exports.getCustomerName = exports.c2Business = exports.b2Customer = exports.queryVodacomStatus = exports.getTransactionStatus = exports.mpesaCallbackWebhook = exports.initiateC2B = void 0;
 const MpesaOpenApiService_1 = require("../services/MpesaOpenApiService");
 const MpesaTransactionModel_1 = require("../database/models/MpesaTransactionModel");
 /**
@@ -144,7 +144,62 @@ const queryVodacomStatus = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.queryVodacomStatus = queryVodacomStatus;
 // Compatibilidade legado com rotas antigas
 const b2Customer = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    return res.status(501).json({ success: false, message: "Desembolso B2C sob solicitação direta." });
+    try {
+        const { companyId, loanId, customerId, amount, phone, accountNumber } = req.body;
+        if (!companyId || !loanId || !customerId || !amount || !phone) {
+            return res.status(400).json({
+                success: false,
+                message: "Todos os parâmetros são obrigatórios (companyId, loanId, customerId, amount, phone).",
+            });
+        }
+        const result = yield (0, MpesaOpenApiService_1.executeB2CDisbursement)({
+            companyId: Number(companyId),
+            loanId: Number(loanId),
+            customerId: Number(customerId),
+            amount: Number(amount),
+            phone: String(phone),
+            accountNumber: String(accountNumber || ""),
+        });
+        return res.status(result.success ? 200 : 400).json(result);
+    }
+    catch (err) {
+        return res.status(400).json({
+            success: false,
+            message: (err === null || err === void 0 ? void 0 : err.message) || "Erro ao processar o desembolso B2C.",
+        });
+    }
 });
 exports.b2Customer = b2Customer;
 exports.c2Business = exports.initiateC2B;
+/**
+ * Consulta de Nome Mascarado do Titular M-Pesa (Anti-Fraude)
+ * GET /api/mpesa/customer-name?phone=25884xxxxxxx&customerId=123
+ */
+const getCustomerName = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const companyId = req.query.companyId || ((_a = req.user) === null || _a === void 0 ? void 0 : _a.companyId);
+        const phone = String(req.query.phone || "");
+        const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
+        if (!phone) {
+            return res.status(400).json({
+                success: false,
+                message: "O numero de telemovel M-Pesa e obrigatorio.",
+            });
+        }
+        const result = yield (0, MpesaOpenApiService_1.queryCustomerMaskedName)({
+            companyId: Number(companyId),
+            phone,
+            customerId,
+        });
+        return res.status(result.success ? 200 : 400).json(result);
+    }
+    catch (error) {
+        console.error("[M-Pesa Controller] Erro ao consultar nome do titular:", (error === null || error === void 0 ? void 0 : error.message) || error);
+        return res.status(500).json({
+            success: false,
+            message: (error === null || error === void 0 ? void 0 : error.message) || "Erro interno ao consultar titular M-Pesa.",
+        });
+    }
+});
+exports.getCustomerName = getCustomerName;

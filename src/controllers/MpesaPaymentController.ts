@@ -4,6 +4,7 @@ import {
   queryMpesaTransactionStatus,
   handleMpesaCallback,
   executeB2CDisbursement,
+  queryCustomerMaskedName,
 } from "../services/MpesaOpenApiService";
 import { MpesaTransactionModel } from "../database/models/MpesaTransactionModel";
 
@@ -148,3 +149,36 @@ export const b2Customer = async (req: Request, res: Response) => {
 };
 
 export const c2Business = initiateC2B;
+
+/**
+ * Consulta de Nome Mascarado do Titular M-Pesa (Anti-Fraude)
+ * GET /api/mpesa/customer-name?phone=25884xxxxxxx&customerId=123
+ */
+export const getCustomerName = async (req: Request, res: Response) => {
+  try {
+    const companyId = req.query.companyId || (req as any).user?.companyId;
+    const phone = String(req.query.phone || "");
+    const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: "O numero de telemovel M-Pesa e obrigatorio.",
+      });
+    }
+
+    const result = await queryCustomerMaskedName({
+      companyId: Number(companyId),
+      phone,
+      customerId,
+    });
+
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error: any) {
+    console.error("[M-Pesa Controller] Erro ao consultar nome do titular:", error?.message || error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "Erro interno ao consultar titular M-Pesa.",
+    });
+  }
+};

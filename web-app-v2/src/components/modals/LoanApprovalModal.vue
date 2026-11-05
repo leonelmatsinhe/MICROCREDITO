@@ -77,30 +77,80 @@
             </q-select>
           </div>
           <div class="col-12 col-sm-7">
-            <q-select
-              v-if="paymentMethod !== 'CASH'"
-              v-model="bankAccountId"
-              :options="disbursementAccountOptions"
-              label="Conta de origem *"
-              dense
-              outlined
-              emit-value
-              map-options
-              :rules="[v => !!v || 'Seleccione a conta bancária']"
-            >
-              <template v-slot:prepend>
-                <q-icon name="account_balance" size="18px" />
-              </template>
-            </q-select>
-            <q-input v-else outlined dense disable label="Conta de origem" value="Caixa físico (gaveta)">
-              <template v-slot:prepend>
-                <q-icon name="inbox" size="18px" />
-              </template>
-            </q-input>
+            <!-- Conta de origem conforme método de desembolso -->
+            <template v-if="paymentMethod === 'CASH'">
+              <q-input outlined dense disable label="Conta de origem" value="Caixa físico (gaveta)">
+                <template v-slot:prepend>
+                  <q-icon name="inbox" size="18px" />
+                </template>
+              </q-input>
+            </template>
+            <template v-else-if="paymentMethod === 'MPESA'">
+              <q-input
+                v-if="disbursementAccountOptions.length === 1"
+                outlined
+                dense
+                disable
+                label="Conta de origem M-Pesa (Exclusiva) *"
+                :value="disbursementAccountOptions[0].label"
+                hint="Conta M-Pesa Open API da empresa (Fixa)"
+              >
+                <template v-slot:prepend>
+                  <q-icon name="lock" size="18px" color="negative" />
+                </template>
+              </q-input>
+              <q-select
+                v-else-if="disbursementAccountOptions.length > 1"
+                v-model="bankAccountId"
+                :options="disbursementAccountOptions"
+                label="Conta de origem M-Pesa *"
+                dense
+                outlined
+                emit-value
+                map-options
+                hint="Apenas contas M-Pesa autorizadas"
+                :rules="[v => !!v || 'Seleccione a conta M-Pesa']"
+              >
+                <template v-slot:prepend>
+                  <q-icon name="phone_android" size="18px" color="negative" />
+                </template>
+              </q-select>
+              <div v-else class="q-pa-xs rounded-borders bg-red-1" style="border: 1px solid #ef9a9a">
+                <div class="text-caption text-negative text-weight-bold row items-center">
+                  <q-icon name="warning" size="14px" class="q-mr-xs" /> Sem conta M-Pesa
+                </div>
+                <div class="text-grey-8" style="font-size: 11px">
+                  Registe uma conta M-Pesa em <em>Contas Bancárias</em> para desembolsos.
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <q-select
+                v-model="bankAccountId"
+                :options="disbursementAccountOptions"
+                :label="paymentMethod === 'EMOLA' ? 'Conta de origem e-Mola *' : 'Conta bancária de origem *'"
+                dense
+                outlined
+                emit-value
+                map-options
+                :rules="[v => !!v || 'Seleccione a conta de origem']"
+              >
+                <template v-slot:prepend>
+                  <q-icon name="account_balance" size="18px" />
+                </template>
+                <template v-slot:no-option>
+                  <q-item>
+                    <q-item-section class="text-grey-6 text-caption">
+                      Nenhuma conta compatível encontrada.
+                    </q-item-section>
+                  </q-item>
+                </template>
+              </q-select>
+            </template>
           </div>
         </div>
 
-        <!-- ═══ CONFIGURAÇÃO DE DESEMBOLSO M-PESA B2C ═══ -->
+        <!-- ═══ CONFIGURAÇÃO DE DESEMBOLSO M-PESA B2C & ANTI-FRAUDE ═══ -->
         <div v-if="paymentMethod === 'MPESA'" class="q-mb-md q-pa-sm bg-red-1 rounded-borders" style="border: 1px solid #ffcdd2">
           <div class="row items-center justify-between q-mb-xs">
             <div class="row items-center">
@@ -122,9 +172,23 @@
                 label="Nº de Telemóvel M-Pesa do Mutuário *"
                 placeholder="Ex: 841234567 ou 851234567"
                 :rules="[v => !autoMpesaDisburse || validateMpesaPhone(v) || 'Número Vodacom inválido (84 ou 85)']"
+                @blur="onPhoneBlur"
               >
                 <template v-slot:prepend>
                   <q-icon name="phone_android" size="18px" color="negative" />
+                </template>
+                <template v-slot:after>
+                  <q-btn
+                    round
+                    dense
+                    flat
+                    color="negative"
+                    icon="verified_user"
+                    :loading="verifyingHolder"
+                    @click="verifyMpesaHolder(true)"
+                  >
+                    <q-tooltip>Consultar titular na Vodacom M-Pesa (Anti-Fraude)</q-tooltip>
+                  </q-btn>
                 </template>
               </q-input>
             </div>
@@ -137,6 +201,90 @@
               />
             </div>
           </div>
+
+          <!-- PAINEL ANTI-FRAUDE: CONSULTA DE NOME MASCARADO NA VODACOM -->
+          <div v-if="autoMpesaDisburse" class="q-mt-xs q-pa-sm rounded-borders bg-white" style="border: 1px solid #ffcdd2">
+            <div class="row items-center justify-between">
+              <div class="text-caption text-weight-bold text-grey-9 row items-center">
+                <q-icon name="security" color="negative" size="16px" class="q-mr-xs" />
+                Anti-Fraude M-Pesa (Query Customer Masked Name)
+              </div>
+              <q-btn
+                flat
+                dense
+                no-caps
+                size="xs"
+                color="negative"
+                icon="search"
+                label="Verificar Titular"
+                :loading="verifyingHolder"
+                @click="verifyMpesaHolder(true)"
+              />
+            </div>
+
+            <!-- Loading -->
+            <div v-if="verifyingHolder" class="row items-center q-pa-xs text-caption text-grey-7">
+              <q-spinner-dots color="negative" size="16px" class="q-mr-xs" />
+              A consultar titular na API Vodacom M-Pesa...
+            </div>
+
+            <!-- Dados do Titular Encontrados -->
+            <div v-else-if="holderInfo" class="q-mt-xs">
+              <div class="row q-col-gutter-xs items-center" style="font-size: 12px">
+                <div class="col-12 col-sm-6">
+                  <div class="text-caption text-grey-6" style="font-size: 10px">Titular M-Pesa (Vodacom):</div>
+                  <div class="text-weight-bold text-red-10" style="font-size: 13px">
+                    {{ holderInfo.customerName || 'Não identificado' }}
+                    <span v-if="holderInfo.isMock" class="text-grey-5 text-weight-regular" style="font-size: 10px">(Sandbox)</span>
+                  </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                  <div class="text-caption text-grey-6" style="font-size: 10px">Mutuário Registado:</div>
+                  <div class="text-weight-bold text-primary" style="font-size: 13px">
+                    {{ loan?.customerName || holderInfo.borrowerName || '—' }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Status de Conformidade -->
+              <div v-if="holderInfo.matchStatus === 'MATCH'" class="row items-center q-mt-xs text-positive text-weight-medium" style="font-size: 11px">
+                <q-icon name="check_circle" size="16px" color="positive" class="q-mr-xs" />
+                Titular verificado com sucesso: Coincide com o mutuário registado.
+              </div>
+              <div v-else-if="holderInfo.matchStatus === 'MISMATCH'" class="q-mt-xs q-pa-xs bg-red-1 text-negative rounded-borders" style="border: 1px dashed #e53935; font-size: 11px">
+                <div class="row items-center text-weight-bold">
+                  <q-icon name="warning" size="16px" class="q-mr-xs" />
+                  ALERTA ANTI-FRAUDE: O titular M-Pesa difere do mutuário!
+                </div>
+                <div class="text-grey-9 q-mt-xs" style="font-size: 10px">
+                  O nome retornado pela Vodacom não parece corresponder ao cliente. Confirme a identidade para evitar transferências indevidas.
+                </div>
+                <q-checkbox
+                  v-model="holderMismatchConfirmed"
+                  dense
+                  color="negative"
+                  class="q-mt-xs"
+                  label="Confirmo que verifiquei e autorizo o desembolso para este titular"
+                  style="font-size: 11px"
+                />
+              </div>
+              <div v-else class="row items-center q-mt-xs text-orange-9" style="font-size: 11px">
+                <q-icon name="info" size="16px" color="orange" class="q-mr-xs" />
+                Titular retornado: <strong>{{ holderInfo.customerName }}</strong>. Verifique visualmente a correspondência.
+              </div>
+            </div>
+
+            <!-- Mensagem inicial ou de erro -->
+            <div v-else class="text-caption q-mt-xs" style="font-size: 11px">
+              <span v-if="holderError" class="text-negative text-weight-medium row items-center">
+                <q-icon name="error_outline" size="14px" class="q-mr-xs" /> {{ holderError }}
+              </span>
+              <span v-else class="text-grey-6">
+                Introduza o número Vodacom e clique em <em>Verificar Titular</em> para validação anti-fraude.
+              </span>
+            </div>
+          </div>
+
           <div class="text-caption text-grey-9 q-mt-xs" v-if="autoMpesaDisburse">
             <q-icon name="bolt" color="amber-9" /> O valor aprovado de <strong>{{ formatMoney(loan?.amount) }}</strong> será transferido imediatamente da Conta M-Pesa Empresarial para a carteira móvel do mutuário.
           </div>
@@ -503,18 +651,107 @@ function validateMpesaPhone(phone) {
   return false
 }
 
+// ─── ANTI-FRAUDE M-PESA: ESTADOS DE VERIFICAÇÃO DE TITULAR ───
+const verifyingHolder = ref(false)
+const holderInfo = ref(null)
+const holderError = ref('')
+const holderMismatchConfirmed = ref(false)
+
+function isMpesaAccount(acc) {
+  const name = String(acc?.bank_name || '').toLowerCase()
+  const holder = String(acc?.holderName || '').toLowerCase()
+  return (
+    name.includes('mpesa') ||
+    name.includes('m-pesa') ||
+    (acc?.type === 'MOBILE_MONEY' && (name.includes('mpesa') || name.includes('m-pesa') || holder.includes('mpesa')))
+  )
+}
+
+function isEmolaAccount(acc) {
+  const name = String(acc?.bank_name || '').toLowerCase()
+  return (
+    name.includes('emola') ||
+    name.includes('e-mola') ||
+    (acc?.type === 'MOBILE_MONEY' && (name.includes('emola') || name.includes('e-mola')))
+  )
+}
+
+async function verifyMpesaHolder(force = false) {
+  const phone = disbursementPhone.value
+  if (!phone) {
+    if (force) {
+      $q.notify({ type: 'warning', message: 'Introduza o número M-Pesa do mutuário.', position: 'top' })
+    }
+    return
+  }
+  const clean = String(phone).replace(/\D/g, '')
+  if (!validateMpesaPhone(clean)) {
+    if (force) {
+      $q.notify({
+        type: 'warning',
+        message: 'Número M-Pesa inválido. Deve ser um número Vodacom (84 ou 85 com 9 ou 12 dígitos).',
+        position: 'top'
+      })
+    }
+    return
+  }
+
+  verifyingHolder.value = true
+  holderError.value = ''
+  try {
+    const customerId = props.loan?.customerId || null
+    const { data } = await api.get('/api/mpesa/customer-name', {
+      params: {
+        phone: clean,
+        customerId
+      }
+    })
+    if (data.success) {
+      holderInfo.value = data
+      holderMismatchConfirmed.value = false
+    } else {
+      holderInfo.value = null
+      holderError.value = data.responseDescription || data.message || 'Titular M-Pesa não identificado.'
+    }
+  } catch (err) {
+    const errMsg = err.response?.data?.responseDescription || err.response?.data?.message || err.message || 'Falha ao consultar titular na Vodacom.'
+    holderError.value = errMsg
+    holderInfo.value = null
+  } finally {
+    verifyingHolder.value = false
+  }
+}
+
+function onPhoneBlur() {
+  if (paymentMethod.value === 'MPESA' && autoMpesaDisburse.value && validateMpesaPhone(disbursementPhone.value)) {
+    if (!holderInfo.value) {
+      verifyMpesaHolder(false)
+    }
+  }
+}
+
 watch(paymentMethod, (method) => {
   if (method === 'MPESA') {
     if (!disbursementPhone.value) {
       disbursementPhone.value = props.loan?.customerPhone || props.loan?.phone || ''
     }
-    const mpesaAcc = bankAccounts.value.find(a =>
-      String(a.bank_name || '').toLowerCase().includes('mpesa') ||
-      String(a.bank_name || '').toLowerCase().includes('m-pesa')
-    )
+    const mpesaAcc = bankAccounts.value.find(isMpesaAccount)
     if (mpesaAcc) {
       bankAccountId.value = mpesaAcc.id
+    } else {
+      bankAccountId.value = null
     }
+    if (validateMpesaPhone(disbursementPhone.value) && !holderInfo.value) {
+      verifyMpesaHolder(false)
+    }
+  } else if (method === 'EMOLA') {
+    const emolaAcc = bankAccounts.value.find(isEmolaAccount)
+    bankAccountId.value = emolaAcc ? emolaAcc.id : null
+  } else if (method === 'BANK') {
+    const bankAcc = bankAccounts.value.find(a => !isMpesaAccount(a) && !isEmolaAccount(a) && a.type !== 'CAIXA_FISICO')
+    bankAccountId.value = bankAcc ? bankAcc.id : null
+  } else {
+    bankAccountId.value = null
   }
 })
 
@@ -548,23 +785,39 @@ const treasuryMethodOptions = [
   { label: 'e-Mola', value: 'EMOLA' }
 ]
 
-// Contas activas de desembolso (DESEMBOLSO + MISTO) com saldo actual.
-const disbursementAccountOptions = computed(() =>
-  bankAccounts.value
-    .filter(acc => Number(acc.is_active) === 1 && ['DESEMBOLSO', 'MISTO'].includes(acc.purpose))
-    .map(acc => ({
-      label: `${acc.bank_name || 'Conta'} - ${acc.accountNumber} - Saldo: ${formatMoney(acc.balance)}`,
-      value: acc.id
-    }))
-)
+// Contas activas de desembolso filtradas estritamente pelo método escolhido
+const disbursementAccountOptions = computed(() => {
+  const method = paymentMethod.value
+  let list = bankAccounts.value.filter(
+    acc => Number(acc.is_active) === 1 && ['DESEMBOLSO', 'MISTO'].includes(acc.purpose)
+  )
+
+  if (method === 'MPESA') {
+    // Apenas contas M-Pesa empresariais (proíbe BCI, eMola, BIM, etc.)
+    list = list.filter(isMpesaAccount)
+  } else if (method === 'EMOLA') {
+    list = list.filter(isEmolaAccount)
+  } else if (method === 'BANK') {
+    list = list.filter(acc => !isMpesaAccount(acc) && !isEmolaAccount(acc) && acc.type !== 'CAIXA_FISICO')
+  }
+
+  return list.map(acc => ({
+    label: `${acc.bank_name || 'Conta'} - ${acc.accountNumber} - Saldo: ${formatMoney(acc.balance)}`,
+    value: acc.id,
+    balance: acc.balance,
+    bank_name: acc.bank_name
+  }))
+})
 
 async function fetchBankAccounts() {
   try {
-    const { data } = await api.get('/api/bank-accounts?is_active=1&purpose=DESEMBOLSO')
+    const { data } = await api.get('/api/bank-accounts?is_active=1')
     if (data.success) {
       bankAccounts.value = data.result || []
-      // Pré-seleccionar a conta marcada como default de desembolso.
-      if (!bankAccountId.value) {
+      if (paymentMethod.value === 'MPESA') {
+        const mpesaAcc = bankAccounts.value.find(isMpesaAccount)
+        if (mpesaAcc) bankAccountId.value = mpesaAcc.id
+      } else if (!bankAccountId.value) {
         const def = bankAccounts.value.find(acc => Number(acc.is_default_desembolso) === 1)
         bankAccountId.value = def ? def.id : null
       }
@@ -679,6 +932,9 @@ watch(show, async (val) => {
     bankAccountId.value = null
     autoMpesaDisburse.value = true
     disbursementPhone.value = props.loan?.customerPhone || props.loan?.phone || ''
+    holderInfo.value = null
+    holderError.value = ''
+    holderMismatchConfirmed.value = false
     adminFeeAccountId.value = null
     // Carteira: limpar e carregar (obrigatória no desembolso)
     walletId.value = props.loan?.walletId ? Number(props.loan.walletId) : null
@@ -710,14 +966,41 @@ async function confirmApproval() {
   const loan = props.loan
   if (!loan || !rateId.value) return
   // ── GARANTIAS: bloqueio authoritative no backend, mas aviso imediato aqui ──
-  if (paymentMethod.value === 'MPESA' && autoMpesaDisburse.value) {
-    if (!validateMpesaPhone(disbursementPhone.value)) {
+  if (paymentMethod.value === 'MPESA') {
+    if (disbursementAccountOptions.value.length === 0) {
       $q.notify({
-        type: 'warning',
-        message: 'Indique um número Vodacom M-Pesa válido (84 ou 85) para o desembolso automático.',
+        type: 'negative',
+        message: 'Não existe nenhuma conta M-Pesa empresarial configurada para desembolsos. Registe uma em Contas Bancárias.',
         position: 'top'
       })
       return
+    }
+    if (autoMpesaDisburse.value) {
+      if (!validateMpesaPhone(disbursementPhone.value)) {
+        $q.notify({
+          type: 'warning',
+          message: 'Indique um número Vodacom M-Pesa válido (84 ou 85) para o desembolso automático.',
+          position: 'top'
+        })
+        return
+      }
+      if (!holderInfo.value) {
+        $q.notify({
+          type: 'warning',
+          message: 'Por favor consulte o titular M-Pesa (Anti-Fraude) antes de autorizar o desembolso.',
+          position: 'top'
+        })
+        verifyMpesaHolder(true)
+        return
+      }
+      if (holderInfo.value.matchStatus === 'MISMATCH' && !holderMismatchConfirmed.value) {
+        $q.notify({
+          type: 'negative',
+          message: 'O titular da conta M-Pesa diverge do mutuário. Marque a confirmação explícita para autorizar.',
+          position: 'top'
+        })
+        return
+      }
     }
   }
 

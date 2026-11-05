@@ -271,7 +271,7 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
     // conta de origem — bloqueia o crédito se não houver dinheiro.
     const bodyAny = req.body as any;
     const payMethod = String(bodyAny?.payment_method || "CASH").toUpperCase();
-    const disburseAccountId = bodyAny?.bank_account_id ? Number(bodyAny.bank_account_id) : null;
+    let disburseAccountId = bodyAny?.bank_account_id ? Number(bodyAny.bank_account_id) : null;
     if (payMethod !== "CASH" && disburseAccountId) {
       const { getBalance } = await import("../services/bankAccountService");
       const available = await getBalance(Number(companyId), disburseAccountId);
@@ -370,6 +370,48 @@ const createAmortizationLoan = async (req: Request, res: Response) => {
       process.env.APP_SECRET + ""
     );
     const disburseUserId = Number(decodedDisburse?.id) || undefined;
+
+    
+    // Validacao estrita da conta de origem quando desembolso for M-Pesa
+    if (payMethod === "MPESA") {
+      const { AccountModel } = await import("../database/models/AccountModel");
+      if (disburseAccountId) {
+        const originAcc: any = await AccountModel.findOne({
+          where: { id: disburseAccountId, companyId: Number(companyId) },
+        });
+        if (originAcc) {
+          const accName = String(originAcc.bank_name || "").toLowerCase();
+          const isMpesa =
+            accName.includes("mpesa") ||
+            accName.includes("m-pesa") ||
+            originAcc.type === "MOBILE_MONEY";
+          if (!isMpesa) {
+            return res.status(400).json({
+              success: false,
+              error: "INVALID_ORIGIN_ACCOUNT",
+              message: "Para desembolsos via M-Pesa, a conta de origem deve ser obrigatoriamente uma conta M-Pesa.",
+            });
+          }
+        }
+      } else {
+        // Auto-detectar conta M-Pesa da empresa
+        const { Op } = await import("sequelize");
+        const mpesaAcc: any = await AccountModel.findOne({
+          where: {
+            companyId: Number(companyId),
+            is_active: 1,
+            [Op.or]: [
+              { bank_name: { [Op.iLike || Op.like]: "%mpesa%" } },
+              { bank_name: { [Op.iLike || Op.like]: "%m-pesa%" } },
+              { type: "MOBILE_MONEY" },
+            ],
+          },
+        });
+        if (mpesaAcc) {
+          disburseAccountId = mpesaAcc.id;
+        }
+      }
+    }
 
     // ── DESEMBOLSO AUTOMÁTICO M-PESA B2C (se solicitado) ──
     let b2cMpesaReceipt: string | null = null;
