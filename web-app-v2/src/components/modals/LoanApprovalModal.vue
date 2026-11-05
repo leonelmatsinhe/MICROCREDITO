@@ -100,6 +100,51 @@
           </div>
         </div>
 
+        <!-- ═══ CONFIGURAÇÃO DE DESEMBOLSO M-PESA B2C ═══ -->
+        <div v-if="paymentMethod === 'MPESA'" class="q-mb-md q-pa-sm bg-red-1 rounded-borders" style="border: 1px solid #ffcdd2">
+          <div class="row items-center justify-between q-mb-xs">
+            <div class="row items-center">
+              <q-icon name="smartphone" color="negative" size="20px" class="q-mr-xs" />
+              <span class="text-weight-bold text-subtitle2 text-red-10">Desembolso M-Pesa B2C</span>
+            </div>
+            <q-badge :color="autoMpesaDisburse ? 'negative' : 'grey-7'" rounded>
+              {{ autoMpesaDisburse ? 'Automático (Open API)' : 'Registo Manual' }}
+            </q-badge>
+          </div>
+
+          <div class="row q-col-gutter-sm items-center q-mt-xs">
+            <div class="col-12 col-sm-7">
+              <q-input
+                v-model="disbursementPhone"
+                dense
+                outlined
+                bg-color="white"
+                label="Nº de Telemóvel M-Pesa do Mutuário *"
+                placeholder="Ex: 841234567 ou 851234567"
+                :rules="[v => !autoMpesaDisburse || validateMpesaPhone(v) || 'Número Vodacom inválido (84 ou 85)']"
+              >
+                <template v-slot:prepend>
+                  <q-icon name="phone_android" size="18px" color="negative" />
+                </template>
+              </q-input>
+            </div>
+            <div class="col-12 col-sm-5">
+              <q-toggle
+                v-model="autoMpesaDisburse"
+                label="Transferir via M-Pesa"
+                color="negative"
+                dense
+              />
+            </div>
+          </div>
+          <div class="text-caption text-grey-9 q-mt-xs" v-if="autoMpesaDisburse">
+            <q-icon name="bolt" color="amber-9" /> O valor aprovado de <strong>{{ formatMoney(loan?.amount) }}</strong> será transferido imediatamente da Conta M-Pesa Empresarial para a carteira móvel do mutuário.
+          </div>
+          <div class="text-caption text-grey-7 q-mt-xs" v-else>
+            <q-icon name="info" /> Modo manual: O operador já transferiu o valor via portal web / terminal e apenas confirma o registo interno.
+          </div>
+        </div>
+
         <!-- ═══ CARTEIRA DE FINANCIAMENTO (analítica) — obrigatória ═══ -->
         <q-select
           v-model="walletId"
@@ -447,6 +492,31 @@ const disbursementDate = ref(new Date().toISOString().split('T')[0])
 const paymentMethod = ref('CASH')
 const bankAccountId = ref(null)
 const bankAccounts = ref([])
+const autoMpesaDisburse = ref(true)
+const disbursementPhone = ref('')
+
+function validateMpesaPhone(phone) {
+  if (!phone) return false
+  const clean = String(phone).replace(/\D/g, '')
+  if (clean.length === 9) return clean.startsWith('84') || clean.startsWith('85')
+  if (clean.length === 12) return clean.startsWith('25884') || clean.startsWith('25885')
+  return false
+}
+
+watch(paymentMethod, (method) => {
+  if (method === 'MPESA') {
+    if (!disbursementPhone.value) {
+      disbursementPhone.value = props.loan?.customerPhone || props.loan?.phone || ''
+    }
+    const mpesaAcc = bankAccounts.value.find(a =>
+      String(a.bank_name || '').toLowerCase().includes('mpesa') ||
+      String(a.bank_name || '').toLowerCase().includes('m-pesa')
+    )
+    if (mpesaAcc) {
+      bankAccountId.value = mpesaAcc.id
+    }
+  }
+})
 
 // ─── TESOURARIA: conta de entrada da taxa administrativa ───
 const adminFeeAccountId = ref(null)
@@ -607,6 +677,8 @@ watch(show, async (val) => {
     // Reset da tesouraria + carregar contas para o q-select
     paymentMethod.value = 'CASH'
     bankAccountId.value = null
+    autoMpesaDisburse.value = true
+    disbursementPhone.value = props.loan?.customerPhone || props.loan?.phone || ''
     adminFeeAccountId.value = null
     // Carteira: limpar e carregar (obrigatória no desembolso)
     walletId.value = props.loan?.walletId ? Number(props.loan.walletId) : null
@@ -638,6 +710,17 @@ async function confirmApproval() {
   const loan = props.loan
   if (!loan || !rateId.value) return
   // ── GARANTIAS: bloqueio authoritative no backend, mas aviso imediato aqui ──
+  if (paymentMethod.value === 'MPESA' && autoMpesaDisburse.value) {
+    if (!validateMpesaPhone(disbursementPhone.value)) {
+      $q.notify({
+        type: 'warning',
+        message: 'Indique um número Vodacom M-Pesa válido (84 ou 85) para o desembolso automático.',
+        position: 'top'
+      })
+      return
+    }
+  }
+
   if (coverageBlocked.value) {
     const reason = coverage.value?.reason
     $q.notify({
@@ -711,6 +794,8 @@ async function confirmApproval() {
         // ── TESOURARIA: método/conta do desembolso (movimento SAIDA/DESEMBOLSO) ──
         payment_method: paymentMethod.value,
         bank_account_id: paymentMethod.value !== 'CASH' ? bankAccountId.value : null,
+        auto_mpesa_disbursement: paymentMethod.value === 'MPESA' && autoMpesaDisburse.value,
+        disbursement_phone: disbursementPhone.value,
         // Taxa administrativa: valor + conta de entrada (backend registra o movimento)
         admin_fee_value: adminFeeExempt.value ? 0 : adminFeeValue.value,
         admin_fee_account_id: adminFeeExempt.value ? null : adminFeeAccountId.value

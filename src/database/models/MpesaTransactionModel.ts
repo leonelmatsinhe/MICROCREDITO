@@ -24,7 +24,8 @@ export const MpesaTransactionModel = db.define(
     },
     amortizationLoanId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
+      defaultValue: 0,
     },
     accountNumber: {
       type: DataTypes.STRING(64),

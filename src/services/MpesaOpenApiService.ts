@@ -855,3 +855,215 @@ export const finalizeMpesaPayment = async (
       : null,
   };
 };
+
+
+export type MpesaB2CResult = {
+  success: boolean;
+  status: "SUCCESS" | "FAILED" | "PENDING";
+  mpesaTxId?: number;
+  mpesaReceipt?: string | null;
+  transactionReference: string;
+  conversationId?: string | null;
+  message: string;
+  responseCode?: string;
+  responseDescription?: string;
+};
+
+/**
+ * Desembolso Automático de Crédito B2C via Open API M-Pesa (Vodacom Moçambique)
+ * Endpoint oficial da Vodacom: /ipg/v1x/b2cPayment/
+ */
+export const executeB2CDisbursement = async (params: {
+  companyId: number;
+  loanId: number;
+  customerId: number;
+  amount: number;
+  phone: string;
+  accountNumber?: string;
+}): Promise<MpesaB2CResult> => {
+  const { companyId, loanId, customerId, amount, phone, accountNumber } = params;
+  const disburseAmount = round2(amount);
+
+  if (disburseAmount <= 0) {
+    throw new Error("O valor de desembolso deve ser superior a 0 MZN.");
+  }
+
+  // Normalização do número de telefone (deve ser Vodacom Moçambique: 84 ou 85)
+  let cleanPhone = String(phone || "").replace(/\D/g, "");
+  if (cleanPhone.length === 9 && (cleanPhone.startsWith("84") || cleanPhone.startsWith("85"))) {
+    cleanPhone = `258${cleanPhone}`;
+  }
+  if (!/^258(84|85)\d{7}$/.test(cleanPhone)) {
+    throw new Error(
+      "O número de telefone para desembolso M-Pesa deve ser um número Vodacom válido (iniciado por 84 ou 85)."
+    );
+  }
+
+  // Verificar empréstimo e cliente
+  const loan: any = await LoanModel.findOne({ where: { id: loanId, companyId } });
+  if (!loan) throw new Error("Crédito não encontrado.");
+  if (Number(loan.getDataValue("status")) === 1) {
+    throw new Error("Este crédito já se encontra desembolsado e activo.");
+  }
+
+  const customer: any = await CustomerModel.findOne({ where: { id: customerId, companyId } });
+  if (!customer) throw new Error("Mutuário não encontrado.");
+
+  // Referências únicas de rastreamento
+  const suffix = Date.now().toString().slice(-6);
+  const transactionRef = `D${loanId}${suffix}`.slice(0, 10);
+  const cleanAcc = String(accountNumber || customer.accountNumber || customerId).replace(/[^a-zA-Z0-9]/g, "");
+  const thirdPartyRef = `DISB-${cleanAcc}-${suffix}`.slice(0, 30);
+
+  // Registar tentativa em mpesa_transactions
+  const mpesaTx: any = await MpesaTransactionModel.create({
+    companyId,
+    customerId,
+    loanId,
+    amortizationLoanId: 0,
+    accountNumber: String(accountNumber || customer.accountNumber || ""),
+    transactionReference: transactionRef,
+    thirdPartyReference: thirdPartyRef,
+    msisdn: cleanPhone,
+    amount: disburseAmount,
+    excessAmount: 0,
+    lateInterest: 0,
+    status: "INITIATED",
+  });
+
+  const config = getMpesaConfig();
+
+  // MODO MOCK / SANDBOX DE DESENVOLVIMENTO
+  if (config.isMock) {
+    const mockTxId = `MP${Date.now().toString().slice(-6)}${Math.floor(100 + Math.random() * 900)}`;
+    const mockConvId = `B2C_SIM_${Date.now()}`;
+
+    await mpesaTx.update({
+      conversationId: mockConvId,
+      mpesaReceipt: mockTxId,
+      status: "SUCCESS",
+      responseCode: "INS-0",
+      responseDescription: "Desembolso M-Pesa B2C simulado com sucesso (Sandbox)",
+      rawInitiateResponse: JSON.stringify({
+        output_ResponseCode: "INS-0",
+        output_ResponseDesc: "Request processed successfully (Mock Sandbox)",
+        output_TransactionID: mockTxId,
+        output_ConversationID: mockConvId,
+        output_ThirdPartyReference: thirdPartyRef,
+      }),
+    });
+
+    return {
+      success: true,
+      status: "SUCCESS",
+      mpesaTxId: Number(mpesaTx.id),
+      mpesaReceipt: mockTxId,
+      transactionReference: transactionRef,
+      conversationId: mockConvId,
+      message: `Desembolso de ${disburseAmount.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN enviado com sucesso via M-Pesa para ${cleanPhone} (Recibo: ${mockTxId}).`,
+      responseCode: "INS-0",
+      responseDescription: "Request processed successfully",
+    };
+  }
+
+  // MODO REAL: Comunicação com a Open API da Vodacom
+  try {
+    const token = generateBearerToken(config.publicKey, config.apiKey);
+    const url = `https://${config.host}:18352/ipg/v1x/b2cPayment/`;
+
+    const requestBody = {
+      input_TransactionReference: transactionRef,
+      input_CustomerMSISDN: cleanPhone,
+      input_Amount: String(Math.round(disburseAmount)),
+      input_ThirdPartyReference: thirdPartyRef,
+      input_ServiceProviderCode: config.serviceProviderCode,
+    };
+
+    const response = await axios.post(url, requestBody, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        Origin: config.origin,
+      },
+      timeout: 30000,
+    });
+
+    const data = response.data || {};
+    const respCode = String(data.output_ResponseCode || "");
+    const respDesc = String(data.output_ResponseDesc || "");
+    const conversationId = data.output_ConversationID || null;
+    const mpesaReceipt = data.output_TransactionID || null;
+
+    const isVodacomSuccess =
+      respCode === "INS-0" ||
+      respCode === "INS-000000" ||
+      respCode === "0" ||
+      respDesc.toLowerCase().includes("success");
+
+    if (isVodacomSuccess) {
+      await mpesaTx.update({
+        conversationId,
+        mpesaReceipt,
+        status: "SUCCESS",
+        responseCode: respCode,
+        responseDescription: respDesc,
+        rawInitiateResponse: JSON.stringify(data),
+      });
+
+      return {
+        success: true,
+        status: "SUCCESS",
+        mpesaTxId: Number(mpesaTx.id),
+        mpesaReceipt,
+        transactionReference: transactionRef,
+        conversationId,
+        message: `Desembolso M-Pesa de ${disburseAmount.toLocaleString("pt-MZ", { minimumFractionDigits: 2 })} MZN enviado com sucesso para ${cleanPhone} (Recibo: ${mpesaReceipt}).`,
+        responseCode: respCode,
+        responseDescription: respDesc,
+      };
+    } else {
+      await mpesaTx.update({
+        conversationId,
+        status: "FAILED",
+        responseCode: respCode,
+        responseDescription: respDesc,
+        errorMessage: respDesc || "A Vodacom rejeitou a transacção B2C.",
+        rawInitiateResponse: JSON.stringify(data),
+      });
+
+      return {
+        success: false,
+        status: "FAILED",
+        mpesaTxId: Number(mpesaTx.id),
+        transactionReference: transactionRef,
+        conversationId,
+        message: respDesc || `Desembolso rejeitado pela Vodacom (Código ${respCode}).`,
+        responseCode: respCode,
+        responseDescription: respDesc,
+      };
+    }
+  } catch (apiError: any) {
+    const errorData = apiError.response?.data || {};
+    const respCode = errorData.output_ResponseCode || "ERR_HTTP";
+    const respDesc = errorData.output_ResponseDesc || apiError.message || "Erro de rede com a Vodacom.";
+
+    await mpesaTx.update({
+      status: "FAILED",
+      responseCode: String(respCode),
+      responseDescription: String(respDesc),
+      errorMessage: String(respDesc),
+      rawInitiateResponse: JSON.stringify(errorData),
+    });
+
+    console.error("[M-Pesa B2C] Erro de comunicação com a Vodacom:", respDesc);
+    return {
+      success: false,
+      status: "FAILED",
+      mpesaTxId: Number(mpesaTx.id),
+      transactionReference: transactionRef,
+      message: respDesc || "Não foi possível comunicar com o servidor da Vodacom M-Pesa.",
+      responseCode: String(respCode),
+      responseDescription: String(respDesc),
+    };
+  }
+};

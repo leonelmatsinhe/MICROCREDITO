@@ -3,6 +3,7 @@ import {
   initiateC2BPayment,
   queryMpesaTransactionStatus,
   handleMpesaCallback,
+  executeB2CDisbursement,
 } from "../services/MpesaOpenApiService";
 import { MpesaTransactionModel } from "../database/models/MpesaTransactionModel";
 
@@ -119,7 +120,31 @@ export const queryVodacomStatus = async (req: Request, res: Response) => {
 
 // Compatibilidade legado com rotas antigas
 export const b2Customer = async (req: Request, res: Response) => {
-  return res.status(501).json({ success: false, message: "Desembolso B2C sob solicitaÃ§Ã£o direta." });
+  try {
+    const { companyId, loanId, customerId, amount, phone, accountNumber } = req.body;
+    if (!companyId || !loanId || !customerId || !amount || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Todos os parâmetros são obrigatórios (companyId, loanId, customerId, amount, phone).',
+      });
+    }
+
+    const result = await executeB2CDisbursement({
+      companyId: Number(companyId),
+      loanId: Number(loanId),
+      customerId: Number(customerId),
+      amount: Number(amount),
+      phone: String(phone),
+      accountNumber: String(accountNumber || ''),
+    });
+
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (err: any) {
+    return res.status(400).json({
+      success: false,
+      message: err?.message || 'Erro ao processar o desembolso B2C.',
+    });
+  }
 };
 
 export const c2Business = initiateC2B;
