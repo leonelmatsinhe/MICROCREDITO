@@ -706,15 +706,15 @@ async function verifyMpesaHolder(force = false) {
         customerId
       }
     })
-    if (data.success) {
+    if (data && data.success) {
       holderInfo.value = data
       holderMismatchConfirmed.value = false
     } else {
       holderInfo.value = null
-      holderError.value = data.responseDescription || data.message || 'Titular M-Pesa não identificado.'
+      holderError.value = data?.responseDescription || data?.message || 'Titular M-Pesa não identificado.'
     }
   } catch (err) {
-    const errMsg = err.response?.data?.responseDescription || err.response?.data?.message || err.message || 'Falha ao consultar titular na Vodacom.'
+    const errMsg = err.response?.data?.responseDescription || err.response?.data?.message || 'Não foi possível validar o titular M-Pesa.'
     holderError.value = errMsg
     holderInfo.value = null
   } finally {

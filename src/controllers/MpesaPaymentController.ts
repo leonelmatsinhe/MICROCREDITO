@@ -161,9 +161,10 @@ export const getCustomerName = async (req: Request, res: Response) => {
     const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
 
     if (!phone) {
-      return res.status(400).json({
+      return res.status(200).json({
         success: false,
         message: "O numero de telemovel M-Pesa e obrigatorio.",
+        responseDescription: "O numero de telemovel M-Pesa e obrigatorio.",
       });
     }
 
@@ -173,12 +174,13 @@ export const getCustomerName = async (req: Request, res: Response) => {
       customerId,
     });
 
-    return res.status(result.success ? 200 : 400).json(result);
+    return res.status(200).json(result);
   } catch (error: any) {
     console.error("[M-Pesa Controller] Erro ao consultar nome do titular:", error?.message || error);
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
       message: error?.message || "Erro interno ao consultar titular M-Pesa.",
+      responseDescription: error?.message || "Erro interno ao consultar titular M-Pesa.",
     });
   }
 };

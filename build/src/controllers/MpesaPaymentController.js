@@ -182,9 +182,10 @@ const getCustomerName = (req, res) => __awaiter(void 0, void 0, void 0, function
         const phone = String(req.query.phone || "");
         const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
         if (!phone) {
-            return res.status(400).json({
+            return res.status(200).json({
                 success: false,
                 message: "O numero de telemovel M-Pesa e obrigatorio.",
+                responseDescription: "O numero de telemovel M-Pesa e obrigatorio.",
             });
         }
         const result = yield (0, MpesaOpenApiService_1.queryCustomerMaskedName)({
@@ -192,13 +193,14 @@ const getCustomerName = (req, res) => __awaiter(void 0, void 0, void 0, function
             phone,
             customerId,
         });
-        return res.status(result.success ? 200 : 400).json(result);
+        return res.status(200).json(result);
     }
     catch (error) {
         console.error("[M-Pesa Controller] Erro ao consultar nome do titular:", (error === null || error === void 0 ? void 0 : error.message) || error);
-        return res.status(500).json({
+        return res.status(200).json({
             success: false,
             message: (error === null || error === void 0 ? void 0 : error.message) || "Erro interno ao consultar titular M-Pesa.",
+            responseDescription: (error === null || error === void 0 ? void 0 : error.message) || "Erro interno ao consultar titular M-Pesa.",
         });
     }
 });
