@@ -802,4 +802,49 @@ import { getBalancete, getDRE } from "./controllers/FinancialReportsController";
 routes.get("/api/financeiro/balancete", auth, getBalancete);
 routes.get("/api/financeiro/dre", auth, getDRE);
 
+
+// ==================== WEBSITE INSTITUCIONAL (CLACK MICROCRÉDITO, EI) ====================
+import {
+  getPublicSiteContent,
+  submitPublicLead,
+  getAdminSiteContent,
+  updateAdminSiteConfig,
+  createAdminProduct,
+  updateAdminProduct,
+  deleteAdminProduct,
+  createAdminTestimonial,
+  updateAdminTestimonial,
+  deleteAdminTestimonial,
+  createAdminFaq,
+  updateAdminFaq,
+  deleteAdminFaq,
+  getAdminLeads,
+  updateAdminLead,
+  deleteAdminLead,
+} from "./controllers/SiteController";
+
+// Rotas públicas do Website Institucional
+routes.get("/api/public/site/content", getPublicSiteContent);
+routes.post("/api/public/site/lead", submitPublicLead);
+
+// Rotas administrativas dinâmicas (Gestão do Conteúdo)
+routes.get("/api/admin/site/content", isStaff, getAdminSiteContent);
+routes.put("/api/admin/site/config", isAdmin, updateAdminSiteConfig);
+
+routes.post("/api/admin/site/products", isAdmin, createAdminProduct);
+routes.put("/api/admin/site/products/:id", isAdmin, updateAdminProduct);
+routes.delete("/api/admin/site/products/:id", isAdmin, deleteAdminProduct);
+
+routes.post("/api/admin/site/testimonials", isAdmin, createAdminTestimonial);
+routes.put("/api/admin/site/testimonials/:id", isAdmin, updateAdminTestimonial);
+routes.delete("/api/admin/site/testimonials/:id", isAdmin, deleteAdminTestimonial);
+
+routes.post("/api/admin/site/faqs", isAdmin, createAdminFaq);
+routes.put("/api/admin/site/faqs/:id", isAdmin, updateAdminFaq);
+routes.delete("/api/admin/site/faqs/:id", isAdmin, deleteAdminFaq);
+
+routes.get("/api/admin/site/leads", isStaff, getAdminLeads);
+routes.put("/api/admin/site/leads/:id", isStaff, updateAdminLead);
+routes.delete("/api/admin/site/leads/:id", isAdmin, deleteAdminLead);
+
 export { routes };

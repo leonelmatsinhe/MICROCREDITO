@@ -303,6 +303,7 @@ const groups = computed(() => {
       items: [
         { to: '/equipe', icon: 'groups', label: 'Equipa e Parceiros' },
         { to: '/settings', icon: 'settings', label: 'Configurações' },
+        ...(role === 1 ? [{ to: '/admin/website', icon: 'language', label: 'Website Institucional' }] : []),
         // Legados movidos do rodapé para SISTEMA (sem duplicação)
         ...(canSeeSms.value ? [{ to: '/sms/pendentes', icon: 'forum', label: 'Mensagens' }] : []),
         ...(role === 1 ? [{ to: '/onboarding', icon: 'checklist', label: 'Onboarding da Equipa' }] : []),

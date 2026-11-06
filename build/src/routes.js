@@ -547,3 +547,23 @@ routes.post("/api/admin/system/reset-operational-data", roles_1.isAdmin, SystemR
 const FinancialReportsController_1 = require("./controllers/FinancialReportsController");
 routes.get("/api/financeiro/balancete", auth_1.auth, FinancialReportsController_1.getBalancete);
 routes.get("/api/financeiro/dre", auth_1.auth, FinancialReportsController_1.getDRE);
+// ==================== WEBSITE INSTITUCIONAL (CLACK MICROCRÉDITO, EI) ====================
+const SiteController_1 = require("./controllers/SiteController");
+// Rotas públicas do Website Institucional
+routes.get("/api/public/site/content", SiteController_1.getPublicSiteContent);
+routes.post("/api/public/site/lead", SiteController_1.submitPublicLead);
+// Rotas administrativas dinâmicas (Gestão do Conteúdo)
+routes.get("/api/admin/site/content", roles_1.isStaff, SiteController_1.getAdminSiteContent);
+routes.put("/api/admin/site/config", roles_1.isAdmin, SiteController_1.updateAdminSiteConfig);
+routes.post("/api/admin/site/products", roles_1.isAdmin, SiteController_1.createAdminProduct);
+routes.put("/api/admin/site/products/:id", roles_1.isAdmin, SiteController_1.updateAdminProduct);
+routes.delete("/api/admin/site/products/:id", roles_1.isAdmin, SiteController_1.deleteAdminProduct);
+routes.post("/api/admin/site/testimonials", roles_1.isAdmin, SiteController_1.createAdminTestimonial);
+routes.put("/api/admin/site/testimonials/:id", roles_1.isAdmin, SiteController_1.updateAdminTestimonial);
+routes.delete("/api/admin/site/testimonials/:id", roles_1.isAdmin, SiteController_1.deleteAdminTestimonial);
+routes.post("/api/admin/site/faqs", roles_1.isAdmin, SiteController_1.createAdminFaq);
+routes.put("/api/admin/site/faqs/:id", roles_1.isAdmin, SiteController_1.updateAdminFaq);
+routes.delete("/api/admin/site/faqs/:id", roles_1.isAdmin, SiteController_1.deleteAdminFaq);
+routes.get("/api/admin/site/leads", roles_1.isStaff, SiteController_1.getAdminLeads);
+routes.put("/api/admin/site/leads/:id", roles_1.isStaff, SiteController_1.updateAdminLead);
+routes.delete("/api/admin/site/leads/:id", roles_1.isAdmin, SiteController_1.deleteAdminLead);

@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 // Lazy load das páginas
 const LandingPage = () => import('@/pages/LandingPage.vue')
 const LoginPage = () => import('@/pages/auth/LoginPage.vue')
+const InstitutionalWebsite = () => import('@/pages/public/InstitutionalWebsite.vue')
+const WebsiteAdminPage = () => import('@/pages/admin/WebsiteAdminPage.vue')
 const RegisterCompanyPage = () => import('@/pages/RegisterCompanyPage.vue')
 const DashboardPage = () => import('@/pages/DashboardPage.vue')
 const GestorPage = () => import('@/pages/GestorPage.vue')
@@ -61,17 +63,62 @@ const PartnerStatementPage = () => import('@/pages/partner/PartnerStatementPage.
 const PartnerRecibosPage = () => import('@/pages/partner/PartnerRecibosPage.vue')
 
 const routes = [
-  // LOGIN — página inicial do sistema
+  // WEBSITE INSTITUCIONAL (CLACK MICROCRÉDITO, EI)
   {
     path: '/',
+    name: 'InstitutionalWebsite',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/sobre',
+    name: 'Sobre',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/creditos',
+    name: 'CreditosPublico',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/simulador',
+    name: 'SimuladorPublico',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/contacto',
+    name: 'ContactoPublico',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/como-funciona',
+    name: 'ComoFunciona',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/requisitos',
+    name: 'RequisitosPublico',
+    component: InstitutionalWebsite,
+    meta: { requiresAuth: false }
+  },
+  // LOGIN DO SISTEMA DE GESTÃO
+  {
+    path: '/login',
     name: 'Login',
     component: LoginPage,
     meta: { requiresAuth: false }
   },
-  // COMPATIBILIDADE — /login aponta para a página inicial (login)
+  // ADMINISTRAÇÃO DO WEBSITE INSTITUCIONAL
   {
-    path: '/login',
-    redirect: '/'
+    path: '/admin/website',
+    name: 'WebsiteAdmin',
+    component: WebsiteAdminPage,
+    meta: { requiresAuth: true, allowedRoles: [1] }
   },
   // WEBSITE OFICIAL — landing de vendas isolada em /landing
   {
@@ -353,6 +400,18 @@ router.beforeEach((to, from, next) => {
   }
 
   const authStore = useAuthStore()
+
+  // Despacho por domínio: no subdomínio de gestão (ex: web.clackmicrocredito.com),
+  // a raiz '/' redireciona automaticamente para login ou painel de controlo
+  const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) || ''
+  if (hostname.startsWith('web.') && to.path === '/') {
+    if (authStore.isLoggedIn) {
+      next(authStore.defaultRoute || '/dashboard')
+    } else {
+      next({ name: 'Login' })
+    }
+    return
+  }
   
   // Restaurar sessão se necessário
   if (!authStore.isLoggedIn) {

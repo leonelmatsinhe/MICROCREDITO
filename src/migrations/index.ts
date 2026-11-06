@@ -1890,4 +1890,310 @@ const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
     results
   );
+
+  // ── 20. WEBSITE INSTITUCIONAL DINÂMICO (CLACK MICROCRÉDITO, EI) ──
+  await createTableIfMissing(
+    "site_configs",
+    `CREATE TABLE IF NOT EXISTS site_configs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL DEFAULT 1,
+      companyName VARCHAR(150) NOT NULL DEFAULT 'Clack Microcrédito, EI',
+      tagline VARCHAR(255) NULL,
+      heroTitle VARCHAR(255) NOT NULL,
+      heroSubtitle TEXT NULL,
+      heroBadge VARCHAR(150) NULL,
+      heroPrimaryCtaText VARCHAR(100) NULL,
+      heroPrimaryCtaLink VARCHAR(100) NULL,
+      heroSecondaryCtaText VARCHAR(100) NULL,
+      heroSecondaryCtaLink VARCHAR(100) NULL,
+      heroImageUrl VARCHAR(255) NULL,
+      statClients VARCHAR(50) NULL DEFAULT '+2.500',
+      statClientsLabel VARCHAR(100) NULL DEFAULT 'Clientes Satisfeitos',
+      statDisbursed VARCHAR(50) NULL DEFAULT '+45M MZN',
+      statDisbursedLabel VARCHAR(100) NULL DEFAULT 'Crédito Concedido',
+      statApproval VARCHAR(50) NULL DEFAULT '24 Horas',
+      statApprovalLabel VARCHAR(100) NULL DEFAULT 'Aprovação Rápida',
+      statSatisfaction VARCHAR(50) NULL DEFAULT '98%',
+      statSatisfactionLabel VARCHAR(100) NULL DEFAULT 'Taxa de Satisfação',
+      phone VARCHAR(50) NULL DEFAULT '+258 84 835 3816',
+      phoneSecondary VARCHAR(50) NULL DEFAULT '+258 87 074 0202',
+      whatsapp VARCHAR(50) NULL DEFAULT '258848353816',
+      email VARCHAR(150) NULL DEFAULT 'contacto@clackmicrocredito.com',
+      address VARCHAR(255) NULL DEFAULT 'Av. 25 de Setembro, Maputo, Moçambique',
+      workingHours VARCHAR(150) NULL DEFAULT 'Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30',
+      mapUrl TEXT NULL,
+      facebookUrl VARCHAR(255) NULL,
+      instagramUrl VARCHAR(255) NULL,
+      linkedinUrl VARCHAR(255) NULL,
+      aboutHistory TEXT NULL,
+      aboutMission TEXT NULL,
+      aboutVision TEXT NULL,
+      aboutValues TEXT NULL,
+      defaultInterestRate DECIMAL(5,2) NOT NULL DEFAULT 15.00,
+      minAmount DECIMAL(15,2) NOT NULL DEFAULT 1000.00,
+      maxAmount DECIMAL(15,2) NOT NULL DEFAULT 300000.00,
+      minTerm INT NOT NULL DEFAULT 1,
+      maxTerm INT NOT NULL DEFAULT 12,
+      sectionsEnabled TEXT NULL,
+      metaTitle VARCHAR(255) NULL,
+      metaDescription TEXT NULL,
+      metaKeywords VARCHAR(255) NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_site_config_comp (companyId)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    results
+  );
+
+  await createTableIfMissing(
+    "site_produtos",
+    `CREATE TABLE IF NOT EXISTS site_produtos (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL DEFAULT 1,
+      slug VARCHAR(100) NOT NULL,
+      title VARCHAR(150) NOT NULL,
+      badge VARCHAR(80) NULL,
+      summary TEXT NOT NULL,
+      description TEXT NULL,
+      minAmount DECIMAL(15,2) NOT NULL DEFAULT 1000.00,
+      maxAmount DECIMAL(15,2) NOT NULL DEFAULT 100000.00,
+      minTerm INT NOT NULL DEFAULT 1,
+      maxTerm INT NOT NULL DEFAULT 12,
+      termType VARCHAR(20) NOT NULL DEFAULT 'MESES',
+      interestRate DECIMAL(5,2) NOT NULL DEFAULT 15.00,
+      requirements TEXT NULL,
+      benefits TEXT NULL,
+      icon VARCHAR(50) NULL DEFAULT 'payments',
+      imageUrl VARCHAR(255) NULL,
+      featured TINYINT(1) NOT NULL DEFAULT 0,
+      isActive TINYINT(1) NOT NULL DEFAULT 1,
+      sortOrder INT NOT NULL DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_site_prod_comp (companyId),
+      INDEX idx_site_prod_active (isActive),
+      INDEX idx_site_prod_order (sortOrder)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    results
+  );
+
+  await createTableIfMissing(
+    "site_depoimentos",
+    `CREATE TABLE IF NOT EXISTS site_depoimentos (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL DEFAULT 1,
+      clientName VARCHAR(150) NOT NULL,
+      clientRole VARCHAR(150) NOT NULL,
+      clientLocation VARCHAR(100) NULL,
+      avatarUrl VARCHAR(255) NULL,
+      rating INT NOT NULL DEFAULT 5,
+      comment TEXT NOT NULL,
+      productType VARCHAR(100) NULL,
+      isActive TINYINT(1) NOT NULL DEFAULT 1,
+      sortOrder INT NOT NULL DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_site_testim_comp (companyId),
+      INDEX idx_site_testim_active (isActive)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    results
+  );
+
+  await createTableIfMissing(
+    "site_faqs",
+    `CREATE TABLE IF NOT EXISTS site_faqs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL DEFAULT 1,
+      category VARCHAR(80) NOT NULL DEFAULT 'Geral',
+      question VARCHAR(255) NOT NULL,
+      answer TEXT NOT NULL,
+      isActive TINYINT(1) NOT NULL DEFAULT 1,
+      sortOrder INT NOT NULL DEFAULT 0,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_site_faqs_comp (companyId),
+      INDEX idx_site_faqs_active (isActive),
+      INDEX idx_site_faqs_cat (category)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    results
+  );
+
+  await createTableIfMissing(
+    "site_leads",
+    `CREATE TABLE IF NOT EXISTS site_leads (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      companyId INT NOT NULL DEFAULT 1,
+      name VARCHAR(150) NOT NULL,
+      phone VARCHAR(30) NOT NULL,
+      email VARCHAR(150) NULL,
+      city VARCHAR(100) NULL,
+      amount DECIMAL(15,2) NULL,
+      term INT NULL,
+      productSlug VARCHAR(100) NULL,
+      message TEXT NULL,
+      source VARCHAR(50) NOT NULL DEFAULT 'WEBSITE',
+      status ENUM('NOVO', 'EM_CONTACTO', 'CONVERTIDO', 'ARQUIVADO') NOT NULL DEFAULT 'NOVO',
+      notes TEXT NULL,
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_site_leads_comp (companyId),
+      INDEX idx_site_leads_status (status),
+      INDEX idx_site_leads_created (createdAt)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+    results
+  );
+
+  // ── SEED INICIAL DO WEBSITE INSTITUCIONAL CASO ESTEJA VAZIO ──
+  try {
+    const [cfgRows] = await db.query("SELECT id FROM site_configs WHERE companyId = 1 LIMIT 1");
+    if ((cfgRows as any[]).length === 0) {
+      await db.query(`
+        INSERT INTO site_configs (
+          companyId, companyName, tagline, heroTitle, heroSubtitle, heroBadge,
+          heroPrimaryCtaText, heroPrimaryCtaLink, heroSecondaryCtaText, heroSecondaryCtaLink,
+          statClients, statClientsLabel, statDisbursed, statDisbursedLabel,
+          statApproval, statApprovalLabel, statSatisfaction, statSatisfactionLabel,
+          phone, phoneSecondary, whatsapp, email, address, workingHours,
+          aboutHistory, aboutMission, aboutVision, aboutValues,
+          defaultInterestRate, minAmount, maxAmount, minTerm, maxTerm,
+          sectionsEnabled, metaTitle, metaDescription
+        ) VALUES (
+          1, 'Clack Microcrédito, EI', 'Crédito ágil e transparente em Moçambique',
+          'Crédito Rápido, Justo e Sem Burocracia em Moçambique',
+          'Impulsione o seu negócio ou resolva imprevistos com aprovação em até 24 horas. Desembolso imediato na sua conta bancária ou via M-Pesa com as melhores condições do mercado.',
+          'Instituição de Microcrédito Autorizada',
+          'Simular Crédito', '#simulador', 'Falar no WhatsApp', 'https://wa.me/258848353816?text=Ol%C3%A1!%20Gostaria%20de%20informa%C3%A7%C3%B5es%20sobre%20cr%C3%A9dito%20na%20Clack%20Microcr%C3%A9dito.',
+          '+2.500', 'Clientes Atendidos', '+45M MZN', 'Capital Concedido',
+          '24 Horas', 'Aprovação Rápida', '98%', 'Taxa de Satisfação',
+          '+258 84 835 3816', '+258 87 074 0202', '258848353816', 'contacto@clackmicrocredito.com',
+          'Av. 25 de Setembro, Prédio Maryah, Maputo, Moçambique',
+          'Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30',
+          'A Clack Microcrédito, EI é uma entidade moçambicana vocacionada para o fornecimento de soluções financeiras céleres, inclusivas e responsáveis para empreendedores, comerciantes e famílias.',
+          'Democratizar o acesso a financiamento confiável e apoiar o desenvolvimento económico sustentável em Moçambique.',
+          'Ser a principal referência em microcrédito ágil e digital, aliando inovação tecnológica à proximidade humana.',
+          'Transparência inegociável, Rigor financeiro, Rapidez de resposta e Respeito pelo cliente.',
+          15.00, 1000.00, 300000.00, 1, 12,
+          '{\\"hero\\":true,\\"stats\\":true,\\"about\\":true,\\"products\\":true,\\"simulator\\":true,\\"steps\\":true,\\"requirements\\":true,\\"testimonials\\":true,\\"faq\\":true,\\"contact\\":true}',
+          'Clack Microcrédito, EI | Crédito Rápido em Moçambique',
+          'Soluções de microcrédito pessoal, comercial e empresarial com aprovação em 24h e desembolso via M-Pesa ou banco em Maputo e Moçambique.'
+        )
+      `);
+      console.log("[Migration] Seed inicial site_configs inserido com sucesso.");
+    }
+
+    const [prodRows] = await db.query("SELECT id FROM site_produtos WHERE companyId = 1 LIMIT 1");
+    if ((prodRows as any[]).length === 0) {
+      await db.query(`
+        INSERT INTO site_produtos (
+          companyId, slug, title, badge, summary, description,
+          minAmount, maxAmount, minTerm, maxTerm, termType, interestRate,
+          requirements, benefits, icon, featured, isActive, sortOrder
+        ) VALUES 
+        (
+          1, 'credito-negocio', 'Crédito Negócio & PME', 'Mais Procurado',
+          'Capital de giro para reforço de estoque, mercadorias, insumos ou expansão do seu comércio.',
+          'Pensado especificamente para comerciantes formais e informais, mukheristas, feirantes e donos de pequenas e médias empresas que precisam de liquidez rápida para alavancar vendas.',
+          5000.00, 300000.00, 1, 6, 'MESES', 15.00,
+          'BI ou DIRE válido\\nComprovativo de atividade comercial (Alvará, Licença ou fotos da banca/loja)\\nExtrato bancário ou extrato M-Pesa dos últimos 3 meses',
+          'Aprovação célere em até 24h\\nSem hipotecas de imóveis\\nDesembolso direto por M-Pesa ou Conta Bancária\\nPossibilidade de renovação com base no histórico',
+          'storefront', 1, 1, 1
+        ),
+        (
+          1, 'credito-pessoal', 'Crédito Pessoal & Família', 'Rápido & Prático',
+          'Financiamento direto para despesas familiares, propinas, pequenas reformas ou emergências.',
+          'Acesso imediato a fundos para cidadãos que exercem atividades produtivas ou possuem rendimentos mensais previsíveis.',
+          2000.00, 100000.00, 1, 4, 'MESES', 15.00,
+          'BI ou DIRE válido\\nNUIT pessoal\\nComprovativo de residência atualizado\\nContacto telefónico ativo',
+          'Decisão rápida sem burocracia\\nPlanos de reembolso adaptados ao seu orçamento\\nAtendimento personalizado via balcão ou WhatsApp',
+          'account_balance_wallet', 1, 1, 2
+        ),
+        (
+          1, 'credito-funcionario', 'Crédito Funcionário / Salário', 'Taxa Preferencial',
+          'Crédito com condições especiais para funcionários públicos e do setor privado.',
+          'Destinado a trabalhadores com contrato e salário domiciliado, com prazos confortáveis e taxa de juros diferenciada.',
+          3000.00, 150000.00, 1, 6, 'MESES', 12.00,
+          'BI e NUIT\\nDeclaração de serviço / Vínculo laboral recente\\nÚltimos 3 recibos de vencimento\\nExtrato bancário dos últimos 3 meses',
+          'Taxa reduzida a partir de 12% a.m.\\nPrazos flexíveis até 6 meses\\nRenovação facilitada\\nProcesso 100% digital',
+          'badge', 1, 1, 3
+        ),
+        (
+          1, 'credito-emergencia', 'Crédito Emergência 24H', 'Aprovação Flash',
+          'Solução expressa para imprevistos urgentes de saúde, reparações urgentes ou viagens inadiáveis.',
+          'Linha de crédito de resposta ultra-rápida prioritária com verificação documental instantânea.',
+          1000.00, 50000.00, 1, 2, 'MESES', 18.00,
+          'BI válido\\nComprovativo simples de rendimento\\nNúmero de telemóvel ativo (Vodacom / M-Pesa)',
+          'Análise em até 4 horas\\nDesembolso instantâneo na carteira M-Pesa\\nDisponível 7 dias por semana',
+          'bolt', 0, 1, 4
+        )
+      `);
+      console.log("[Migration] Seed inicial site_produtos inserido com sucesso.");
+    }
+
+    const [testimRows] = await db.query("SELECT id FROM site_depoimentos WHERE companyId = 1 LIMIT 1");
+    if ((testimRows as any[]).length === 0) {
+      await db.query(`
+        INSERT INTO site_depoimentos (
+          companyId, clientName, clientRole, clientLocation, rating, comment, productType, isActive, sortOrder
+        ) VALUES 
+        (
+          1, 'Amélia Cossa', 'Proprietária de Mercearia', 'Maputo', 5,
+          'O crédito da Clack salvou o meu negócio no final do ano. Consegui comprar mercadoria em quantidade e dobrar as vendas. O valor entrou no M-Pesa em poucas horas!',
+          'Crédito Negócio', 1, 1
+        ),
+        (
+          1, 'Carlos Mondlane', 'Funcionário do Estado', 'Matola', 5,
+          'A clareza no cálculo das prestações foi o que mais me impressionou. Nada de taxas surpresa. Muito profissionais e o processo pelo WhatsApp foi super rápido.',
+          'Crédito Funcionário', 1, 2
+        ),
+        (
+          1, 'Helena Macuácua', 'Comerciante Informal', 'Zimpeto', 5,
+          'Já renovei 3 vezes com a Clack Microcrédito. É muito bom ter uma instituição que realmente apoia quem trabalha por conta própria em Moçambique.',
+          'Crédito Negócio', 1, 3
+        )
+      `);
+      console.log("[Migration] Seed inicial site_depoimentos inserido com sucesso.");
+    }
+
+    const [faqRows] = await db.query("SELECT id FROM site_faqs WHERE companyId = 1 LIMIT 1");
+    if ((faqRows as any[]).length === 0) {
+      await db.query(`
+        INSERT INTO site_faqs (
+          companyId, category, question, answer, isActive, sortOrder
+        ) VALUES 
+        (
+          1, 'Geral', 'Quem pode solicitar crédito na Clack Microcrédito?',
+          'Qualquer cidadão moçambicano ou residente legal a partir de 21 anos, com documento válido (BI ou DIRE) e que possua uma atividade geradora de rendimento (comércio, negócio próprio, prestação de serviços ou emprego formal/informal).',
+          1, 1
+        ),
+        (
+          1, 'Prazos', 'Quanto tempo demora a aprovação e o desembolso?',
+          'Após o envio de todos os documentos solicitados, a nossa equipa analisa a proposta no mesmo dia. A aprovação ocorre em até 24 horas úteis e o desembolso é feito de imediato na sua conta bancária ou via M-Pesa.',
+          1, 2
+        ),
+        (
+          1, 'Pagamentos', 'Como faço para pagar as prestações mensais?',
+          'Os reembolsos podem ser feitos de forma cómoda por M-Pesa, e-Mola ou transferência bancária (BCI, Millennium BIM, Standard Bank, Moza Banco). Enviamos lembretes antes da data de vencimento.',
+          1, 3
+        ),
+        (
+          1, 'Taxas', 'Qual é a taxa de juro aplicada?',
+          'As taxas são competitivas e variam entre 12% e 18% ao mês dependendo da modalidade, prazo e perfil de risco. Não cobramos taxas ocultas nem comissões imprevistas.',
+          1, 4
+        ),
+        (
+          1, 'Garantias', 'É necessária alguma garantia para pedir empréstimo?',
+          'Para a grande maioria dos valores de microcrédito não exigimos bens imóveis nem hipotecas. Podemos aceitar garantias móveis (equipamentos, veículos), avalistas idóneos ou histórico comprovado de movimentação financeira.',
+          1, 5
+        ),
+        (
+          1, 'Canais', 'Posso fazer o pedido totalmente à distância?',
+          'Sim! Pode simular diretamente aqui no site e submeter a sua proposta ou enviar a documentação via WhatsApp para o nosso número oficial (+258 84 835 3816).',
+          1, 6
+        )
+      `);
+      console.log("[Migration] Seed inicial site_faqs inserido com sucesso.");
+    }
+  } catch (seedErr: any) {
+    console.error("[Migration] Erro no seed inicial do website:", seedErr?.message || seedErr);
+  }
 };
