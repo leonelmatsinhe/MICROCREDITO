@@ -6,6 +6,7 @@ import {
   SiteFaqModel,
   SiteLeadModel,
 } from "../database/models/SiteModels";
+import { CompanyModel } from "../database/models/CompanyModel";
 import { NotificationModel } from "../database/models/NotificationModel";
 import { UserModel } from "../database/models/UserModel";
 
@@ -30,12 +31,11 @@ const DEFAULT_CONFIG = {
   statApprovalLabel: "Sem exigência de garantias patrimoniais desproporcionais",
   statSatisfaction: "Valores em MZN",
   statSatisfactionLabel: "Clareza total em Meticais, sem custos ocultos nem surpresas",
-  phone: "+258 84 272 4906",
+  phone: "258842724906",
   phoneSecondary: "+258 84 835 3816",
   whatsapp: "258842724906",
   email: "zualofrancisco202@gmail.com",
   address: "Bairro de Incassane, Q. 3, Casa 4, Distrito Municipal Katembe - Cidade de Maputo - Moçambique",
-  addressService: "Av. 25 de Setembro, Prédio Maryah, Maputo, Moçambique",
   workingHours: "Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30",
   mapUrl: "",
   facebookUrl: "https://facebook.com/clackmicrocredito",
@@ -266,7 +266,18 @@ const DEFAULT_FAQS = [
 
 export const getPublicSiteContent = async (req: Request, res: Response) => {
   try {
+    let company: any = null;
+    try {
+      company = await CompanyModel.findOne({ order: [["id", "ASC"]] });
+    } catch (compErr) {
+      console.warn("[SiteController] getPublicSiteContent CompanyModel aviso:", compErr);
+    }
+
     let config = await SiteConfigModel.findOne({ where: { companyId: 1 } });
+    if (!config) {
+      config = await SiteConfigModel.findOne();
+    }
+
     let products = await SiteProductModel.findAll({
       where: { companyId: 1, isActive: true },
       order: [["sortOrder", "ASC"]],
@@ -280,7 +291,27 @@ export const getPublicSiteContent = async (req: Request, res: Response) => {
       order: [["sortOrder", "ASC"]],
     });
 
-    const parsedConfig = config ? config.toJSON() : DEFAULT_CONFIG;
+    const parsedConfig = config ? config.toJSON() : { ...DEFAULT_CONFIG };
+
+    // Sincronização dinâmica com os dados da empresa (ex: Configurações da Empresa no sistema)
+    if (company) {
+      const compData = typeof company.toJSON === "function" ? company.toJSON() : company;
+      if (compData.companyAddress) {
+        parsedConfig.address = compData.companyAddress;
+      }
+      if (compData.companyEmail) {
+        parsedConfig.email = compData.companyEmail;
+      }
+      if (compData.companyPhone) {
+        parsedConfig.phone = compData.companyPhone;
+        const rawPhone = String(compData.companyPhone).replace(/\D/g, "");
+        parsedConfig.whatsapp = rawPhone.startsWith("258") ? rawPhone : `258${rawPhone}`;
+      }
+      if (compData.companyName) {
+        parsedConfig.companyName = compData.companyName;
+      }
+    }
+
     if (typeof parsedConfig.sectionsEnabled === "string") {
       try {
         parsedConfig.sections = JSON.parse(parsedConfig.sectionsEnabled);

@@ -11,7 +11,7 @@
               <q-icon name="chat" size="14px" color="positive" />
               <span>WhatsApp Oficial:</span>
               <a :href="whatsappUrl" target="_blank" class="text-white hover-amber font-weight-medium">
-                {{ officialContact.whatsappDisplay }}
+                {{ officialContact.phone || officialContact.whatsappDisplay }}
               </a>
             </span>
             <span class="row items-center q-gutter-xs gt-xs">
@@ -701,7 +701,7 @@
               <div class="contact-entry q-mb-md">
                 <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
                   <q-icon name="email" color="amber-5" size="16px" />
-                  <span>Email Oficial</span>
+                  <span>Email</span>
                 </div>
                 <a :href="`mailto:${officialContact.email}`" class="contact-val text-white hover-amber">
                   {{ officialContact.email }}
@@ -710,41 +710,21 @@
 
               <div class="contact-entry q-mb-md">
                 <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
-                  <q-icon name="chat" color="positive" size="16px" />
-                  <span>Telefone / WhatsApp Oficial</span>
+                  <q-icon name="phone" color="amber-5" size="16px" />
+                  <span>Telefone</span>
                 </div>
-                <a :href="whatsappUrl" target="_blank" class="contact-val text-white hover-amber">
-                  {{ officialContact.whatsappDisplay }}
+                <a :href="`tel:${cleanPhone(officialContact.phone)}`" class="contact-val text-white hover-amber">
+                  {{ officialContact.phone }}
                 </a>
-              </div>
-
-              <div class="contact-entry q-mb-md">
-                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
-                  <q-icon name="call" color="amber-5" size="16px" />
-                  <span>Telefone Direto Vodacom</span>
-                </div>
-                <a :href="`tel:+258848353816`" class="contact-val text-white hover-amber">
-                  {{ officialContact.phoneVodacom }}
-                </a>
-              </div>
-
-              <div class="contact-entry q-mb-md">
-                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
-                  <q-icon name="home" color="amber-5" size="16px" />
-                  <span>Endereço Sede / Registo</span>
-                </div>
-                <div class="contact-val text-grey-2">
-                  {{ officialContact.addressSede }}
-                </div>
               </div>
 
               <div class="contact-entry q-mb-md">
                 <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
                   <q-icon name="location_on" color="amber-5" size="16px" />
-                  <span>Endereço de Atendimento</span>
+                  <span>Endereço</span>
                 </div>
                 <div class="contact-val text-grey-2">
-                  {{ officialContact.addressAtendimento }}
+                  {{ officialContact.address }}
                 </div>
               </div>
 
@@ -900,8 +880,8 @@
             <h4 class="footer-col-title text-white">Contactos Oficiais</h4>
             <div class="text-caption text-grey-4 column q-gutter-xs q-mb-md">
               <div><strong>Email:</strong> {{ officialContact.email }}</div>
-              <div><strong>Telefone:</strong> {{ officialContact.whatsappDisplay }}</div>
-              <div><strong>Localização:</strong> Katembe / Maputo, Moçambique</div>
+              <div><strong>Telefone:</strong> {{ officialContact.phone }}</div>
+              <div><strong>Endereço:</strong> {{ officialContact.address }}</div>
               <div><strong>Horário:</strong> {{ officialContact.horario }}</div>
             </div>
 
@@ -1040,15 +1020,19 @@ const submittingLead = ref(false)
 const leadModalOpen = ref(false)
 const currentYear = new Date().getFullYear()
 
-// DADOS OFICIAIS CONSOLIDADOS (FONTE ÚNICA DE VERDADE)
-const officialContact = {
+// DADOS OFICIAIS REATIVOS (DINÂMICOS DA BASE DE DADOS)
+const officialContact = ref({
   email: 'zualofrancisco202@gmail.com',
+  phone: '258842724906',
   whatsappRaw: '258842724906',
   whatsappDisplay: '+258 84 272 4906',
-  phoneVodacom: '+258 84 835 3816',
-  addressSede: 'Bairro de Incassane, Q. 3, Casa 4, Distrito Municipal Katembe - Cidade de Maputo - Moçambique',
-  addressAtendimento: 'Av. 25 de Setembro, Prédio Maryah, Maputo, Moçambique',
+  address: 'Bairro de Incassane, Q. 3, Casa 4, Distrito Municipal Katembe - Cidade de Maputo - Moçambique',
   horario: 'Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30'
+})
+
+const cleanPhone = (val) => {
+  if (!val) return ''
+  return String(val).replace(/[^\d+]/g, '')
 }
 
 // PRODUTOS DE CRÉDITO (EXATAMENTE 3 CARDS CONFORME ESPECIFICAÇÃO)
@@ -1154,7 +1138,7 @@ const systemUrl = computed(() => {
 
 // Link WhatsApp Oficial Único
 const whatsappUrl = computed(() => {
-  const num = officialContact.whatsappRaw
+  const num = officialContact.value.whatsappRaw
   const text = encodeURIComponent(
     'Olá! Gostaria de informações sobre solicitação de crédito na Clack Microcrédito, EI.'
   )
@@ -1231,7 +1215,7 @@ const navigateTo = (target) => {
 
 // Enviar Simulação via WhatsApp (Botão Verde do Simulador Único)
 const sendWhatsAppSimulation = () => {
-  const num = officialContact.whatsappRaw
+  const num = officialContact.value.whatsappRaw
   const prodTitle = selectedProduct.value?.title || 'Crédito Clack'
   const msg =
     `Olá Clack Microcrédito! Fiz uma simulação no website e gostaria de solicitar este crédito:\n\n` +
@@ -1336,7 +1320,45 @@ const handleScroll = () => {
   isScrolled.value = window.scrollY > 40
 }
 
+// Carregar dados dinâmicos da base de dados via API pública
+const loadSiteData = async () => {
+  try {
+    const res = await axios.get('/api/public/site/content')
+    if (res.data?.success) {
+      const cfg = res.data.config || {}
+      if (cfg.email) officialContact.value.email = cfg.email
+      if (cfg.address) officialContact.value.address = cfg.address
+      if (cfg.workingHours) officialContact.value.horario = cfg.workingHours
+      if (cfg.phone) {
+        officialContact.value.phone = cfg.phone
+        const raw = String(cfg.phone).replace(/\D/g, '')
+        officialContact.value.whatsappRaw = raw.startsWith('258') ? raw : '258' + raw
+        officialContact.value.whatsappDisplay = cfg.phone
+      }
+      if (cfg.whatsapp) {
+        const rawW = String(cfg.whatsapp).replace(/\D/g, '')
+        officialContact.value.whatsappRaw = rawW.startsWith('258') ? rawW : '258' + rawW
+      }
+
+      if (res.data.products && Array.isArray(res.data.products) && res.data.products.length > 0) {
+        availableProducts.value = res.data.products.map(p => ({
+          ...p,
+          interestRate: Number(p.interestRate || 15)
+        }))
+        selectedProduct.value = availableProducts.value[0]
+      }
+
+      if (res.data.faqs && Array.isArray(res.data.faqs) && res.data.faqs.length > 0) {
+        faqsList.value = res.data.faqs
+      }
+    }
+  } catch (err) {
+    console.warn('[InstitutionalWebsite] Erro ao carregar dados dinâmicos da API:', err)
+  }
+}
+
 onMounted(() => {
+  loadSiteData()
   window.addEventListener('scroll', handleScroll)
 })
 

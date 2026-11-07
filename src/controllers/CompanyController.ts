@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import * as jwt from "jsonwebtoken";
 import { CompanyModel } from "../database/models/CompanyModel";
 import { UserModel } from "../database/models/UserModel";
+import { SiteConfigModel } from "../database/models/SiteModels";
 
 // A autorização de envio de SMS (smsEnabled) só pode ser alterada pelo Admin.
 const isAdminFromToken = async (req: Request): Promise<boolean> => {
@@ -112,15 +113,32 @@ const updateCompany = async (req: Request, res: Response) => {
       id,
     },
   });
-  return company != null
-    ? res.status(200).json({
-        success: true,
-        message: "Company updated successfully",
-      })
-    : res.status(400).json({
-        success: false,
-        message: "There was an error updating the company.",
-      });
+  if (company != null) {
+    try {
+      const siteConfigUpdates: any = {};
+      if (req.body.companyAddress) siteConfigUpdates.address = req.body.companyAddress;
+      if (req.body.companyEmail) siteConfigUpdates.email = req.body.companyEmail;
+      if (req.body.companyPhone) {
+        siteConfigUpdates.phone = req.body.companyPhone;
+        const raw = String(req.body.companyPhone).replace(/\D/g, '');
+        siteConfigUpdates.whatsapp = raw.startsWith('258') ? raw : '258' + raw;
+      }
+      if (req.body.companyName) siteConfigUpdates.companyName = req.body.companyName;
+      if (Object.keys(siteConfigUpdates).length > 0) {
+        await SiteConfigModel.update(siteConfigUpdates, { where: { companyId: id } });
+      }
+    } catch (syncErr) {
+      console.warn('[CompanyController] Erro ao sincronizar site_configs:', syncErr);
+    }
+    return res.status(200).json({
+      success: true,
+      message: "Company updated successfully",
+    });
+  }
+  return res.status(400).json({
+    success: false,
+    message: "There was an error updating the company.",
+  });
 };
 
 export { findAllCompanies, findOneCompany, createCompany, updateCompany };

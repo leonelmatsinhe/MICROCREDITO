@@ -36,6 +36,7 @@ exports.updateCompany = exports.createCompany = exports.findOneCompany = exports
 const jwt = __importStar(require("jsonwebtoken"));
 const CompanyModel_1 = require("../database/models/CompanyModel");
 const UserModel_1 = require("../database/models/UserModel");
+const SiteModels_1 = require("../database/models/SiteModels");
 // A autorização de envio de SMS (smsEnabled) só pode ser alterada pelo Admin.
 const isAdminFromToken = (req) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
@@ -123,14 +124,35 @@ const updateCompany = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             id,
         },
     });
-    return company != null
-        ? res.status(200).json({
+    if (company != null) {
+        try {
+            const siteConfigUpdates = {};
+            if (req.body.companyAddress)
+                siteConfigUpdates.address = req.body.companyAddress;
+            if (req.body.companyEmail)
+                siteConfigUpdates.email = req.body.companyEmail;
+            if (req.body.companyPhone) {
+                siteConfigUpdates.phone = req.body.companyPhone;
+                const raw = String(req.body.companyPhone).replace(/\D/g, '');
+                siteConfigUpdates.whatsapp = raw.startsWith('258') ? raw : '258' + raw;
+            }
+            if (req.body.companyName)
+                siteConfigUpdates.companyName = req.body.companyName;
+            if (Object.keys(siteConfigUpdates).length > 0) {
+                yield SiteModels_1.SiteConfigModel.update(siteConfigUpdates, { where: { companyId: id } });
+            }
+        }
+        catch (syncErr) {
+            console.warn('[CompanyController] Erro ao sincronizar site_configs:', syncErr);
+        }
+        return res.status(200).json({
             success: true,
             message: "Company updated successfully",
-        })
-        : res.status(400).json({
-            success: false,
-            message: "There was an error updating the company.",
         });
+    }
+    return res.status(400).json({
+        success: false,
+        message: "There was an error updating the company.",
+    });
 });
 exports.updateCompany = updateCompany;

@@ -2065,8 +2065,8 @@ const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
           'Simular Crédito', '#simulador', 'Falar no WhatsApp', 'https://wa.me/258848353816?text=Ol%C3%A1!%20Gostaria%20de%20informa%C3%A7%C3%B5es%20sobre%20cr%C3%A9dito%20na%20Clack%20Microcr%C3%A9dito.',
           '+2.500', 'Clientes Atendidos', '+45M MZN', 'Capital Concedido',
           '24 Horas', 'Aprovação Rápida', '98%', 'Taxa de Satisfação',
-          '+258 84 835 3816', '+258 87 074 0202', '258848353816', 'contacto@clackmicrocredito.com',
-          'Av. 25 de Setembro, Prédio Maryah, Maputo, Moçambique',
+          '258842724906', '+258 84 835 3816', '258842724906', 'zualofrancisco202@gmail.com',
+          'Bairro de Incassane, Q. 3, Casa 4, Distrito Municipal Katembe - Cidade de Maputo - Moçambique',
           'Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30',
           'A Clack Microcrédito, EI é uma entidade moçambicana vocacionada para o fornecimento de soluções financeiras céleres, inclusivas e responsáveis para empreendedores, comerciantes e famílias.',
           'Democratizar o acesso a financiamento confiável e apoiar o desenvolvimento económico sustentável em Moçambique.',
@@ -2079,6 +2079,28 @@ const migratePaymentsV2 = async (results: MigrationResult): Promise<void> => {
         )
       `);
       console.log("[Migration] Seed inicial site_configs inserido com sucesso.");
+    }
+
+    // Sincronizar dados dinâmicos da empresa e contactos oficiais
+    try {
+      await db.query(`
+        UPDATE site_configs 
+        SET address = 'Bairro de Incassane, Q. 3, Casa 4, Distrito Municipal Katembe - Cidade de Maputo - Moçambique',
+            email = 'zualofrancisco202@gmail.com',
+            phone = '258842724906',
+            whatsapp = '258842724906'
+        WHERE address LIKE '%Prédio Maryah%' OR email LIKE '%contacto@clackmicrocredito.com%'
+      `);
+      await db.query(`
+        UPDATE site_configs sc
+        JOIN companies c ON c.id = sc.companyId
+        SET sc.address = c.companyAddress,
+            sc.email = c.companyEmail,
+            sc.phone = c.companyPhone
+        WHERE c.companyAddress IS NOT NULL AND c.companyAddress != ''
+      `);
+    } catch (e) {
+      console.warn("[Migration] Aviso sincronizando site_configs:", e);
     }
 
     const [prodRows] = await db.query("SELECT id FROM site_produtos WHERE companyId = 1 LIMIT 1");
