@@ -1,39 +1,42 @@
 <template>
   <div class="clack-website">
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 1. TOP ANNOUNCEMENT BAR & NAVBAR                              -->
+    <!-- 1. TOP BAR ÚNICA                                               -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <header class="site-header" :class="{ 'scrolled': isScrolled }">
-      <!-- Top Bar com contactos rápidos -->
-      <div class="top-bar gt-sm">
+      <div class="top-bar">
         <div class="container row items-center justify-between text-caption text-grey-4">
           <div class="row items-center q-gutter-md">
             <span class="row items-center q-gutter-xs">
-              <q-icon name="phone" size="14px" color="amber-5" />
-              <a :href="`tel:${cleanPhone(config.phone)}`" class="text-white hover-amber">{{ config.phone }}</a>
-            </span>
-            <span class="row items-center q-gutter-xs">
               <q-icon name="chat" size="14px" color="positive" />
-              <a :href="whatsappUrl" target="_blank" class="text-white hover-amber">WhatsApp Oficial</a>
+              <span>WhatsApp Oficial:</span>
+              <a :href="whatsappUrl" target="_blank" class="text-white hover-amber font-weight-medium">
+                {{ officialContact.whatsappDisplay }}
+              </a>
             </span>
-            <span class="row items-center q-gutter-xs">
+            <span class="row items-center q-gutter-xs gt-xs">
               <q-icon name="email" size="14px" color="amber-5" />
-              <span>{{ config.email }}</span>
+              <a :href="`mailto:${officialContact.email}`" class="text-white hover-amber">
+                {{ officialContact.email }}
+              </a>
             </span>
           </div>
           <div class="row items-center q-gutter-sm">
-            <span class="text-amber-4 text-weight-medium">
-              <q-icon name="verified" size="14px" /> {{ config.heroBadge || 'Instituição de Microcrédito Autorizada' }}
+            <span class="text-amber-4 text-weight-medium row items-center q-gutter-xs">
+              <q-icon name="verified" size="15px" />
+              <span>Instituição de Microcrédito Autorizada</span>
             </span>
           </div>
         </div>
       </div>
 
-      <!-- Main Navigation -->
+      <!-- ══════════════════════════════════════════════════════════════ -->
+      <!-- 2. NAVBAR ÚNICA                                                -->
+      <!-- ══════════════════════════════════════════════════════════════ -->
       <nav class="main-nav">
         <div class="container row items-center justify-between">
           <!-- Logo & Nome Institucional -->
-          <a href="#" class="brand-link row items-center no-wrap text-decoration-none">
+          <a href="#inicio" class="brand-link row items-center no-wrap text-decoration-none">
             <div class="brand-logo-badge">
               <q-icon name="account_balance" size="26px" color="white" />
             </div>
@@ -43,36 +46,20 @@
             </div>
           </a>
 
-          <!-- Desktop Links -->
+          <!-- Desktop Links de Navegação -->
           <div class="desktop-links gt-md row items-center q-gutter-md">
             <a href="#inicio" class="nav-item">Início</a>
-            <a href="#sobre" class="nav-item">Sobre Nós</a>
-            <a href="#produtos" class="nav-item">Produtos</a>
             <a href="#simulador" class="nav-item highlight-link">Simulador</a>
+            <a href="#produtos" class="nav-item">Produtos</a>
+            <a href="#sobre" class="nav-item">Sobre Nós</a>
+            <a href="#porque-clack" class="nav-item">Porquê a Clack?</a>
             <a href="#como-funciona" class="nav-item">Como Funciona</a>
-            <a href="#requisitos" class="nav-item">Requisitos</a>
-            <a href="#depoimentos" class="nav-item">Depoimentos</a>
             <a href="#faq" class="nav-item">FAQ</a>
             <a href="#contacto" class="nav-item">Contacto</a>
           </div>
 
-          <!-- CTAs -->
+          <!-- Botão Aceder ao Sistema -->
           <div class="row items-center q-gutter-sm">
-            <!-- Botão WhatsApp Rápido -->
-            <q-btn
-              flat
-              dense
-              round
-              color="positive"
-              icon="chat"
-              class="gt-xs"
-              :href="whatsappUrl"
-              target="_blank"
-            >
-              <q-tooltip>Falar no WhatsApp</q-tooltip>
-            </q-btn>
-
-            <!-- Acesso ao Sistema de Gestão -->
             <q-btn
               outline
               color="amber-5"
@@ -100,7 +87,7 @@
       </nav>
     </header>
 
-    <!-- Mobile Drawer Menu -->
+    <!-- Menu Lateral Mobile (Drawer) -->
     <q-drawer
       v-model="mobileDrawer"
       side="right"
@@ -123,29 +110,25 @@
               <q-item-section avatar><q-icon name="home" color="amber-5" /></q-item-section>
               <q-item-section>Início</q-item-section>
             </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#sobre')">
-              <q-item-section avatar><q-icon name="corporate_fare" color="amber-5" /></q-item-section>
-              <q-item-section>Sobre Nós</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#produtos')">
-              <q-item-section avatar><q-icon name="paid" color="amber-5" /></q-item-section>
-              <q-item-section>Créditos & Produtos</q-item-section>
-            </q-item>
             <q-item clickable v-ripple @click="navigateTo('#simulador')">
               <q-item-section avatar><q-icon name="calculate" color="amber-5" /></q-item-section>
               <q-item-section class="text-amber-4 text-weight-bold">Simulador de Crédito</q-item-section>
             </q-item>
+            <q-item clickable v-ripple @click="navigateTo('#produtos')">
+              <q-item-section avatar><q-icon name="paid" color="amber-5" /></q-item-section>
+              <q-item-section>Produtos de Crédito</q-item-section>
+            </q-item>
+            <q-item clickable v-ripple @click="navigateTo('#sobre')">
+              <q-item-section avatar><q-icon name="corporate_fare" color="amber-5" /></q-item-section>
+              <q-item-section>Sobre Nós</q-item-section>
+            </q-item>
+            <q-item clickable v-ripple @click="navigateTo('#porque-clack')">
+              <q-item-section avatar><q-icon name="verified" color="amber-5" /></q-item-section>
+              <q-item-section>Porquê a Clack?</q-item-section>
+            </q-item>
             <q-item clickable v-ripple @click="navigateTo('#como-funciona')">
               <q-item-section avatar><q-icon name="checklist_rtl" color="amber-5" /></q-item-section>
               <q-item-section>Como Funciona</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#requisitos')">
-              <q-item-section avatar><q-icon name="badge" color="amber-5" /></q-item-section>
-              <q-item-section>Requisitos</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#depoimentos')">
-              <q-item-section avatar><q-icon name="forum" color="amber-5" /></q-item-section>
-              <q-item-section>Depoimentos</q-item-section>
             </q-item>
             <q-item clickable v-ripple @click="navigateTo('#faq')">
               <q-item-section avatar><q-icon name="help_outline" color="amber-5" /></q-item-section>
@@ -153,22 +136,12 @@
             </q-item>
             <q-item clickable v-ripple @click="navigateTo('#contacto')">
               <q-item-section avatar><q-icon name="contact_phone" color="amber-5" /></q-item-section>
-              <q-item-section>Contactos & Agência</q-item-section>
+              <q-item-section>Contacto</q-item-section>
             </q-item>
           </q-list>
         </div>
 
         <div class="q-pt-lg column q-gutter-sm">
-          <q-btn
-            unelevated
-            color="positive"
-            text-color="white"
-            icon="chat"
-            label="WhatsApp Direto"
-            class="full-width q-py-sm"
-            :href="whatsappUrl"
-            target="_blank"
-          />
           <q-btn
             outline
             color="amber-5"
@@ -183,376 +156,54 @@
     </q-drawer>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 2. HERO SECTION COM SIMULADOR RÁPIDO INTEGRADO               -->
+    <!-- 3. HERO SECTION (FOCO CORPORATIVO, SEM REPETIÇÕES)             -->
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <section id="inicio" class="hero-section">
+    <section id="inicio" class="hero-section text-center">
       <div class="hero-bg-overlay"></div>
       <div class="container hero-container">
-        <div class="row q-col-gutter-xl items-center">
-          <!-- Coluna de Texto e Proposta de Valor -->
-          <div class="col-12 col-lg-7">
-            <div class="hero-badge animate-fade-in">
-              <q-icon name="verified_user" size="18px" class="q-mr-xs text-amber-4" />
-              <span>{{ config.heroBadge || 'Instituição de Microcrédito Autorizada' }}</span>
-            </div>
+        <div class="hero-content-wrapper">
+          <h1 class="hero-title text-white">
+            Crédito Rápido, Justo e Sem Burocracia em Moçambique
+          </h1>
 
-            <h1 class="hero-title text-white">
-              {{ config.heroTitle || 'Crédito Rápido, Justo e Sem Burocracia em Moçambique' }}
-            </h1>
-
-            <p class="hero-subtitle text-grey-3">
-              {{ config.heroSubtitle || 'Impulsione o seu negócio ou resolva imprevistos com aprovação em até 24 horas. Desembolso imediato na sua conta bancária ou via M-Pesa com as melhores taxas do mercado.' }}
-            </p>
-
-            <div class="hero-actions row items-center q-gutter-md q-mt-md">
-              <q-btn
-                unelevated
-                color="amber-6"
-                text-color="dark"
-                icon="calculate"
-                size="lg"
-                class="hero-btn-primary text-weight-bold"
-                href="#simulador"
-                label="Simular Crédito Agora"
-              />
-              <q-btn
-                outline
-                color="white"
-                icon="chat"
-                size="lg"
-                class="hero-btn-secondary"
-                :href="whatsappUrl"
-                target="_blank"
-                label="Falar no WhatsApp"
-              />
-            </div>
-
-            <!-- Chips de Confiança -->
-            <div class="trust-chips row items-center q-gutter-sm q-mt-lg">
-              <div class="trust-chip">
-                <q-icon name="bolt" color="amber-4" size="16px" />
-                <span>Aprovação em até 24h</span>
-              </div>
-              <div class="trust-chip">
-                <q-icon name="smartphone" color="green-4" size="16px" />
-                <span>Desembolso via M-Pesa / Banco</span>
-              </div>
-              <div class="trust-chip">
-                <q-icon name="lock_open" color="amber-4" size="16px" />
-                <span>Sem hipoteca pesada</span>
-              </div>
-              <div class="trust-chip">
-                <q-icon name="verified" color="amber-4" size="16px" />
-                <span>Valores em MZN</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Coluna com Simulador Rápido Hero Card -->
-          <div class="col-12 col-lg-5">
-            <div class="simulator-card-hero">
-              <div class="card-hero-header">
-                <div class="row items-center justify-between">
-                  <div>
-                    <h3 class="card-hero-title">Simulador Rápido</h3>
-                    <p class="card-hero-subtitle">Calcule a sua prestação estimada na hora</p>
-                  </div>
-                  <q-icon name="calculate" size="32px" color="amber-4" />
-                </div>
-              </div>
-
-              <div class="card-hero-body q-pa-lg">
-                <!-- Seletor de Montante -->
-                <div class="sim-group q-mb-md">
-                  <div class="row items-center justify-between q-mb-xs">
-                    <span class="sim-label">Quanto precisa?</span>
-                    <span class="sim-val-display text-amber-4">{{ formatMoney(quickAmount) }}</span>
-                  </div>
-                  <q-slider
-                    v-model="quickAmount"
-                    :min="Number(config.minAmount || 1000)"
-                    :max="Number(config.maxAmount || 300000)"
-                    :step="1000"
-                    color="amber-6"
-                    track-color="blue-grey-8"
-                  />
-                  <div class="row justify-between text-caption text-grey-5">
-                    <span>{{ formatMoney(config.minAmount || 1000) }}</span>
-                    <span>{{ formatMoney(config.maxAmount || 300000) }}</span>
-                  </div>
-                </div>
-
-                <!-- Seletor de Prazo -->
-                <div class="sim-group q-mb-lg">
-                  <div class="row items-center justify-between q-mb-xs">
-                    <span class="sim-label">Em quantos meses quer pagar?</span>
-                    <span class="sim-val-display text-white">{{ quickTerm }} {{ quickTerm === 1 ? 'mês' : 'meses' }}</span>
-                  </div>
-                  <q-slider
-                    v-model="quickTerm"
-                    :min="Number(config.minTerm || 1)"
-                    :max="Number(config.maxTerm || 12)"
-                    :step="1"
-                    color="amber-6"
-                    track-color="blue-grey-8"
-                  />
-                  <div class="row justify-between text-caption text-grey-5">
-                    <span>1 mês</span>
-                    <span>12 meses</span>
-                  </div>
-                </div>
-
-                <!-- Resumo dos Valores Calculados -->
-                <div class="sim-summary-box q-pa-md q-mb-lg">
-                  <div class="row justify-between items-center q-mb-xs">
-                    <span class="text-grey-4">Prestação Mensal Estimada:</span>
-                    <span class="text-h6 text-weight-bolder text-amber-4">{{ formatMoney(quickMonthlyPayment) }}</span>
-                  </div>
-                  <div class="row justify-between items-center text-caption text-grey-4 q-mb-xs">
-                    <span>Total a Reembolsar:</span>
-                    <span class="text-white text-weight-medium">{{ formatMoney(quickTotalPayment) }}</span>
-                  </div>
-                  <div class="row justify-between items-center text-caption text-grey-5">
-                    <span>Taxa base mensal indicativa:</span>
-                    <span>{{ config.defaultInterestRate || 15 }}% a.m.</span>
-                  </div>
-                </div>
-
-                <!-- Botões de Ação do Simulador Rápido -->
-                <div class="column q-gutter-sm">
-                  <q-btn
-                    unelevated
-                    color="amber-6"
-                    text-color="dark"
-                    icon="chat"
-                    label="Solicitar Este Crédito via WhatsApp"
-                    class="full-width q-py-sm text-weight-bold"
-                    @click="sendQuickWhatsApp"
-                  />
-                  <q-btn
-                    flat
-                    color="grey-4"
-                    icon="edit_note"
-                    label="Personalizar Simulação Completa"
-                    class="full-width"
-                    href="#simulador"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 3. TRUST METRICS BAR                                          -->
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <section class="trust-stats-section">
-      <div class="container">
-        <div class="row q-col-gutter-lg justify-center text-center">
-          <div class="col-6 col-md-3">
-            <div class="stat-card">
-              <div class="stat-number text-amber-5">{{ config.statClients || '+2.500' }}</div>
-              <div class="stat-label">{{ config.statClientsLabel || 'Clientes Satisfeitos' }}</div>
-            </div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="stat-card">
-              <div class="stat-number text-amber-5">{{ config.statDisbursed || '+45M MZN' }}</div>
-              <div class="stat-label">{{ config.statDisbursedLabel || 'Crédito Concedido' }}</div>
-            </div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="stat-card">
-              <div class="stat-number text-amber-5">{{ config.statApproval || '24 Horas' }}</div>
-              <div class="stat-label">{{ config.statApprovalLabel || 'Aprovação Rápida' }}</div>
-            </div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="stat-card">
-              <div class="stat-number text-amber-5">{{ config.statSatisfaction || '98%' }}</div>
-              <div class="stat-label">{{ config.statSatisfactionLabel || 'Taxa de Satisfação' }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 4. SOBRE NÓS (HISTÓRIA, MISSÃO, VISÃO, VALORES)              -->
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <section id="sobre" class="section-padding bg-light">
-      <div class="container">
-        <div class="text-center section-heading">
-          <span class="section-tag">Institucional</span>
-          <h2 class="section-title">Sobre a Clack Microcrédito, EI</h2>
-          <p class="section-description">
-            Comprometidos em construir pontes financeiras sólidas e inclusivas para o crescimento de famílias e empresas em Moçambique.
+          <p class="hero-subtitle text-grey-3">
+            Impulsione o seu negócio ou resolva imprevistos familiares com aprovação em até 24 horas.
+            Desembolso imediato na sua conta bancária ou via M-Pesa com as melhores taxas do mercado.
           </p>
-        </div>
 
-        <div class="row q-col-gutter-xl items-center q-mb-xl">
-          <div class="col-12 col-md-6">
-            <div class="about-text-content">
-              <h3 class="about-title">Crédito Responsável, Transparente e Acessível</h3>
-              <p class="text-body1 text-grey-8 line-height-relaxed q-mb-md">
-                {{ config.aboutHistory || 'A Clack Microcrédito, EI nasceu com o propósito firme de aproximar soluções financeiras reais e ágeis a quem mais necessita de dinamizar os seus negócios ou ultrapassar fases financeiras críticas.' }}
-              </p>
-              <p class="text-body1 text-grey-8 line-height-relaxed q-mb-lg">
-                Eliminamos a burocracia excessiva através de tecnologia acessível, atendimento acolhedor e processos de validação adaptados ao contexto económico de Moçambique.
-              </p>
-              
-              <div class="row q-gutter-md">
-                <div class="about-pill">
-                  <q-icon name="check_circle" color="positive" size="20px" />
-                  <span>Conformidade Legal & Rigor</span>
-                </div>
-                <div class="about-pill">
-                  <q-icon name="check_circle" color="positive" size="20px" />
-                  <span>Atendimento Humanizado</span>
-                </div>
-                <div class="about-pill">
-                  <q-icon name="check_circle" color="positive" size="20px" />
-                  <span>Sem Custos Ocultos</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="col-12 col-md-6">
-            <div class="about-pillars-grid">
-              <div class="pillar-box shadow-1">
-                <div class="pillar-icon-box bg-blue-1 text-primary">
-                  <q-icon name="flag" size="28px" />
-                </div>
-                <h4 class="pillar-title">Missão</h4>
-                <p class="pillar-text">{{ config.aboutMission || 'Prover soluções de crédito rápido, ético e sustentável que alavanquem o crescimento de negócios e o bem-estar das famílias moçambicanas.' }}</p>
-              </div>
-
-              <div class="pillar-box shadow-1">
-                <div class="pillar-icon-box bg-amber-1 text-amber-9">
-                  <q-icon name="visibility" size="28px" />
-                </div>
-                <h4 class="pillar-title">Visão</h4>
-                <p class="pillar-text">{{ config.aboutVision || 'Ser a instituição de microfinanças digital de referência em Moçambique, reconhecida pela confiança, inovação e excelência de atendimento.' }}</p>
-              </div>
-
-              <div class="pillar-box shadow-1">
-                <div class="pillar-icon-box bg-teal-1 text-teal-8">
-                  <q-icon name="handshake" size="28px" />
-                </div>
-                <h4 class="pillar-title">Valores</h4>
-                <p class="pillar-text">{{ config.aboutValues || 'Transparência total, Rapidez e simplicidade, Respeito ao cliente, Rigor e responsabilidade financeira.' }}</p>
-              </div>
-
-              <div class="pillar-box shadow-1">
-                <div class="pillar-icon-box bg-indigo-1 text-indigo-8">
-                  <q-icon name="security" size="28px" />
-                </div>
-                <h4 class="pillar-title">Segurança</h4>
-                <p class="pillar-text">Proteção rigorosa dos dados e contratos celebrados nos termos da legislação moçambicana em vigor.</p>
-              </div>
-            </div>
+          <div class="hero-actions row justify-center items-center q-gutter-md q-mt-md">
+            <q-btn
+              unelevated
+              color="amber-6"
+              text-color="dark"
+              icon="calculate"
+              size="lg"
+              class="hero-btn-primary text-weight-bold"
+              @click="scrollTo('#simulador')"
+              label="Simular o Meu Crédito"
+            />
+            <q-btn
+              outline
+              color="white"
+              icon="payments"
+              size="lg"
+              class="hero-btn-secondary"
+              @click="scrollTo('#produtos')"
+              label="Ver Produtos"
+            />
           </div>
         </div>
       </div>
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 5. PRODUTOS / CRÉDITOS DISPONÍVEIS                           -->
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <section id="produtos" class="section-padding bg-white">
-      <div class="container">
-        <div class="text-center section-heading">
-          <span class="section-tag">Soluções Financeiras</span>
-          <h2 class="section-title">Créditos Feitos à Medida das Suas Necessidades</h2>
-          <p class="section-description">
-            Conheça as nossas modalidades com taxas competitivas e planos de pagamento confortáveis.
-          </p>
-        </div>
-
-        <div class="row q-col-gutter-lg">
-          <div
-            v-for="prod in products"
-            :key="prod.id || prod.slug"
-            class="col-12 col-md-6 col-lg-3"
-          >
-            <div class="product-card" :class="{ 'featured-product': prod.featured }">
-              <div v-if="prod.badge" class="product-badge">{{ prod.badge }}</div>
-
-              <div class="product-header">
-                <div class="product-icon-wrap">
-                  <q-icon :name="prod.icon || 'payments'" size="32px" color="amber-7" />
-                </div>
-                <h3 class="product-title">{{ prod.title }}</h3>
-                <p class="product-summary">{{ prod.summary }}</p>
-              </div>
-
-              <div class="product-specs">
-                <div class="spec-row">
-                  <span class="spec-label">Montante:</span>
-                  <span class="spec-value text-primary font-weight-bold">
-                    {{ formatMoney(prod.minAmount) }} a {{ formatMoney(prod.maxAmount) }}
-                  </span>
-                </div>
-                <div class="spec-row">
-                  <span class="spec-label">Prazo:</span>
-                  <span class="spec-value">{{ prod.minTerm }} a {{ prod.maxTerm }} meses</span>
-                </div>
-                <div class="spec-row">
-                  <span class="spec-label">Taxa indicativa:</span>
-                  <span class="spec-value text-amber-8 font-weight-bold">{{ prod.interestRate }}% a.m.</span>
-                </div>
-              </div>
-
-              <div class="product-details-accordion q-my-sm">
-                <q-expansion-item
-                  dense
-                  dense-toggle
-                  expand-separator
-                  header-class="text-caption text-grey-7"
-                  label="Ver Requisitos & Benefícios"
-                >
-                  <div class="q-py-sm text-caption text-grey-8">
-                    <div class="text-weight-bold text-dark q-mb-xs">Requisitos:</div>
-                    <ul class="q-pl-md q-my-none">
-                      <li v-for="(req, ri) in splitLines(prod.requirements)" :key="ri">{{ req }}</li>
-                    </ul>
-
-                    <div class="text-weight-bold text-dark q-mt-sm q-mb-xs">Benefícios:</div>
-                    <ul class="q-pl-md q-my-none">
-                      <li v-for="(ben, bi) in splitLines(prod.benefits)" :key="bi">{{ ben }}</li>
-                    </ul>
-                  </div>
-                </q-expansion-item>
-              </div>
-
-              <div class="product-footer q-mt-md">
-                <q-btn
-                  unelevated
-                  color="navy-dark"
-                  text-color="white"
-                  class="full-width select-prod-btn"
-                  label="Simular Este Produto"
-                  icon="calculate"
-                  @click="selectProductForSimulation(prod)"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 6. SIMULADOR COMPLETO INTERATIVO                             -->
+    <!-- 4. SIMULADOR ÚNICO - CRÉDITO CLACK                             -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <section id="simulador" class="section-padding bg-navy-dark text-white">
       <div class="container">
         <div class="text-center section-heading">
-          <span class="section-tag tag-amber">Calculadora Online</span>
-          <h2 class="section-title text-white">Simulador Completo de Crédito</h2>
+          <span class="section-tag tag-amber">Calculadora Oficial</span>
+          <h2 class="section-title text-white">Simulador de Crédito Clack</h2>
           <p class="section-description text-grey-3">
             Ajuste os valores e veja em tempo real o valor da prestação mensal e o total a reembolsar.
           </p>
@@ -560,22 +211,22 @@
 
         <div class="simulator-main-box">
           <div class="row q-col-gutter-xl items-center">
-            <!-- Controles do Simulador -->
+            <!-- Coluna de Controles do Simulador -->
             <div class="col-12 col-lg-7">
-              <!-- Seleção do Produto -->
+              <!-- 1. Modalidade de Crédito -->
               <div class="sim-ctrl-group q-mb-lg">
                 <label class="sim-ctrl-label">1. Modalidade de Crédito</label>
                 <div class="row q-gutter-sm q-mt-xs">
                   <q-btn
-                    v-for="p in products"
-                    :key="p.id || p.slug"
+                    v-for="p in availableProducts"
+                    :key="p.slug"
                     :outline="selectedProduct?.slug !== p.slug"
                     :unelevated="selectedProduct?.slug === p.slug"
                     :color="selectedProduct?.slug === p.slug ? 'amber-6' : 'white'"
                     :text-color="selectedProduct?.slug === p.slug ? 'dark' : 'white'"
                     size="sm"
                     no-caps
-                    class="q-px-md text-weight-medium"
+                    class="q-px-md text-weight-medium rounded-borders"
                     @click="selectProductForSimulation(p)"
                   >
                     {{ p.title }}
@@ -583,7 +234,7 @@
                 </div>
               </div>
 
-              <!-- Montante Desejado -->
+              <!-- 2. Montante Pretendido -->
               <div class="sim-ctrl-group q-mb-xl">
                 <div class="row items-center justify-between q-mb-sm">
                   <label class="sim-ctrl-label">2. Montante Pretendido (MZN)</label>
@@ -615,7 +266,7 @@
                 </div>
               </div>
 
-              <!-- Prazo de Reembolso -->
+              <!-- 3. Prazo de Reembolso -->
               <div class="sim-ctrl-group q-mb-lg">
                 <div class="row items-center justify-between q-mb-sm">
                   <label class="sim-ctrl-label">3. Prazo de Reembolso</label>
@@ -627,7 +278,7 @@
                 <q-slider
                   v-model="simTerm"
                   :min="Number(selectedProduct?.minTerm || 1)"
-                  :max="Number(selectedProduct?.maxTerm || 12)"
+                  :max="Number(selectedProduct?.maxTerm || 6)"
                   :step="1"
                   color="amber-5"
                   track-color="blue-grey-8"
@@ -635,51 +286,54 @@
                 />
                 <div class="row justify-between text-caption text-grey-4">
                   <span>{{ selectedProduct?.minTerm || 1 }} mês</span>
-                  <span>{{ selectedProduct?.maxTerm || 12 }} meses</span>
+                  <span>{{ selectedProduct?.maxTerm || 6 }} meses</span>
                 </div>
               </div>
             </div>
 
-            <!-- Resumo e Detalhes da Proposta -->
+            <!-- Coluna de Resumo da Simulação (O Card que o usuário pediu para manter) -->
             <div class="col-12 col-lg-5">
               <div class="sim-result-card">
                 <div class="sim-result-header">
-                  <span class="text-caption text-grey-4 uppercase">Resumo da Simulação</span>
+                  <span class="text-caption text-grey-4 uppercase letter-spacing-1">Resumo da Simulação</span>
                   <h4 class="text-h5 text-weight-bold text-white q-mt-xs q-mb-none">
-                    {{ selectedProduct?.title || 'Crédito Clack' }}
+                    Crédito Clack
                   </h4>
+                  <div class="text-caption text-amber-4 q-mt-xs">{{ selectedProduct?.title }}</div>
                 </div>
 
                 <div class="sim-result-body">
                   <div class="result-highlight-box q-pa-md q-mb-md text-center">
                     <div class="text-caption text-grey-3">Prestação Mensal Estimada</div>
-                    <div class="text-h4 text-weight-bolder text-amber-4 q-mt-xs">
+                    <div class="text-h4 text-weight-bolder text-amber-4 q-mt-xs font-mono">
                       {{ formatMoney(simMonthlyPayment) }}
                     </div>
-                    <div class="text-caption text-grey-4 q-mt-xs">por mês durante {{ simTerm }} {{ simTerm === 1 ? 'mês' : 'meses' }}</div>
+                    <div class="text-caption text-grey-4 q-mt-xs">
+                      por mês durante {{ simTerm }} {{ simTerm === 1 ? 'mês' : 'meses' }}
+                    </div>
                   </div>
 
                   <div class="sim-specs-list q-mb-lg">
-                    <div class="spec-item row justify-between">
+                    <div class="spec-item row justify-between q-py-xs">
                       <span class="text-grey-4">Capital Financiado:</span>
                       <span class="text-white text-weight-medium">{{ formatMoney(simAmount) }}</span>
                     </div>
-                    <div class="spec-item row justify-between">
+                    <div class="spec-item row justify-between q-py-xs">
                       <span class="text-grey-4">Taxa de Juros Mensal:</span>
                       <span class="text-amber-4 text-weight-medium">{{ simInterestRate }}% a.m.</span>
                     </div>
-                    <div class="spec-item row justify-between">
+                    <div class="spec-item row justify-between q-py-xs">
                       <span class="text-grey-4">Total de Juros:</span>
                       <span class="text-white text-weight-medium">{{ formatMoney(simTotalInterest) }}</span>
                     </div>
                     <q-separator dark class="q-my-sm" />
-                    <div class="spec-item row justify-between text-subtitle1">
+                    <div class="spec-item row justify-between q-py-xs text-subtitle1">
                       <span class="text-grey-3 font-weight-bold">Total a Reembolsar:</span>
                       <span class="text-white font-weight-bold">{{ formatMoney(simTotalPayment) }}</span>
                     </div>
                   </div>
 
-                  <!-- Botões de Envio de Proposta -->
+                  <!-- Os 2 Botões Oficiais do Simulador -->
                   <div class="column q-gutter-sm">
                     <q-btn
                       unelevated
@@ -688,8 +342,8 @@
                       icon="chat"
                       size="md"
                       label="Solicitar via WhatsApp"
-                      class="full-width q-py-sm text-weight-bold"
-                      @click="sendFullWhatsApp"
+                      class="full-width q-py-sm text-weight-bold rounded-borders"
+                      @click="sendWhatsAppSimulation"
                     />
 
                     <q-btn
@@ -699,12 +353,12 @@
                       icon="assignment"
                       size="md"
                       label="Pedir Proposta Online"
-                      class="full-width q-py-sm text-weight-bold"
+                      class="full-width q-py-sm text-weight-bold rounded-borders"
                       @click="openLeadModal"
                     />
                   </div>
 
-                  <p class="text-caption text-grey-4 text-center q-mt-md q-mb-none">
+                  <p class="text-caption text-grey-4 text-center q-mt-md q-mb-none font-italic">
                     * Simulação indicativa sem compromisso. Sujeito à análise documental.
                   </p>
                 </div>
@@ -716,7 +370,225 @@
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 7. COMO FUNCIONA (3 PASSOS SIMPLES)                          -->
+    <!-- 5. PRODUTOS DE CRÉDITO (3 CARDS)                               -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <section id="produtos" class="section-padding bg-white">
+      <div class="container">
+        <div class="text-center section-heading">
+          <span class="section-tag">Soluções Financeiras</span>
+          <h2 class="section-title">Produtos de Crédito</h2>
+          <p class="section-description">
+            Modalidades transparentes com taxas competitivas e condições pensadas para o mercado moçambicano.
+          </p>
+        </div>
+
+        <div class="row q-col-gutter-lg justify-center">
+          <div
+            v-for="prod in availableProducts"
+            :key="prod.slug"
+            class="col-12 col-md-4"
+          >
+            <div class="product-card" :class="{ 'featured-product': prod.featured }">
+              <div v-if="prod.badge" class="product-badge">{{ prod.badge }}</div>
+
+              <div class="product-header">
+                <div class="product-icon-wrap">
+                  <q-icon :name="prod.icon || 'payments'" size="30px" color="amber-8" />
+                </div>
+                <h3 class="product-title">{{ prod.title }}</h3>
+                <p class="product-summary">{{ prod.summary }}</p>
+              </div>
+
+              <div class="product-specs q-mb-md">
+                <div class="spec-row">
+                  <span class="spec-label">Montante:</span>
+                  <span class="spec-value text-primary font-weight-bold">
+                    {{ formatMoney(prod.minAmount) }} a {{ formatMoney(prod.maxAmount) }}
+                  </span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Prazo:</span>
+                  <span class="spec-value">{{ prod.minTerm }} a {{ prod.maxTerm }} meses</span>
+                </div>
+                <div class="spec-row">
+                  <span class="spec-label">Taxa mensal:</span>
+                  <span class="spec-value text-amber-9 font-weight-bold">{{ prod.interestRate }}% a.m.</span>
+                </div>
+              </div>
+
+              <div class="product-details-box q-mb-md">
+                <div class="text-caption text-weight-bold text-dark q-mb-xs">Requisitos principais:</div>
+                <ul class="product-bullets q-pl-md q-my-none text-caption text-grey-8">
+                  <li v-for="(req, ri) in splitLines(prod.requirements)" :key="ri">{{ req }}</li>
+                </ul>
+              </div>
+
+              <div class="product-footer">
+                <q-btn
+                  outline
+                  color="primary"
+                  class="full-width select-prod-btn"
+                  label="Selecionar no Simulador"
+                  icon="calculate"
+                  no-caps
+                  @click="selectProductForSimulation(prod)"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 6. SOBRE A CLACK MICROCRÉDITO                                  -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <section id="sobre" class="section-padding bg-light">
+      <div class="container">
+        <div class="text-center section-heading">
+          <span class="section-tag">Institucional</span>
+          <h2 class="section-title">Sobre a Clack Microcrédito, EI</h2>
+          <p class="section-description">
+            Crédito Responsável, Transparente e Acessível para impulsionar negócios e apoiar famílias em Moçambique.
+          </p>
+        </div>
+
+        <div class="row q-col-gutter-xl items-center q-mb-lg">
+          <div class="col-12 col-md-6">
+            <div class="about-text-content">
+              <h3 class="about-title">Compromisso com o Desenvolvimento Económico</h3>
+              <p class="text-body1 text-grey-8 line-height-relaxed q-mb-md">
+                A Clack Microcrédito, EI é uma instituição financeira moçambicana orientada para apoiar micro-empreendedores,
+                comerciantes e profissionais com linhas de crédito transparentes, prazos adequados e decisão célere.
+              </p>
+              <p class="text-body1 text-grey-8 line-height-relaxed q-mb-lg">
+                Atuamos em conformidade rigorosa com as boas práticas financeiras e com a legislação moçambicana,
+                eliminando entraves burocráticos desnecessários e garantindo apoio financeiro ético e personalizado.
+              </p>
+
+              <div class="row q-gutter-sm">
+                <div class="about-pill">
+                  <q-icon name="check_circle" color="positive" size="18px" />
+                  <span>Conformidade Legal</span>
+                </div>
+                <div class="about-pill">
+                  <q-icon name="check_circle" color="positive" size="18px" />
+                  <span>Sem Custos Ocultos</span>
+                </div>
+                <div class="about-pill">
+                  <q-icon name="check_circle" color="positive" size="18px" />
+                  <span>Atendimento Humanizado</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <div class="about-pillars-grid">
+              <div class="pillar-box shadow-1">
+                <div class="pillar-icon-box bg-blue-1 text-primary">
+                  <q-icon name="flag" size="24px" />
+                </div>
+                <h4 class="pillar-title">Missão</h4>
+                <p class="pillar-text">Prover soluções de crédito rápido, ético e sustentável que alavanquem o crescimento de negócios e o bem-estar das famílias moçambicanas.</p>
+              </div>
+
+              <div class="pillar-box shadow-1">
+                <div class="pillar-icon-box bg-amber-1 text-amber-9">
+                  <q-icon name="visibility" size="24px" />
+                </div>
+                <h4 class="pillar-title">Visão</h4>
+                <p class="pillar-text">Ser a instituição de microfinanças de referência em Moçambique pela confiança, agilidade de resposta e proximidade com o cliente.</p>
+              </div>
+
+              <div class="pillar-box shadow-1">
+                <div class="pillar-icon-box bg-teal-1 text-teal-8">
+                  <q-icon name="handshake" size="24px" />
+                </div>
+                <h4 class="pillar-title">Valores</h4>
+                <p class="pillar-text">Transparência total, rapidez de resposta, rigor financeiro, simplicidade processual e respeito mútuo.</p>
+              </div>
+
+              <div class="pillar-box shadow-1">
+                <div class="pillar-icon-box bg-indigo-1 text-indigo-8">
+                  <q-icon name="security" size="24px" />
+                </div>
+                <h4 class="pillar-title">Segurança</h4>
+                <p class="pillar-text">Garantia absoluta de integridade de dados e celebração de contratos transparentes com total clareza de deveres e direitos.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 7. PORQUÊ A CLACK? (SUBSTITUI A FAIXA DE ESTATÍSTICAS)         -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <section id="porque-clack" class="section-padding bg-navy-dark text-white">
+      <div class="container">
+        <div class="text-center section-heading">
+          <span class="section-tag tag-amber">Vantagens Corporativas</span>
+          <h2 class="section-title text-white">Porquê Escolher a Clack Microcrédito?</h2>
+          <p class="section-description text-grey-3">
+            Pilares sólidos e benefícios reais para quem necessita de liquidez sem burocracias.
+          </p>
+        </div>
+
+        <div class="row q-col-gutter-lg justify-center">
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="why-card">
+              <div class="why-icon-box">
+                <q-icon name="bolt" size="30px" color="amber-4" />
+              </div>
+              <h3 class="why-title">Aprovação em até 24h</h3>
+              <p class="why-desc">
+                Análise documental célere e processo simplificado para que tenha resposta e decisão no menor tempo possível.
+              </p>
+            </div>
+          </div>
+
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="why-card">
+              <div class="why-icon-box">
+                <q-icon name="smartphone" size="30px" color="green-4" />
+              </div>
+              <h3 class="why-title">Desembolso M-Pesa / Banco</h3>
+              <p class="why-desc">
+                Recebimento flexível e imediato do montante aprovado diretamente na sua carteira móvel M-Pesa ou conta bancária.
+              </p>
+            </div>
+          </div>
+
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="why-card">
+              <div class="why-icon-box">
+                <q-icon name="lock_open" size="30px" color="amber-4" />
+              </div>
+              <h3 class="why-title">Sem Hipoteca Pesada</h3>
+              <p class="why-desc">
+                Sem exigência de garantias patrimoniais desproporcionais ou hipotecas de imóveis para o acesso ao financiamento.
+              </p>
+            </div>
+          </div>
+
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="why-card">
+              <div class="why-icon-box">
+                <q-icon name="payments" size="30px" color="amber-4" />
+              </div>
+              <h3 class="why-title">Valores em Meticais (MZN)</h3>
+              <p class="why-desc">
+                Total clareza e previsibilidade na moeda nacional, com taxa acordada e prestações fixas sem comissões ocultas.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- 8. COMO FUNCIONA (3 PASSOS)                                    -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <section id="como-funciona" class="section-padding bg-light">
       <div class="container">
@@ -729,168 +601,50 @@
         </div>
 
         <div class="row q-col-gutter-xl text-center">
-          <!-- Passo 1 -->
           <div class="col-12 col-md-4">
-            <div class="step-card">
+            <div class="step-card shadow-1">
               <div class="step-number-bubble">1</div>
               <div class="step-icon-box bg-blue-1 text-primary">
-                <q-icon name="smartphone" size="36px" />
+                <q-icon name="calculate" size="36px" />
               </div>
               <h3 class="step-title">Simula e Solicita</h3>
               <p class="step-text">
-                Escolha o montante e prazo no nosso simulador e submeta a sua proposta pelo site ou via WhatsApp com rapidez.
+                Defina o montante e prazo no nosso simulador oficial ou envie os seus dados diretamente pelo WhatsApp.
               </p>
             </div>
           </div>
 
-          <!-- Passo 2 -->
           <div class="col-12 col-md-4">
-            <div class="step-card">
+            <div class="step-card shadow-1">
               <div class="step-number-bubble">2</div>
               <div class="step-icon-box bg-amber-1 text-amber-9">
                 <q-icon name="assignment_turned_in" size="36px" />
               </div>
               <h3 class="step-title">Envia Documentos</h3>
               <p class="step-text">
-                Fotografe o seu BI, NUIT e comprovativo de renda ou negócio. A nossa equipa analisa em menos de 24 horas.
+                Apresente o seu BI/DIRE, NUIT e comprovativo de renda ou atividade comercial para análise em até 24 horas.
               </p>
             </div>
           </div>
 
-          <!-- Passo 3 -->
           <div class="col-12 col-md-4">
-            <div class="step-card">
+            <div class="step-card shadow-1">
               <div class="step-number-bubble">3</div>
               <div class="step-icon-box bg-green-1 text-positive">
                 <q-icon name="account_balance_wallet" size="36px" />
               </div>
               <h3 class="step-title">Recebe o Dinheiro</h3>
               <p class="step-text">
-                Após aprovação e assinatura simplificada, o valor é creditado imediatamente via M-Pesa ou transferência bancária.
+                Após aprovação e formalização do contrato, o capital é creditado de imediato via M-Pesa ou transferência bancária.
               </p>
             </div>
           </div>
         </div>
-
-        <div class="text-center q-mt-xl">
-          <q-btn
-            unelevated
-            color="amber-6"
-            text-color="dark"
-            icon="chat"
-            size="lg"
-            label="Começar Pedido Agora pelo WhatsApp"
-            class="text-weight-bold"
-            :href="whatsappUrl"
-            target="_blank"
-          />
-        </div>
       </div>
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 8. REQUISITOS NECESSÁRIOS                                     -->
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <section id="requisitos" class="section-padding bg-white">
-      <div class="container">
-        <div class="text-center section-heading">
-          <span class="section-tag">Documentação</span>
-          <h2 class="section-title">Requisitos Gerais para Pedido de Crédito</h2>
-          <p class="section-description">
-            Prepare previamente os seus documentos para que a aprovação seja o mais célere possível.
-          </p>
-        </div>
-
-        <div class="row q-col-gutter-lg justify-center">
-          <div class="col-12 col-sm-6 col-md-3">
-            <div class="req-box shadow-1">
-              <q-icon name="badge" size="36px" color="primary" class="q-mb-sm" />
-              <h4 class="req-title">Identificação Válida</h4>
-              <p class="req-text">BI Moçambicano, DIRE (para residentes estrangeiros) ou Passaporte válido.</p>
-            </div>
-          </div>
-
-          <div class="col-12 col-sm-6 col-md-3">
-            <div class="req-box shadow-1">
-              <q-icon name="pin" size="36px" color="amber-8" class="q-mb-sm" />
-              <h4 class="req-title">NUIT Pessoal / Fiscal</h4>
-              <p class="req-text">Cópia do cartão do NUIT ou comprovativo emitido pela Autoridade Tributária.</p>
-            </div>
-          </div>
-
-          <div class="col-12 col-sm-6 col-md-3">
-            <div class="req-box shadow-1">
-              <q-icon name="receipt_long" size="36px" color="teal-7" class="q-mb-sm" />
-              <h4 class="req-title">Rendimento ou Negócio</h4>
-              <p class="req-text">Extrato de 3 meses (Banco ou M-Pesa), recibos salariais ou fotos da atividade comercial.</p>
-            </div>
-          </div>
-
-          <div class="col-12 col-sm-6 col-md-3">
-            <div class="req-box shadow-1">
-              <q-icon name="home_work" size="36px" color="indigo-7" class="q-mb-sm" />
-              <h4 class="req-title">Residência Atual</h4>
-              <p class="req-text">Declaração de bairro, fatura de água/energia recente ou localização por GPS.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 9. DEPOIMENTOS DE CLIENTES MOÇAMBICANOS                      -->
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <section id="depoimentos" class="section-padding bg-light">
-      <div class="container">
-        <div class="text-center section-heading">
-          <span class="section-tag">Depoimentos</span>
-          <h2 class="section-title">O Que Dizem os Nossos Clientes</h2>
-          <p class="section-description">
-            A satisfação e o sucesso de quem confia na Clack Microcrédito, EI.
-          </p>
-        </div>
-
-        <div class="row q-col-gutter-lg justify-center">
-          <div
-            v-for="(t, idx) in testimonials"
-            :key="idx"
-            class="col-12 col-md-4"
-          >
-            <div class="testimonial-card shadow-1">
-              <div class="rating-stars q-mb-sm">
-                <q-icon
-                  v-for="s in (t.rating || 5)"
-                  :key="s"
-                  name="star"
-                  size="20px"
-                  color="amber-6"
-                />
-              </div>
-
-              <p class="testimonial-comment">
-                "{{ t.comment }}"
-              </p>
-
-              <div class="testimonial-author row items-center q-mt-md">
-                <q-avatar size="44px" color="navy-dark" text-color="amber-5" class="q-mr-sm">
-                  {{ t.clientName?.charAt(0) || 'C' }}
-                </q-avatar>
-                <div>
-                  <div class="author-name">{{ t.clientName }}</div>
-                  <div class="author-meta">{{ t.clientRole }} • {{ t.clientLocation }}</div>
-                  <div v-if="t.productType" class="author-product text-amber-8 text-caption">
-                    {{ t.productType }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 10. PERGUNTAS FREQUENTES (FAQ)                                -->
+    <!-- 9. FAQ / TRANSPARÊNCIA                                         -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <section id="faq" class="section-padding bg-white">
       <div class="container max-w-800">
@@ -898,13 +652,13 @@
           <span class="section-tag">Esclarecimentos</span>
           <h2 class="section-title">Perguntas Frequentes</h2>
           <p class="section-description">
-            Tire todas as suas dúvidas sobre prazos, taxas, aprovação e formas de pagamento.
+            Tire todas as suas dúvidas sobre prazos, modalidades, taxas e formas de reembolso.
           </p>
         </div>
 
-        <q-list separator class="faq-accordion-list">
+        <q-list separator class="faq-accordion-list shadow-1">
           <q-expansion-item
-            v-for="(faq, fIdx) in faqs"
+            v-for="(faq, fIdx) in faqsList"
             :key="fIdx"
             group="faqGroup"
             :label="faq.question"
@@ -918,81 +672,106 @@
             </q-card>
           </q-expansion-item>
         </q-list>
+
+        <p class="text-caption text-grey-6 text-center q-mt-lg q-mb-none font-italic">
+          * Simulação indicativa sem compromisso. Sujeito à análise documental.
+        </p>
       </div>
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 11. CONTACTO & FORMULÁRIO DE LEADS                           -->
+    <!-- 10. CONTACTO ÚNICO + FORMULÁRIO (CONSOLIDAÇÃO TOTAL)           -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <section id="contacto" class="section-padding bg-navy-dark text-white">
       <div class="container">
         <div class="text-center section-heading">
-          <span class="section-tag tag-amber">Fale Connosco</span>
-          <h2 class="section-title text-white">Estamos Sempre Perto de Si</h2>
+          <span class="section-tag tag-amber">Canais Oficiais</span>
+          <h2 class="section-title text-white">Contacto & Envie a sua Proposta</h2>
           <p class="section-description text-grey-3">
-            Entre em contacto por formulário, telefone ou visite as nossas instalações em Maputo.
+            Entre em contacto com a nossa equipa através dos canais oficiais ou submeta a sua proposta pelo formulário.
           </p>
         </div>
 
-        <div class="row q-col-gutter-xl">
-          <!-- Dados de Contacto -->
+        <div class="row q-col-gutter-xl items-start">
+          <!-- Coluna de Informações Consolidadas Oficiais -->
           <div class="col-12 col-lg-5">
-            <div class="contact-info-cards column q-gutter-md">
-              <div class="contact-card">
-                <q-icon name="location_on" size="28px" color="amber-5" />
-                <div class="q-ml-md">
-                  <div class="contact-card-title">Endereço Físico</div>
-                  <div class="contact-card-text text-grey-3">
-                    {{ config.address || 'Av. 25 de Setembro, Prédio Maryah, Maputo, Moçambique' }}
-                  </div>
+            <div class="official-contact-box">
+              <h3 class="text-h6 text-weight-bold text-amber-4 q-mb-md">Informações da Entidade</h3>
+
+              <div class="contact-entry q-mb-md">
+                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
+                  <q-icon name="email" color="amber-5" size="16px" />
+                  <span>Email Oficial</span>
+                </div>
+                <a :href="`mailto:${officialContact.email}`" class="contact-val text-white hover-amber">
+                  {{ officialContact.email }}
+                </a>
+              </div>
+
+              <div class="contact-entry q-mb-md">
+                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
+                  <q-icon name="chat" color="positive" size="16px" />
+                  <span>Telefone / WhatsApp Oficial</span>
+                </div>
+                <a :href="whatsappUrl" target="_blank" class="contact-val text-white hover-amber">
+                  {{ officialContact.whatsappDisplay }}
+                </a>
+              </div>
+
+              <div class="contact-entry q-mb-md">
+                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
+                  <q-icon name="call" color="amber-5" size="16px" />
+                  <span>Telefone Direto Vodacom</span>
+                </div>
+                <a :href="`tel:+258848353816`" class="contact-val text-white hover-amber">
+                  {{ officialContact.phoneVodacom }}
+                </a>
+              </div>
+
+              <div class="contact-entry q-mb-md">
+                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
+                  <q-icon name="home" color="amber-5" size="16px" />
+                  <span>Endereço Sede / Registo</span>
+                </div>
+                <div class="contact-val text-grey-2">
+                  {{ officialContact.addressSede }}
                 </div>
               </div>
 
-              <div class="contact-card">
-                <q-icon name="call" size="28px" color="amber-5" />
-                <div class="q-ml-md">
-                  <div class="contact-card-title">Telefones Diretos</div>
-                  <div class="contact-card-text text-grey-3">
-                    <div>Vodacom: <a :href="`tel:${cleanPhone(config.phone)}`" class="text-white">{{ config.phone || '+258 84 835 3816' }}</a></div>
-                    <div v-if="config.phoneSecondary">Movitel: <a :href="`tel:${cleanPhone(config.phoneSecondary)}`" class="text-white">{{ config.phoneSecondary }}</a></div>
-                  </div>
+              <div class="contact-entry q-mb-md">
+                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
+                  <q-icon name="location_on" color="amber-5" size="16px" />
+                  <span>Endereço de Atendimento</span>
+                </div>
+                <div class="contact-val text-grey-2">
+                  {{ officialContact.addressAtendimento }}
                 </div>
               </div>
 
-              <div class="contact-card">
-                <q-icon name="chat" size="28px" color="positive" />
-                <div class="q-ml-md">
-                  <div class="contact-card-title">Atendimento via WhatsApp</div>
-                  <div class="contact-card-text text-grey-3">
-                    Disponível para esclarecimento imediato de dúvidas e envio de propostas.
-                  </div>
-                  <q-btn
-                    unelevated
-                    dense
-                    color="positive"
-                    icon="chat"
-                    label="Conversar no WhatsApp"
-                    size="sm"
-                    class="q-mt-xs q-px-sm"
-                    :href="whatsappUrl"
-                    target="_blank"
-                  />
+              <div class="contact-entry q-mb-lg">
+                <div class="row items-center q-gutter-xs text-grey-4 text-caption uppercase">
+                  <q-icon name="schedule" color="amber-5" size="16px" />
+                  <span>Horário de Atendimento</span>
+                </div>
+                <div class="contact-val text-grey-2">
+                  {{ officialContact.horario }}
                 </div>
               </div>
 
-              <div class="contact-card">
-                <q-icon name="schedule" size="28px" color="amber-5" />
-                <div class="q-ml-md">
-                  <div class="contact-card-title">Horário de Atendimento</div>
-                  <div class="contact-card-text text-grey-3">
-                    {{ config.workingHours || 'Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30' }}
-                  </div>
-                </div>
-              </div>
+              <q-btn
+                unelevated
+                color="positive"
+                text-color="white"
+                icon="chat"
+                label="Falar no WhatsApp Oficial"
+                class="full-width q-py-sm text-weight-bold rounded-borders"
+                :href="whatsappUrl"
+                target="_blank"
+              />
             </div>
           </div>
 
-          <!-- Formulário de Lead / Candidatura -->
+          <!-- Coluna do Formulário Único -->
           <div class="col-12 col-lg-7">
             <div class="lead-form-box">
               <h3 class="form-title text-white q-mb-xs">Envie a sua Proposta ou Dúvida</h3>
@@ -1014,75 +793,49 @@
                   </div>
                   <div class="col-12 col-sm-6">
                     <q-input
-                      v-model="contactForm.phone"
-                      label="Contacto Telefónico / WhatsApp *"
-                      dark
-                      outlined
-                      dense
-                      mask="### ## ### ####"
-                      unmasked-value
-                      placeholder="84 835 3816"
-                      :rules="[val => !!val || 'Informe o seu telemóvel']"
-                    />
-                  </div>
-                </div>
-
-                <div class="row q-col-gutter-md">
-                  <div class="col-12 col-sm-6">
-                    <q-input
                       v-model="contactForm.email"
-                      label="Endereço de E-mail (Opcional)"
+                      label="Endereço de Email"
                       dark
                       outlined
                       dense
                       type="email"
                     />
                   </div>
-                  <div class="col-12 col-sm-6">
-                    <q-input
-                      v-model="contactForm.city"
-                      label="Cidade / Província"
-                      dark
-                      outlined
-                      dense
-                      placeholder="Ex: Maputo, Matola, etc."
-                    />
-                  </div>
                 </div>
 
                 <div class="row q-col-gutter-md">
                   <div class="col-12 col-sm-6">
                     <q-input
+                      v-model="contactForm.phone"
+                      label="Telefone / WhatsApp *"
+                      dark
+                      outlined
+                      dense
+                      placeholder="84 272 4906"
+                      :rules="[val => !!val || 'Informe o seu número']"
+                    />
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <q-input
                       v-model.number="contactForm.amount"
-                      label="Montante Desejado (MZN)"
+                      label="Valor Pretendido (MZN)"
                       dark
                       outlined
                       dense
                       type="number"
                     />
                   </div>
-                  <div class="col-12 col-sm-6">
-                    <q-select
-                      v-model="contactForm.productSlug"
-                      :options="productOptions"
-                      label="Modalidade de Interesse"
-                      dark
-                      outlined
-                      dense
-                      emit-value
-                      map-options
-                    />
-                  </div>
                 </div>
 
                 <q-input
                   v-model="contactForm.message"
-                  label="Mensagem ou Informação Adicional"
+                  label="Mensagem / Observações *"
                   dark
                   outlined
                   dense
                   type="textarea"
-                  rows="3"
+                  rows="4"
+                  :rules="[val => !!val || 'Escreva a sua mensagem']"
                 />
 
                 <q-btn
@@ -1091,9 +844,9 @@
                   color="amber-6"
                   text-color="dark"
                   icon="send"
-                  label="Submeter Pedido de Crédito"
+                  label="Enviar Proposta"
                   size="md"
-                  class="full-width q-py-sm text-weight-bold"
+                  class="full-width q-py-sm text-weight-bold rounded-borders"
                   :loading="submittingLead"
                 />
               </q-form>
@@ -1104,63 +857,64 @@
     </section>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- 12. FOOTER INSTITUCIONAL                                      -->
+    <!-- 11. FOOTER ÚNICO                                               -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <footer class="site-footer">
       <div class="container footer-container">
-        <div class="row q-col-gutter-xl q-pb-xl">
-          <!-- Coluna 1: Sobre & Identificação Legal -->
-          <div class="col-12 col-md-4">
-            <div class="row items-center q-mb-md">
+        <div class="row q-col-gutter-xl q-pb-lg">
+          <!-- Coluna 1: Marca & Síntese Legal -->
+          <div class="col-12 col-md-5">
+            <div class="row items-center q-mb-sm">
               <div class="brand-logo-badge q-mr-sm">
                 <q-icon name="account_balance" size="22px" color="white" />
               </div>
               <span class="text-h6 text-weight-bold text-white">Clack Microcrédito, EI</span>
             </div>
-            <p class="text-caption text-grey-4 line-height-relaxed q-mb-md">
-              Instituição moçambicana de microcrédito voltada ao fomento do empreendedorismo local, liquidez para pequenos negócios e soluções financeiras familiares transparentes.
+            <p class="text-caption text-grey-4 line-height-relaxed q-mb-sm">
+              Instituição moçambicana de microcrédito voltada ao fomento do empreendedorismo local,
+              liquidez para pequenos negócios e soluções financeiras familiares transparentes.
             </p>
-            <div class="social-links row q-gutter-sm">
-              <q-btn v-if="config.facebookUrl" flat round dense icon="facebook" color="white" :href="config.facebookUrl" target="_blank" />
-              <q-btn v-if="config.instagramUrl" flat round dense icon="photo_camera" color="white" :href="config.instagramUrl" target="_blank" />
-              <q-btn flat round dense icon="chat" color="positive" :href="whatsappUrl" target="_blank" />
+            <div class="text-caption text-grey-4">
+              <q-icon name="gavel" size="14px" class="q-mr-xs text-amber-5" />
+              Entidade licenciada em conformidade com o regime financeiro de Moçambique.
             </div>
           </div>
 
           <!-- Coluna 2: Links Rápidos -->
-          <div class="col-12 col-sm-6 col-md-4">
+          <div class="col-12 col-sm-6 col-md-3">
             <h4 class="footer-col-title text-white">Links Rápidos</h4>
             <ul class="footer-links-list">
               <li><a href="#inicio">Início</a></li>
-              <li><a href="#sobre">Sobre a Instituição</a></li>
-              <li><a href="#produtos">Produtos & Modalidades</a></li>
               <li><a href="#simulador">Simulador de Crédito</a></li>
+              <li><a href="#produtos">Produtos & Modalidades</a></li>
+              <li><a href="#sobre">Sobre a Clack</a></li>
+              <li><a href="#porque-clack">Porquê a Clack?</a></li>
               <li><a href="#como-funciona">Como Funciona</a></li>
-              <li><a href="#requisitos">Requisitos Documentais</a></li>
               <li><a href="#faq">Perguntas Frequentes</a></li>
-              <li><a href="#contacto">Fale Connosco</a></li>
+              <li><a href="#contacto">Contacto</a></li>
             </ul>
           </div>
 
-          <!-- Coluna 3: Acesso Restrito & Aviso Legal -->
+          <!-- Coluna 3: Contactos Sucintos e Área Reservada -->
           <div class="col-12 col-sm-6 col-md-4">
-            <h4 class="footer-col-title text-white">Área Reservada</h4>
-            <p class="text-caption text-grey-4 q-mb-md">
-              Acesso exclusivo para colaboradores autorizados, operadores e gestores de crédito da Clack Microcrédito.
-            </p>
+            <h4 class="footer-col-title text-white">Contactos Oficiais</h4>
+            <div class="text-caption text-grey-4 column q-gutter-xs q-mb-md">
+              <div><strong>Email:</strong> {{ officialContact.email }}</div>
+              <div><strong>Telefone:</strong> {{ officialContact.whatsappDisplay }}</div>
+              <div><strong>Localização:</strong> Katembe / Maputo, Moçambique</div>
+              <div><strong>Horário:</strong> {{ officialContact.horario }}</div>
+            </div>
+
             <q-btn
               outline
               color="amber-5"
               text-color="white"
               icon="lock"
-              label="Aceder ao Painel Administrativo"
-              class="full-width q-py-xs q-mb-md"
+              label="Aceder ao Sistema"
+              class="full-width q-py-xs rounded-borders"
               :href="systemUrl"
+              no-caps
             />
-            <div class="legal-badge text-caption text-grey-4">
-              <q-icon name="gavel" size="14px" class="q-mr-xs text-amber-5" />
-              Registo Comercial e NUIT devidamente licenciados em Moçambique.
-            </div>
           </div>
         </div>
 
@@ -1179,7 +933,7 @@
     </footer>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
-    <!-- MODAL DE CANDIDATURA ONLINE (PEDIDO DE PROPOSTA)             -->
+    <!-- MODAL DE PROPOSTA ONLINE                                       -->
     <!-- ══════════════════════════════════════════════════════════════ -->
     <q-dialog v-model="leadModalOpen">
       <q-card class="lead-modal-card bg-navy-dark text-white">
@@ -1193,19 +947,19 @@
 
         <q-card-section class="q-pt-md">
           <div class="modal-sim-summary q-pa-sm q-mb-md bg-navy-light text-caption rounded-borders">
-            <div class="row justify-between">
+            <div class="row justify-between q-py-xs">
               <span>Modalidade:</span>
               <strong class="text-amber-4">{{ selectedProduct?.title }}</strong>
             </div>
-            <div class="row justify-between">
-              <span>Montante:</span>
+            <div class="row justify-between q-py-xs">
+              <span>Capital Financiado:</span>
               <strong class="text-white">{{ formatMoney(simAmount) }}</strong>
             </div>
-            <div class="row justify-between">
-              <span>Prazo:</span>
+            <div class="row justify-between q-py-xs">
+              <span>Prazo de Reembolso:</span>
               <strong class="text-white">{{ simTerm }} Meses</strong>
             </div>
-            <div class="row justify-between">
+            <div class="row justify-between q-py-xs">
               <span>Prestação Estimada:</span>
               <strong class="text-amber-4">{{ formatMoney(simMonthlyPayment) }} / mês</strong>
             </div>
@@ -1226,20 +980,20 @@
               dark
               outlined
               dense
-              placeholder="Ex: 84 835 3816"
-              :rules="[val => !!val || 'Informe o seu telemóvel']"
+              placeholder="Ex: 84 272 4906"
+              :rules="[val => !!val || 'Informe o seu número']"
             />
             <q-input
-              v-model="modalForm.city"
-              label="Cidade / Bairro"
+              v-model="modalForm.email"
+              label="Email (Opcional)"
               dark
               outlined
               dense
-              placeholder="Ex: Maputo - Baixa"
+              type="email"
             />
             <q-input
               v-model="modalForm.message"
-              label="Observações ou Finalidade do Crédito"
+              label="Observações / Finalidade do Crédito"
               dark
               outlined
               dense
@@ -1257,6 +1011,7 @@
                 icon="send"
                 label="Enviar Proposta"
                 :loading="submittingLead"
+                class="rounded-borders font-weight-bold"
               />
             </div>
           </q-form>
@@ -1264,8 +1019,10 @@
       </q-card>
     </q-dialog>
 
-    <!-- Floating WhatsApp Widget Button -->
-    <a :href="whatsappUrl" target="_blank" class="floating-whatsapp-btn" title="Falar no WhatsApp">
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <!-- APENAS 1 BOTÃO FLUTUANTE DE WHATSAPP (CANTO INFERIOR DIREITO)  -->
+    <!-- ══════════════════════════════════════════════════════════════ -->
+    <a :href="whatsappUrl" target="_blank" class="floating-whatsapp-btn" title="Falar no WhatsApp Oficial">
       <q-icon name="chat" size="30px" color="white" />
     </a>
   </div>
@@ -1283,41 +1040,110 @@ const submittingLead = ref(false)
 const leadModalOpen = ref(false)
 const currentYear = new Date().getFullYear()
 
-// Dados Dinâmicos Carregados da API
-const config = ref({})
-const products = ref([])
-const testimonials = ref([])
-const faqs = ref([])
+// DADOS OFICIAIS CONSOLIDADOS (FONTE ÚNICA DE VERDADE)
+const officialContact = {
+  email: 'zualofrancisco202@gmail.com',
+  whatsappRaw: '258842724906',
+  whatsappDisplay: '+258 84 272 4906',
+  phoneVodacom: '+258 84 835 3816',
+  addressSede: 'Bairro de Incassane, Q. 3, Casa 4, Distrito Municipal Katembe - Cidade de Maputo - Moçambique',
+  addressAtendimento: 'Av. 25 de Setembro, Prédio Maryah, Maputo, Moçambique',
+  horario: 'Segunda a Sexta: 08:00 - 17:00 | Sábado: 08:00 - 12:30'
+}
 
-// Simulador Rápido (Hero)
-const quickAmount = ref(15000)
-const quickTerm = ref(2)
+// PRODUTOS DE CRÉDITO (EXATAMENTE 3 CARDS CONFORME ESPECIFICAÇÃO)
+const availableProducts = ref([
+  {
+    slug: 'credito-negocio',
+    title: 'Crédito Negócio & PME',
+    badge: 'Mais Procurado',
+    summary: 'Capital de giro para reforço de estoque, mercadorias, insumos ou expansão do comércio.',
+    minAmount: 5000,
+    maxAmount: 300000,
+    minTerm: 1,
+    maxTerm: 6,
+    interestRate: 15.0,
+    requirements: 'BI ou DIRE válido\nComprovativo de atividade comercial\nExtrato bancário ou M-Pesa dos últimos 3 meses',
+    icon: 'storefront',
+    featured: true
+  },
+  {
+    slug: 'credito-pessoal',
+    title: 'Crédito Pessoal & Família',
+    badge: 'Rápido & Prático',
+    summary: 'Financiamento direto para despesas familiares, propinas escolares, pequenas reformas ou imprevistos.',
+    minAmount: 2000,
+    maxAmount: 100000,
+    minTerm: 1,
+    maxTerm: 4,
+    interestRate: 15.0,
+    requirements: 'BI ou DIRE válido\nNUIT pessoal\nComprovativo de residência atualizado',
+    icon: 'account_balance_wallet',
+    featured: false
+  },
+  {
+    slug: 'credito-funcionario',
+    title: 'Crédito Funcionário / Salário',
+    badge: 'Taxa Preferencial',
+    summary: 'Crédito com taxa reduzida para funcionários públicos e do setor privado com rendimento comprovado.',
+    minAmount: 3000,
+    maxAmount: 150000,
+    minTerm: 1,
+    maxTerm: 6,
+    interestRate: 12.0,
+    requirements: 'BI e NUIT\nDeclaração de serviço / Vínculo laboral recente\nÚltimos 3 recibos de vencimento\nExtrato bancário de 3 meses',
+    icon: 'badge',
+    featured: false
+  }
+])
 
-// Simulador Principal Completo
-const selectedProduct = ref(null)
+// FAQS OFICIAIS
+const faqsList = ref([
+  {
+    question: 'Quem pode solicitar crédito na Clack Microcrédito?',
+    answer: 'Cidadãos moçambicanos ou residentes legais com idade igual ou superior a 21 anos, com documento válido (BI ou DIRE) e que comprovem atividade produtiva, comercial ou vínculo laboral.'
+  },
+  {
+    question: 'Quanto tempo demora a aprovação e o desembolso?',
+    answer: 'A análise da documentação é feita em até 24 horas úteis. Uma vez aprovada e assinada a proposta, o desembolso é efetuado de imediato na sua conta bancária ou via M-Pesa.'
+  },
+  {
+    question: 'Como faço para pagar as prestações mensais?',
+    answer: 'Pode pagar comodamente através de M-Pesa, e-Mola ou transferência bancária (BCI, Millennium BIM, Standard Bank, Moza Banco).'
+  },
+  {
+    question: 'Qual é a taxa de juro aplicada?',
+    answer: 'As taxas são transparentes, variando a partir de 12% a.m. para funcionários e 15% a.m. para negócios e consumo pessoal, sem taxas ocultas.'
+  },
+  {
+    question: 'É necessária hipoteca de imóvel?',
+    answer: 'Não. Não exigimos hipotecas de bens imóveis para as nossas linhas padrão de microcrédito.'
+  }
+])
+
+// ESTADO DO SIMULADOR ÚNICO (CRÉDITO CLACK)
+const selectedProduct = ref(availableProducts.value[0])
 const simAmount = ref(20000)
 const simTerm = ref(3)
 
-// Formulário de Contacto Lead
+// Formulário de Contacto Principal
 const contactForm = ref({
   name: '',
-  phone: '',
   email: '',
-  city: 'Maputo',
+  phone: '',
   amount: 20000,
-  productSlug: 'credito-negocio',
   message: ''
 })
 
-// Formulário do Modal de Lead
+// Formulário do Modal de Proposta
 const modalForm = ref({
   name: '',
   phone: '',
-  city: 'Maputo',
+  email: '',
   message: ''
 })
 
-// URL do sistema de gestão
+// URL do Sistema de Gestão
 const systemUrl = computed(() => {
   const host = window.location.hostname
   if (host.includes('localhost') || host.includes('127.0.0.1')) {
@@ -1326,51 +1152,18 @@ const systemUrl = computed(() => {
   return 'https://web.clackmicrocredito.com/login'
 })
 
-// WhatsApp link dinâmico
-const cleanPhone = (phone) => {
-  if (!phone) return '258848353816'
-  return String(phone).replace(/\D/g, '')
-}
-
+// Link WhatsApp Oficial Único
 const whatsappUrl = computed(() => {
-  const num = cleanPhone(config.value.whatsapp || '258848353816')
+  const num = officialContact.whatsappRaw
   const text = encodeURIComponent(
     'Olá! Gostaria de informações sobre solicitação de crédito na Clack Microcrédito, EI.'
   )
   return `https://wa.me/${num}?text=${text}`
 })
 
-// Opções para o select de produtos
-const productOptions = computed(() => {
-  return products.value.map(p => ({
-    label: p.title,
-    value: p.slug
-  }))
-})
-
-// Cálculos do Simulador Rápido
-const quickMonthlyPayment = computed(() => {
-  const rate = Number(config.value.defaultInterestRate || 15) / 100
-  const capital = Number(quickAmount.value || 0)
-  const term = Number(quickTerm.value || 1)
-  // Cálculo linear padrão do microcrédito moçambicano:
-  // Juros mensais = Capital * Taxa
-  // Prestação = (Capital / Prazo) + (Capital * Taxa)
-  const monthlyPrincipal = capital / term
-  const monthlyInterest = capital * rate
-  return Math.round(monthlyPrincipal + monthlyInterest)
-})
-
-const quickTotalPayment = computed(() => {
-  return Math.round(quickMonthlyPayment.value * quickTerm.value)
-})
-
-// Cálculos do Simulador Completo
+// Cálculos do Simulador Único
 const simInterestRate = computed(() => {
-  if (selectedProduct.value && selectedProduct.value.interestRate) {
-    return Number(selectedProduct.value.interestRate)
-  }
-  return Number(config.value.defaultInterestRate || 15)
+  return Number(selectedProduct.value?.interestRate || 15)
 })
 
 const simMonthlyPayment = computed(() => {
@@ -1393,7 +1186,7 @@ const simTotalPayment = computed(() => {
   return Number(simAmount.value || 0) + simTotalInterest.value
 })
 
-// Formatação Monetária em MZN
+// Formatação Monetária em Meticais (MZN)
 const formatMoney = (val) => {
   if (val === undefined || val === null || isNaN(val)) return '0,00 MZN'
   return Number(val).toLocaleString('pt-MZ', {
@@ -1402,13 +1195,13 @@ const formatMoney = (val) => {
   }) + ' MZN'
 }
 
-// Utilitário para quebrar texto em linhas
+// Separador de Linhas
 const splitLines = (text) => {
   if (!text) return []
   return text.split(/\r?\n/).filter(line => line.trim().length > 0)
 }
 
-// Selecionar Produto
+// Seleção de Produto no Simulador
 const selectProductForSimulation = (prod) => {
   selectedProduct.value = prod
   if (prod.minAmount && simAmount.value < prod.minAmount) {
@@ -1420,127 +1213,11 @@ const selectProductForSimulation = (prod) => {
   if (prod.maxTerm && simTerm.value > prod.maxTerm) {
     simTerm.value = Number(prod.maxTerm)
   }
-  // Scroll suave até o simulador se não estiver visível
-  const el = document.getElementById('simulador')
-  if (el) {
-    el.scrollIntoView({ behavior: 'smooth' })
-  }
+  scrollTo('#simulador')
 }
 
-// Enviar Simulação Rápida para o WhatsApp
-const sendQuickWhatsApp = () => {
-  const num = cleanPhone(config.value.whatsapp || '258848353816')
-  const msg =
-    `Olá Clack Microcrédito! Fiz uma simulação rápida no website e gostaria de solicitar:\n\n` +
-    `• Montante: ${formatMoney(quickAmount.value)}\n` +
-    `• Prazo: ${quickTerm.value} ${quickTerm.value === 1 ? 'mês' : 'meses'}\n` +
-    `• Prestação Estimada: ${formatMoney(quickMonthlyPayment.value)}/mês\n` +
-    `• Total a Reembolsar: ${formatMoney(quickTotalPayment.value)}\n\n` +
-    `Como posso proceder com o envio da documentação?`
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank')
-}
-
-// Enviar Simulação Completa para o WhatsApp
-const sendFullWhatsApp = () => {
-  const num = cleanPhone(config.value.whatsapp || '258848353816')
-  const prodName = selectedProduct.value?.title || 'Crédito'
-  const msg =
-    `Olá Clack Microcrédito! Gostaria de avançar com o seguinte pedido de crédito:\n\n` +
-    `• Linha: ${prodName}\n` +
-    `• Montante Solicitado: ${formatMoney(simAmount.value)}\n` +
-    `• Prazo: ${simTerm.value} ${simTerm.value === 1 ? 'mês' : 'meses'}\n` +
-    `• Taxa Aplicada: ${simInterestRate.value}% a.m.\n` +
-    `• Prestação Mensal: ${formatMoney(simMonthlyPayment.value)}\n` +
-    `• Total Estimado: ${formatMoney(simTotalPayment.value)}\n\n` +
-    `Aguardo instruções para formalização e envio do BI e extratos.`
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank')
-}
-
-// Abrir Modal de Lead
-const openLeadModal = () => {
-  modalForm.value.name = contactForm.value.name || ''
-  modalForm.value.phone = contactForm.value.phone || ''
-  leadModalOpen.value = true
-}
-
-// Submeter Lead pelo Formulário Principal de Contacto
-const submitContactLead = async () => {
-  submittingLead.value = true
-  try {
-    const payload = {
-      name: contactForm.value.name,
-      phone: contactForm.value.phone,
-      email: contactForm.value.email,
-      city: contactForm.value.city,
-      amount: contactForm.value.amount,
-      term: simTerm.value,
-      productSlug: contactForm.value.productSlug,
-      message: contactForm.value.message,
-      source: 'WEBSITE_CONTACT_FORM'
-    }
-
-    const res = await axios.post('/api/public/site/lead', payload)
-    if (res.data.success) {
-      $q.notify({
-        type: 'positive',
-        message: 'Pedido submetido com sucesso! Entraremos em contacto brevemente.',
-        position: 'top',
-        timeout: 5000
-      })
-      contactForm.value.name = ''
-      contactForm.value.phone = ''
-      contactForm.value.email = ''
-      contactForm.value.message = ''
-    }
-  } catch (err) {
-    $q.notify({
-      type: 'negative',
-      message: 'Não foi possível registar o pedido no momento. Por favor use o WhatsApp.',
-      position: 'top'
-    })
-  } finally {
-    submittingLead.value = false
-  }
-}
-
-// Submeter Lead pelo Modal
-const submitModalLead = async () => {
-  submittingLead.value = true
-  try {
-    const payload = {
-      name: modalForm.value.name,
-      phone: modalForm.value.phone,
-      city: modalForm.value.city,
-      amount: simAmount.value,
-      term: simTerm.value,
-      productSlug: selectedProduct.value?.slug || 'geral',
-      message: modalForm.value.message || 'Pedido gerado através do simulador de crédito.',
-      source: 'WEBSITE_SIMULATOR_MODAL'
-    }
-
-    const res = await axios.post('/api/public/site/lead', payload)
-    if (res.data.success) {
-      $q.notify({
-        type: 'positive',
-        message: 'Proposta enviada com sucesso! A equipa Clack Microcrédito entrará em contacto.',
-        position: 'top',
-        timeout: 6000
-      })
-      leadModalOpen.value = false
-    }
-  } catch (err) {
-    $q.notify({
-      type: 'negative',
-      message: 'Erro ao enviar proposta. Pode enviar diretamente pelo WhatsApp.',
-      position: 'top'
-    })
-  } finally {
-    submittingLead.value = false
-  }
-}
-
-// Navegação suave no menu mobile
-const navigateTo = (target) => {
+// Scroll Suave para Secções
+const scrollTo = (target) => {
   mobileDrawer.value = false
   const el = document.querySelector(target)
   if (el) {
@@ -1548,35 +1225,118 @@ const navigateTo = (target) => {
   }
 }
 
-// Carregar Dados do Website
-const loadWebsiteData = async () => {
-  try {
-    const res = await axios.get('/api/public/site/content')
-    if (res.data.success) {
-      config.value = res.data.config || {}
-      products.value = res.data.products || []
-      testimonials.value = res.data.testimonials || []
-      faqs.value = res.data.faqs || []
+const navigateTo = (target) => {
+  scrollTo(target)
+}
 
-      if (products.value.length > 0) {
-        selectedProduct.value = products.value[0]
-      }
-      if (config.value.metaTitle) {
-        document.title = config.value.metaTitle
-      }
+// Enviar Simulação via WhatsApp (Botão Verde do Simulador Único)
+const sendWhatsAppSimulation = () => {
+  const num = officialContact.whatsappRaw
+  const prodTitle = selectedProduct.value?.title || 'Crédito Clack'
+  const msg =
+    `Olá Clack Microcrédito! Fiz uma simulação no website e gostaria de solicitar este crédito:\n\n` +
+    `• Linha: ${prodTitle}\n` +
+    `• Capital Financiado: ${formatMoney(simAmount.value)}\n` +
+    `• Prazo: ${simTerm.value} ${simTerm.value === 1 ? 'mês' : 'meses'}\n` +
+    `• Taxa Aplicada: ${simInterestRate.value}% a.m.\n` +
+    `• Prestação Mensal Estimada: ${formatMoney(simMonthlyPayment.value)}/mês\n` +
+    `• Total a Reembolsar: ${formatMoney(simTotalPayment.value)}\n\n` +
+    `Como posso proceder com o envio da documentação?`
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank')
+}
+
+// Abrir Modal de Candidatura Online (Botão Amarelo/Dourado do Simulador Único)
+const openLeadModal = () => {
+  modalForm.value.name = contactForm.value.name || ''
+  modalForm.value.phone = contactForm.value.phone || ''
+  modalForm.value.email = contactForm.value.email || ''
+  leadModalOpen.value = true
+}
+
+// Submeter Pedido pelo Formulário de Contacto Único
+const submitContactLead = async () => {
+  submittingLead.value = true
+  try {
+    const payload = {
+      name: contactForm.value.name,
+      phone: contactForm.value.phone,
+      email: contactForm.value.email || null,
+      amount: contactForm.value.amount || simAmount.value,
+      term: simTerm.value,
+      productSlug: selectedProduct.value?.slug || 'credito-negocio',
+      message: contactForm.value.message,
+      source: 'WEBSITE_CONTACT_FORM'
     }
-  } catch (e) {
-    console.warn('Erro ao carregar conteúdo do site, usando padrões:', e)
+
+    const res = await axios.post('/api/public/site/lead', payload)
+    if (res.data?.success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Proposta submetida com sucesso! A nossa equipa entrará em contacto brevemente.',
+        position: 'top',
+        timeout: 5000
+      })
+      contactForm.value.name = ''
+      contactForm.value.email = ''
+      contactForm.value.phone = ''
+      contactForm.value.message = ''
+    }
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: 'Não foi possível enviar a proposta no momento. Por favor use o WhatsApp oficial.',
+      position: 'top'
+    })
+  } finally {
+    submittingLead.value = false
   }
 }
 
-// Tratamento do Scroll para a Navbar
+// Submeter Pedido pelo Modal do Simulador
+const submitModalLead = async () => {
+  submittingLead.value = true
+  try {
+    const payload = {
+      name: modalForm.value.name,
+      phone: modalForm.value.phone,
+      email: modalForm.value.email || null,
+      amount: simAmount.value,
+      term: simTerm.value,
+      productSlug: selectedProduct.value?.slug || 'credito-clack',
+      message: modalForm.value.message || 'Pedido gerado através do simulador de crédito online.',
+      source: 'WEBSITE_SIMULATOR_MODAL'
+    }
+
+    const res = await axios.post('/api/public/site/lead', payload)
+    if (res.data?.success) {
+      $q.notify({
+        type: 'positive',
+        message: 'Proposta enviada com sucesso! A equipa Clack Microcrédito entrará em contacto.',
+        position: 'top',
+        timeout: 5000
+      })
+      leadModalOpen.value = false
+      modalForm.value.name = ''
+      modalForm.value.phone = ''
+      modalForm.value.message = ''
+    }
+  } catch (err) {
+    $q.notify({
+      type: 'negative',
+      message: 'Erro ao enviar proposta. Pode enviar diretamente pelo WhatsApp oficial.',
+      position: 'top'
+    })
+  } finally {
+    submittingLead.value = false
+  }
+}
+
+// Efeito de Scroll no Topo
 const handleScroll = () => {
   isScrolled.value = window.scrollY > 40
 }
 
 onMounted(() => {
-  loadWebsiteData()
   window.addEventListener('scroll', handleScroll)
 })
 
@@ -1587,7 +1347,6 @@ onUnmounted(() => {
 
 <style scoped>
 /* ── PALETA INSTITUCIONAL CLACK MICROCRÉDITO ── */
-/* Azul Marinho Profundo: #0a192f / #0f2b48 | Dourado/Âmbar: #d97706 / #f59e0b */
 .bg-navy-dark {
   background-color: #0b1f3a !important;
 }
@@ -1615,7 +1374,7 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-/* ── HEADER & NAVBAR ── */
+/* ── HEADER & NAVBAR ÚNICA ── */
 .site-header {
   position: fixed;
   top: 0;
@@ -1633,8 +1392,8 @@ onUnmounted(() => {
 }
 .top-bar {
   background-color: #071527;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .hover-amber:hover {
   color: #f59e0b !important;
@@ -1688,7 +1447,7 @@ onUnmounted(() => {
   font-weight: 700 !important;
 }
 .system-login-btn {
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 600;
 }
 
@@ -1696,137 +1455,106 @@ onUnmounted(() => {
 .hero-section {
   position: relative;
   background: linear-gradient(135deg, #071527 0%, #0b1f3a 50%, #12345e 100%);
-  padding: 160px 0 100px;
+  padding: 170px 0 110px;
   overflow: hidden;
 }
 .hero-bg-overlay {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-image: radial-gradient(circle at 20% 30%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
-                    radial-gradient(circle at 80% 70%, rgba(30, 64, 175, 0.15) 0%, transparent 60%);
+  background-image: radial-gradient(circle at 50% 30%, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
   pointer-events: none;
 }
 .hero-container {
   position: relative;
   z-index: 2;
 }
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 30px;
-  color: #fde68a;
-  font-size: 0.82rem;
-  font-weight: 600;
-  margin-bottom: 20px;
+.hero-content-wrapper {
+  max-width: 820px;
+  margin: 0 auto;
 }
 .hero-title {
-  font-size: 2.8rem;
+  font-size: 3rem;
   font-weight: 800;
-  line-height: 1.18;
+  line-height: 1.16;
   letter-spacing: -0.02em;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .hero-subtitle {
-  font-size: 1.12rem;
+  font-size: 1.15rem;
   line-height: 1.6;
-  max-width: 620px;
-  margin-bottom: 24px;
+  margin: 0 auto 30px;
+  color: #cbd5e1;
 }
 .hero-btn-primary {
-  border-radius: 10px;
+  border-radius: 12px;
+  padding: 12px 28px;
   box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
 }
 .hero-btn-secondary {
-  border-radius: 10px;
-}
-.trust-chips {
-  margin-top: 30px;
-}
-.trust-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  color: #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 28px;
 }
 
-/* ── HERO SIMULATOR CARD ── */
-.simulator-card-hero {
-  background: rgba(15, 43, 78, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(12px);
-  overflow: hidden;
+/* ── SIMULADOR ÚNICO ── */
+.simulator-main-box {
+  background: rgba(15, 43, 78, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  padding: 40px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.45);
 }
-.card-hero-header {
-  background: rgba(7, 21, 39, 0.6);
-  padding: 18px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-.card-hero-title {
-  font-size: 1.25rem;
+.sim-ctrl-label {
+  font-size: 1rem;
   font-weight: 700;
   color: #ffffff;
-  margin: 0;
 }
-.card-hero-subtitle {
-  font-size: 0.8rem;
-  color: #94a3b8;
-  margin: 2px 0 0;
+.amount-input-box {
+  display: flex;
+  align-items: center;
+  background: rgba(7, 21, 39, 0.85);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 8px;
+  padding: 4px 12px;
 }
-.sim-label {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: #e2e8f0;
+.currency-tag {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f59e0b;
+  margin-right: 6px;
 }
-.sim-val-display {
+.custom-number-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #ffffff;
   font-size: 1.1rem;
   font-weight: 700;
+  width: 140px;
+  text-align: right;
 }
-.sim-summary-box {
-  background: rgba(7, 21, 39, 0.7);
-  border-radius: 12px;
-  border: 1px solid rgba(245, 158, 11, 0.25);
+.sim-result-card {
+  background: rgba(7, 21, 39, 0.88);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 20px;
+  padding: 26px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
-
-/* ── TRUST STATS ── */
-.trust-stats-section {
-  background-color: #071527;
-  padding: 40px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-.stat-number {
-  font-size: 2.2rem;
-  font-weight: 800;
-  line-height: 1.1;
-  margin-bottom: 4px;
-}
-.stat-label {
-  font-size: 0.85rem;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.result-highlight-box {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 14px;
 }
 
-/* ── GENERAL SECTIONS ── */
+/* ── SECTION PADRÃO ── */
 .section-padding {
-  padding: 90px 0;
+  padding: 85px 0;
 }
 .section-heading {
-  margin-bottom: 50px;
+  margin-bottom: 45px;
 }
 .section-tag {
   display: inline-block;
-  padding: 4px 12px;
+  padding: 4px 14px;
   border-radius: 20px;
   background: #e2e8f0;
   color: #0f2b48;
@@ -1854,58 +1582,7 @@ onUnmounted(() => {
   margin: 0 auto;
 }
 
-/* ── ABOUT US ── */
-.about-title {
-  font-size: 1.7rem;
-  font-weight: 800;
-  color: #0f172a;
-  margin-bottom: 16px;
-}
-.about-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #f1f5f9;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #1e293b;
-}
-.about-pillars-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-.pillar-box {
-  background: #ffffff;
-  padding: 22px;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-}
-.pillar-icon-box {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-.pillar-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 6px;
-}
-.pillar-text {
-  font-size: 0.84rem;
-  color: #64748b;
-  line-height: 1.5;
-  margin: 0;
-}
-
-/* ── PRODUCTS ── */
+/* ── PRODUTOS ── */
 .product-card {
   position: relative;
   background: #ffffff;
@@ -1919,7 +1596,7 @@ onUnmounted(() => {
   transition: transform 0.3s, box-shadow 0.3s;
 }
 .product-card:hover {
-  transform: translateY(-6px);
+  transform: translateY(-4px);
   box-shadow: 0 16px 30px rgba(0, 0, 0, 0.08);
 }
 .featured-product {
@@ -1933,13 +1610,13 @@ onUnmounted(() => {
   color: #ffffff;
   font-size: 0.72rem;
   font-weight: 700;
-  padding: 3px 10px;
+  padding: 3px 12px;
   border-radius: 12px;
   text-transform: uppercase;
 }
 .product-icon-wrap {
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   background: #fef3c7;
   border-radius: 14px;
   display: flex;
@@ -1973,61 +1650,102 @@ onUnmounted(() => {
 .spec-label {
   color: #64748b;
 }
+.product-bullets {
+  line-height: 1.5;
+}
 .select-prod-btn {
   border-radius: 10px;
   font-weight: 600;
 }
 
-/* ── FULL SIMULATOR SECTION ── */
-.simulator-main-box {
-  background: rgba(15, 43, 78, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 24px;
-  padding: 40px;
-  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+/* ── SOBRE NÓS ── */
+.about-title {
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 16px;
 }
-.sim-ctrl-label {
-  font-size: 1rem;
-  font-weight: 700;
-  color: #ffffff;
+.about-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
 }
-.amount-input-box {
+.about-pillars-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.pillar-box {
+  background: #ffffff;
+  padding: 22px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+}
+.pillar-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
-  background: rgba(7, 21, 39, 0.8);
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  border-radius: 8px;
-  padding: 4px 10px;
+  justify-content: center;
+  margin-bottom: 12px;
 }
-.currency-tag {
-  font-size: 0.85rem;
+.pillar-title {
+  font-size: 1.05rem;
   font-weight: 700;
-  color: #f59e0b;
-  margin-right: 6px;
+  color: #0f172a;
+  margin: 0 0 6px;
 }
-.custom-number-input {
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #ffffff;
-  font-size: 1.1rem;
-  font-weight: 700;
-  width: 140px;
-  text-align: right;
-}
-.sim-result-card {
-  background: rgba(7, 21, 39, 0.85);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 18px;
-  padding: 24px;
-}
-.result-highlight-box {
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: 12px;
+.pillar-text {
+  font-size: 0.84rem;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0;
 }
 
-/* ── STEPS ── */
+/* ── PORQUÊ A CLACK? ── */
+.why-card {
+  background: rgba(15, 43, 78, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 28px 22px;
+  height: 100%;
+  text-align: center;
+  transition: transform 0.2s;
+}
+.why-card:hover {
+  transform: translateY(-4px);
+}
+.why-icon-box {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+.why-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 10px;
+}
+.why-desc {
+  font-size: 0.88rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── COMO FUNCIONA ── */
 .step-card {
   position: relative;
   background: #ffffff;
@@ -2052,74 +1770,25 @@ onUnmounted(() => {
   justify-content: center;
 }
 .step-icon-box {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
+  width: 68px;
+  height: 68px;
+  border-radius: 18px;
   margin: 0 auto 16px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .step-title {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #0f172a;
   margin: 0 0 10px;
 }
 .step-text {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: #64748b;
   line-height: 1.5;
   margin: 0;
-}
-
-/* ── REQUIREMENTS ── */
-.req-box {
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 24px;
-  text-align: center;
-  border: 1px solid #e2e8f0;
-  height: 100%;
-}
-.req-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 8px;
-}
-.req-text {
-  font-size: 0.84rem;
-  color: #64748b;
-  margin: 0;
-  line-height: 1.45;
-}
-
-/* ── TESTIMONIALS ── */
-.testimonial-card {
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 26px;
-  border: 1px solid #e2e8f0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-.testimonial-comment {
-  font-size: 0.92rem;
-  color: #334155;
-  font-style: italic;
-  line-height: 1.6;
-}
-.author-name {
-  font-weight: 700;
-  color: #0f172a;
-  font-size: 0.95rem;
-}
-.author-meta {
-  font-size: 0.78rem;
-  color: #64748b;
 }
 
 /* ── FAQ ── */
@@ -2134,37 +1803,37 @@ onUnmounted(() => {
   padding: 16px 20px;
 }
 
-/* ── CONTACT ── */
-.contact-card {
-  display: flex;
-  align-items: flex-start;
-  background: rgba(15, 43, 78, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  padding: 18px;
-}
-.contact-card-title {
-  font-weight: 700;
-  color: #ffffff;
-  font-size: 0.95rem;
-  margin-bottom: 2px;
-}
-.contact-card-text {
-  font-size: 0.86rem;
-  line-height: 1.45;
-}
-.lead-form-box {
-  background: rgba(15, 43, 78, 0.8);
+/* ── CONTACTO ÚNICO ── */
+.official-contact-box {
+  background: rgba(15, 43, 78, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   padding: 30px;
+}
+.contact-entry {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 10px;
+}
+.contact-val {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-top: 3px;
+  text-decoration: none;
+  line-height: 1.45;
+}
+.lead-form-box {
+  background: rgba(15, 43, 78, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 32px;
 }
 .form-title {
   font-size: 1.4rem;
   font-weight: 700;
 }
 
-/* ── FOOTER ── */
+/* ── FOOTER ÚNICO ── */
 .site-footer {
   background-color: #050d18;
   color: #cbd5e1;
@@ -2193,7 +1862,7 @@ onUnmounted(() => {
   color: #f59e0b;
 }
 
-/* ── FLOATING WHATSAPP ── */
+/* ── APENAS 1 BOTÃO FLUTUANTE DE WHATSAPP ── */
 .floating-whatsapp-btn {
   position: fixed;
   bottom: 24px;
@@ -2210,7 +1879,7 @@ onUnmounted(() => {
   transition: transform 0.3s;
 }
 .floating-whatsapp-btn:hover {
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 
 .lead-modal-card {
@@ -2221,10 +1890,13 @@ onUnmounted(() => {
 .border-bottom {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
+.rounded-borders {
+  border-radius: 10px;
+}
 
 @media (max-width: 768px) {
   .hero-title {
-    font-size: 2rem;
+    font-size: 2.1rem;
   }
   .section-title {
     font-size: 1.8rem;
