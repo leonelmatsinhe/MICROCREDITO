@@ -84,7 +84,7 @@
             <div class="text-caption text-weight-medium">
               <strong>Blindagem de Pagamentos (Alçada: Gestor de Crédito):</strong>
               <br/>
-              Autorizado a iniciar cobranças exclusivamente através do <strong>M-Pesa Open API (C2B)</strong>. O sistema envia a notificação STK Push diretamente para o telemóvel do cliente. Pagamentos manuais em numerário ou banco são restritos à Administração.
+              Autorizado a iniciar cobranças exclusivamente através do <strong>M-Pesa API</strong>. O sistema envia a notificação STK Push diretamente para o telemóvel do cliente. Pagamentos manuais em numerário ou banco são restritos à Administração.
             </div>
           </q-banner>
         </div>
@@ -122,15 +122,60 @@
             </q-select>
           </div>
 
-          <!-- Conta Destino: Apenas para Admin / modos manuais -->
-          <div class="col-12" v-if="!isGestor">
+          <!-- Valor a pagar -->
+          <div class="col-12 col-sm-6">
+            <q-input
+              v-model.number="form.amountReceived" dense outlined type="number" min="0"
+              label="Valor a pagar *" prefix="MZN"
+              :rules="amountRules"
+            >
+              <template v-slot:prepend><q-icon name="sell" size="18px" /></template>
+            </q-input>
+            <q-slider
+              v-if="mode === 'partial' && maxPayable > 0"
+              v-model="form.amountReceived" :min="1" :max="maxPayable" :step="1"
+              label label-always :label-value="formatMoney(form.amountReceived)" color="primary"
+              class="q-mt-xs q-mb-none"
+            />
+          </div>
+
+          <!-- M-PESA: PROMPT C2B VODACOM (UNIFICADO COM QUICKPAYMENT) -->
+          <div class="col-12" v-if="isGestor || isMpesa">
+            <div class="q-pa-sm bg-green-0 rounded-borders border-green">
+              <div class="row items-center q-col-gutter-sm">
+                <div class="col-12 col-sm-7">
+                  <q-input
+                    v-model="form.phoneNumber" dense outlined
+                    label="Telemóvel Vodacom (84/85) *"
+                    placeholder="84xxxxxxx ou 85xxxxxxx"
+                    prefix="+258"
+                    mask="## ### ####"
+                    unmasked-value
+                    clearable
+                    :rules="[v => !!v || 'Obrigatório para o pagamento M-Pesa', phoneRules]"
+                  >
+                    <template v-slot:prepend><q-icon name="smartphone" size="18px" color="positive" /></template>
+                  </q-input>
+                </div>
+                <div class="col-12 col-sm-5">
+                  <div class="text-caption text-grey-7" style="font-size: 11px; line-height: 1.3">
+                    <q-icon name="info" color="positive" size="16px" class="q-mr-xs" />
+                    O telemóvel do cliente receberá imediatamente o pedido oficial de PIN da Vodacom M-Pesa.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conta Destino: Apenas para Admin em modos manuais -->
+          <div class="col-12" v-if="!isGestor && !isMpesa">
             <q-select
               v-model="selectedBankAccount" dense outlined use-input hide-selected fill-input
               input-debounce="0" :options="filteredAccounts"
               option-value="id" :option-label="accountOptionLabel"
               label="Conta Destino * (Reembolso/Misto/Caixa)"
               placeholder="Pesquisar conta…" :loading="bankStore.reembolsoLoading"
-              :rules="[() => !!selectedBankAccount || 'Obrigatório — indique para onde vai o dinheiro']"
+              :rules="[() => (isMpesa ? true : !!selectedBankAccount) || 'Obrigatório — indique para onde vai o dinheiro']"
               @filter="onAccountFilter"
             >
               <template v-slot:prepend><q-icon name="account_balance" size="18px" /></template>
@@ -149,7 +194,7 @@
           </div>
 
           <!-- Referência: Apenas para Admin em pagamentos manuais -->
-          <div class="col-12 col-sm-6" v-if="!isGestor">
+          <div class="col-12 col-sm-6" v-if="!isGestor && !isMpesa">
             <q-input
               v-model="form.paymentReference" dense outlined label="Referência *"
               :counter="Number(form.paymentMethod) !== 1" :maxlength="40"
@@ -160,37 +205,6 @@
             </q-input>
           </div>
 
-          <!-- Valor a pagar -->
-          <div class="col-12" :class="isGestor ? 'col-sm-6' : 'col-sm-6'">
-            <q-input
-              v-model.number="form.amountReceived" dense outlined type="number" min="0"
-              label="Valor a pagar *" prefix="MZN"
-              :rules="amountRules"
-            >
-              <template v-slot:prepend><q-icon name="sell" size="18px" /></template>
-            </q-input>
-            <q-slider
-              v-if="mode === 'partial' && maxPayable > 0"
-              v-model="form.amountReceived" :min="1" :max="maxPayable" :step="1"
-              label label-always :label-value="formatMoney(form.amountReceived)" color="primary"
-              class="q-mt-xs q-mb-none"
-            />
-          </div>
-
-          <!-- Telefone do cliente (Destino da Cobrança M-Pesa) -->
-          <div class="col-12 col-sm-6">
-            <q-input
-              v-model="form.phoneNumber" dense outlined
-              label="Telefone M-Pesa do cliente *"
-              mask="############"
-              hint="Ex: 848353816 · Receberá o prompt para introduzir o PIN"
-              clearable
-              :rules="[v => !!v || 'Obrigatório para o pagamento M-Pesa', phoneRules]"
-            >
-              <template v-slot:prepend><q-icon name="phone" size="18px" color="positive" /></template>
-            </q-input>
-          </div>
-
           <div class="col-12 col-sm-6">
             <q-input v-model="form.staffName" dense outlined disable label="Funcionário responsável">
               <template v-slot:prepend><q-icon name="badge" size="18px" /></template>
@@ -198,7 +212,7 @@
           </div>
 
           <!-- Desconto (apenas modo "Pagar com desconto" e para Admin) -->
-          <template v-if="mode === 'discount' && !isGestor">
+          <template v-if="mode === 'discount' && !isGestor && !isMpesa">
             <div class="col-12 col-sm-4">
               <q-select v-model="form.discountType" dense outlined :options="discountOptions" label="Tipo de desconto" emit-value map-options />
             </div>
@@ -211,7 +225,7 @@
           </template>
 
           <!-- Comprovativo: Apenas para Admin em pagamentos manuais -->
-          <div class="col-12" v-if="!isGestor">
+          <div class="col-12" v-if="!isGestor && !isMpesa">
             <q-file
               v-model="form.receiptFile" dense outlined use-chips clearable
               label="Comprovativo de pagamento" accept=".pdf,.jpg,.jpeg,.png"
@@ -253,8 +267,8 @@
         
         <!-- BOTAO PARA GESTOR OU ADMIN COM M-PESA SELECCIONADO -->
         <q-btn
-          v-if="isGestor || Number(form.paymentMethod) === 7"
-          unelevated label="Iniciar Cobrança M-Pesa" icon="send_to_mobile" no-caps
+          v-if="isGestor || isMpesa"
+          unelevated label="Cobrar via M-Pesa (Pedir PIN)" icon="send" no-caps
           color="positive" class="pm-confirm-btn"
           :loading="paying || store.quoteLoading"
           @click="submitMpesaC2B"
@@ -373,13 +387,14 @@ const form = ref(defaultForm())
 
 function defaultForm() {
   const isG = Number(authStore.userRole) === 3
-  const cPhone = effectiveCustomer.value?.customerPhone || props.customer?.customerPhone || ''
+  const cPhone = String(effectiveCustomer.value?.customerPhone || props.customer?.customerPhone || '').replace(/\D/g, '')
+  const initialPhone = cPhone.length >= 9 ? cPhone.slice(-9) : cPhone
   return {
     paymentDate: localToday(),
-    paymentMethod: isG ? 7 : null, // Gestor inicia fixo em M-Pesa Open API (7)
+    paymentMethod: isG ? 7 : null, // Gestor inicia fixo em M-Pesa API (7)
     paymentReference: '',
     amountReceived: 0,
-    phoneNumber: String(cPhone || '848353816'),
+    phoneNumber: initialPhone || '',
     staffName: authStore.userName || '',
     bank_account_id: null,
     discountType: 'percentage',
@@ -390,17 +405,19 @@ function defaultForm() {
 }
 
 // ── MÉTODOS DE PAGAMENTO (BLINDADO POR ALÇADA) ──
+const isMpesa = computed(() => Number(form.value.paymentMethod) === 7)
+
 const paymentMethodOptions = computed(() => {
   if (isGestor.value) {
     return [
-      { label: 'M-Pesa Open API (C2B)', value: 7, icon: 'smartphone' }
+      { label: 'M-Pesa API (Prompt PIN)', value: 7, icon: 'smartphone' }
     ]
   }
   return [
-    { label: 'M-Pesa Open API (C2B)', value: 7, icon: 'smartphone' },
-    { label: 'E-Mola', value: 6, icon: 'smartphone' },
-    { label: 'Transferência Bancária', value: 3, icon: 'account_balance' },
+    { label: 'M-Pesa API (Prompt PIN)', value: 7, icon: 'smartphone' },
     { label: 'Numerário', value: 1, icon: 'payments' },
+    { label: 'Transferência Bancária', value: 3, icon: 'account_balance' },
+    { label: 'E-Mola', value: 6, icon: 'smartphone' },
     { label: 'Cheque', value: 2, icon: 'receipt_long' }
   ]
 })
@@ -490,7 +507,9 @@ const checkReferenceDuplicate = async (val) => {
   } catch { return false }
 }
 const referenceRules = computed(() => {
-  const required = !!form.value.paymentMethod && Number(form.value.paymentMethod) !== 1
+  const isCash = Number(form.value.paymentMethod) === 1
+  const isMpesaMethod = Number(form.value.paymentMethod) === 7
+  const required = !!form.value.paymentMethod && !isCash && !isMpesaMethod
   return [
     v => (!required || !!String(v || '').trim()) || 'Obrigatório',
     async v => !String(v || '').trim() || !(await checkReferenceDuplicate(v)) || 'Esta referência já existe neste método'
@@ -547,10 +566,8 @@ onUnmounted(() => {
 
 const normalizedPhone = computed(() => {
   let p = String(form.value.phoneNumber || effectiveCustomer.value?.customerPhone || props.customer?.customerPhone || '').replace(/\D/g, '')
-  if (p.length === 9 && (p.startsWith('84') || p.startsWith('85'))) {
-    p = '258' + p
-  }
-  return p
+  const raw9 = p.length > 9 ? p.slice(-9) : p
+  return '258' + raw9
 })
 
 const normalizedPhoneForDisplay = computed(() => {
@@ -560,8 +577,8 @@ const normalizedPhoneForDisplay = computed(() => {
 
 const phoneRules = (val) => {
   const p = String(val || '').replace(/\D/g, '')
-  if (p.length === 9 && (p.startsWith('84') || p.startsWith('85'))) return true
-  if (p.length === 12 && (p.startsWith('25884') || p.startsWith('25885'))) return true
+  const raw9 = p.length > 9 ? p.slice(-9) : p
+  if (raw9.length === 9 && (raw9.startsWith('84') || raw9.startsWith('85'))) return true
   return 'Número M-Pesa deve ser rede Vodacom (84 ou 85 + 7 dígitos)'
 }
 
@@ -716,9 +733,9 @@ const openReset = () => {
   if (isGestor.value) {
     form.value.paymentMethod = 7
   }
-  const cPhone = effectiveCustomer.value?.customerPhone || props.customer?.customerPhone
+  const cPhone = String(effectiveCustomer.value?.customerPhone || props.customer?.customerPhone || '').replace(/\D/g, '')
   if (cPhone) {
-    form.value.phoneNumber = String(cPhone)
+    form.value.phoneNumber = cPhone.length >= 9 ? cPhone.slice(-9) : cPhone
   }
   selectedBankAccount.value = null
   store.quote = null
@@ -904,5 +921,11 @@ const submit = async () => {
 }
 .pm-confirm-btn {
   background: #2e7d32;
+}
+.border-green {
+  border: 1px solid #86efac;
+}
+.bg-green-0 {
+  background: #f0fdf4;
 }
 </style>

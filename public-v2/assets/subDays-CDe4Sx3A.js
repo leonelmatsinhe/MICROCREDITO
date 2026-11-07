@@ -1,0 +1,1 @@
+import{ac as c,cp as s}from"./index-Dc5lMwGH.js";function u(t,r,a){const e=c(t,a==null?void 0:a.in);return isNaN(r)?s(t,NaN):(e.setDate(e.getDate()+r),e)}function D(t,r,a){return u(t,-6,a)}export{D as s};

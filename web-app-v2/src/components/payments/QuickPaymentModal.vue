@@ -99,10 +99,13 @@
             outlined
             dense
             clearable
+            option-value="id"
+            :option-label="opt => (typeof opt === 'string' ? opt : (opt?.customerName || opt?.label || ''))"
             :options="customerOptions"
             :loading="loadingCustomers"
             @filter="onCustomerFilter"
             @update:model-value="onCustomerSelected"
+            @clear="onCustomerClear"
             class="q-mb-sm"
           >
             <template v-slot:prepend>
@@ -350,7 +353,7 @@
                     mask="## ### ####"
                     unmasked-value
                     :disable="mpesaWaiting"
-                    :rules="[val => (val && val.length === 9) || 'Número deve ter 9 dígitos']"
+                    :rules="[val => validateVodacomPhone(val)]"
                   />
                 </div>
                 <div class="col-12 col-sm-5">
@@ -553,13 +556,19 @@ async function onCustomerFilter(val, update, abort) {
       params: { search: val.trim(), limit: 10 }
     })
     update(() => {
-      customerOptions.value = (data?.success && Array.isArray(data.result)) ? data.result : []
+      customerOptions.value = (data?.success && Array.isArray(data.result))
+        ? data.result.map(c => ({ ...c, label: c.customerName, value: c.id }))
+        : []
     })
   } catch {
     abort()
   } finally {
     loadingCustomers.value = false
   }
+}
+
+function onCustomerClear() {
+  onCustomerSelected(null)
 }
 
 // Seleção de cliente
@@ -692,10 +701,20 @@ const bankAccountOptions = computed(() => {
   }))
 })
 
+function validateVodacomPhone(val) {
+  const p = String(val || '').replace(/\D/g, '')
+  const raw9 = p.length > 9 ? p.slice(-9) : p
+  if (raw9.length === 9 && (raw9.startsWith('84') || raw9.startsWith('85'))) return true
+  return 'Número M-Pesa deve ser rede Vodacom (84 ou 85 + 7 dígitos)'
+}
+
 const canSubmit = computed(() => {
   if (!selectedCustomer.value || !activeLoan.value || !selectedInstallment.value) return false
   if (Number(form.value.amount) <= 0) return false
-  if (form.value.paymentMethod === 7 && (!form.value.mpesaPhone || form.value.mpesaPhone.length !== 9)) return false
+  if (form.value.paymentMethod === 7) {
+    const raw9 = String(form.value.mpesaPhone || '').replace(/\D/g, '').slice(-9)
+    if (raw9.length !== 9 || !(raw9.startsWith('84') || raw9.startsWith('85'))) return false
+  }
   if ((form.value.paymentMethod === 3 || form.value.paymentMethod === 4 || form.value.paymentMethod === 5) && !form.value.tranzactionReference) return false
   return true
 })

@@ -15,7 +15,10 @@
         <div class="col">
           <div class="row items-center q-gutter-sm">
             <span class="text-h5 text-weight-bolder text-white borrower-name-title">
-              {{ store.customer?.customerName || 'A carregar mutuário...' }}
+              {{ displayBorrowerName }}
+              <q-tooltip v-if="store.customer?.customerName && displayBorrowerName !== store.customer.customerName">
+                {{ store.customer.customerName }}
+              </q-tooltip>
             </span>
             <q-badge :color="statusColor" :label="statusText" rounded style="font-size: 11px; padding: 4px 10px" />
             <q-badge
@@ -463,6 +466,18 @@ const store = useMutuarioStore()
 const companyStore = useCompanyStore()
 const authStore = useAuthStore()
 const uiStore = useUiStore()
+
+const displayBorrowerName = computed(() => {
+  const full = store.customer?.customerName
+  if (!full) return 'A carregar mutuário...'
+  const parts = full.trim().split(/\s+/).filter(Boolean)
+  if (parts.length <= 2) return full
+  // Se o nome for comprido (mais de 20 caracteres ou mais de 2 partes), mostra apenas o primeiro nome e o último/apelido
+  if (full.length > 20 || parts.length >= 3) {
+    return `${parts[0]} ${parts[parts.length - 1]}`
+  }
+  return full
+})
 
 function toggleSidebar() {
   uiStore.setSidebarStyle(uiStore.sidebarStyle === 'mini' ? 'expanded' : 'mini')
