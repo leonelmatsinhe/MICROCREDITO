@@ -862,7 +862,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useQuasar } from 'quasar'
-import axios from 'axios'
+import { api } from '@/boot/axios'
 
 const $q = useQuasar()
 const activeTab = ref('hero')
@@ -967,7 +967,7 @@ const leadColumns = [
 const loadAdminData = async () => {
   loadingData.value = true
   try {
-    const res = await axios.get('/api/admin/site/content')
+    const res = await api.get('/api/admin/site/content')
     if (res.data.success) {
       config.value = res.data.config || {}
       products.value = res.data.products || []
@@ -984,7 +984,7 @@ const loadAdminData = async () => {
 const fetchLeads = async () => {
   loadingLeads.value = true
   try {
-    const res = await axios.get('/api/admin/site/leads', {
+    const res = await api.get('/api/admin/site/leads', {
       params: { status: leadFilterStatus.value }
     })
     if (res.data.success) {
@@ -1001,7 +1001,7 @@ const fetchLeads = async () => {
 const saveConfig = async () => {
   savingConfig.value = true
   try {
-    const res = await axios.put('/api/admin/site/config', config.value)
+    const res = await api.put('/api/admin/site/config', config.value)
     if (res.data.success) {
       $q.notify({ type: 'positive', message: 'Configurações do website atualizadas com sucesso!' })
     }
@@ -1040,10 +1040,10 @@ const openProductModal = (prod = null) => {
 const saveProduct = async () => {
   try {
     if (editingProduct.value.id) {
-      await axios.put(`/api/admin/site/products/${editingProduct.value.id}`, editingProduct.value)
+      await api.put(`/api/admin/site/products/${editingProduct.value.id}`, editingProduct.value)
       $q.notify({ type: 'positive', message: 'Produto atualizado!' })
     } else {
-      await axios.post('/api/admin/site/products', editingProduct.value)
+      await api.post('/api/admin/site/products', editingProduct.value)
       $q.notify({ type: 'positive', message: 'Produto criado!' })
     }
     productModalOpen.value = false
@@ -1055,7 +1055,7 @@ const saveProduct = async () => {
 
 const toggleProductStatus = async (prod) => {
   try {
-    await axios.put(`/api/admin/site/products/${prod.id}`, { isActive: !prod.isActive })
+    await api.put(`/api/admin/site/products/${prod.id}`, { isActive: !prod.isActive })
     prod.isActive = !prod.isActive
     $q.notify({ type: 'positive', message: 'Estado do produto atualizado!' })
   } catch (err) {
@@ -1071,7 +1071,7 @@ const confirmDeleteProduct = (prod) => {
     persistent: true
   }).onOk(async () => {
     try {
-      await axios.delete(`/api/admin/site/products/${prod.id}`)
+      await api.delete(`/api/admin/site/products/${prod.id}`)
       $q.notify({ type: 'positive', message: 'Produto eliminado!' })
       loadAdminData()
     } catch (err) {
@@ -1101,10 +1101,10 @@ const openTestimonialModal = (t = null) => {
 const saveTestimonial = async () => {
   try {
     if (editingTestimonial.value.id) {
-      await axios.put(`/api/admin/site/testimonials/${editingTestimonial.value.id}`, editingTestimonial.value)
+      await api.put(`/api/admin/site/testimonials/${editingTestimonial.value.id}`, editingTestimonial.value)
       $q.notify({ type: 'positive', message: 'Depoimento atualizado!' })
     } else {
-      await axios.post('/api/admin/site/testimonials', editingTestimonial.value)
+      await api.post('/api/admin/site/testimonials', editingTestimonial.value)
       $q.notify({ type: 'positive', message: 'Depoimento criado!' })
     }
     testimonialModalOpen.value = false
@@ -1122,7 +1122,7 @@ const confirmDeleteTestimonial = (t) => {
     persistent: true
   }).onOk(async () => {
     try {
-      await axios.delete(`/api/admin/site/testimonials/${t.id}`)
+      await api.delete(`/api/admin/site/testimonials/${t.id}`)
       $q.notify({ type: 'positive', message: 'Depoimento eliminado!' })
       loadAdminData()
     } catch (err) {
@@ -1149,10 +1149,10 @@ const openFaqModal = (faq = null) => {
 const saveFaq = async () => {
   try {
     if (editingFaq.value.id) {
-      await axios.put(`/api/admin/site/faqs/${editingFaq.value.id}`, editingFaq.value)
+      await api.put(`/api/admin/site/faqs/${editingFaq.value.id}`, editingFaq.value)
       $q.notify({ type: 'positive', message: 'FAQ atualizada!' })
     } else {
-      await axios.post('/api/admin/site/faqs', editingFaq.value)
+      await api.post('/api/admin/site/faqs', editingFaq.value)
       $q.notify({ type: 'positive', message: 'FAQ criada!' })
     }
     faqModalOpen.value = false
@@ -1170,7 +1170,7 @@ const confirmDeleteFaq = (faq) => {
     persistent: true
   }).onOk(async () => {
     try {
-      await axios.delete(`/api/admin/site/faqs/${faq.id}`)
+      await api.delete(`/api/admin/site/faqs/${faq.id}`)
       $q.notify({ type: 'positive', message: 'Pergunta eliminada!' })
       loadAdminData()
     } catch (err) {
@@ -1187,7 +1187,7 @@ const openLeadDetailModal = (lead) => {
 
 const updateLeadStatus = async () => {
   try {
-    await axios.put(`/api/admin/site/leads/${selectedLead.value.id}`, {
+    await api.put(`/api/admin/site/leads/${selectedLead.value.id}`, {
       status: selectedLead.value.status,
       notes: selectedLead.value.notes
     })
@@ -1207,7 +1207,7 @@ const confirmDeleteLead = (lead) => {
     persistent: true
   }).onOk(async () => {
     try {
-      await axios.delete(`/api/admin/site/leads/${lead.id}`)
+      await api.delete(`/api/admin/site/leads/${lead.id}`)
       $q.notify({ type: 'positive', message: 'Lead eliminado!' })
       fetchLeads()
     } catch (err) {

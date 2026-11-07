@@ -1,1 +1,0 @@
-import{W as s,$ as a,at as e}from"./index-EKUG8K_Z.js";const r=s({name:"QToolbarTitle",props:{shrink:Boolean},setup(o,{slots:t}){return()=>a("div",{class:"q-toolbar__title ellipsis"+(o.shrink?" col-shrink":"")},e(t.default))}});export{r as Q};
