@@ -600,7 +600,7 @@ const nextPaymentRemaining = computed(() => nextPaymentInstallment.value
 
 const paymentAllowedMax = computed(() => Math.round((paymentTotalDue.value + nextPaymentRemaining.value) * 100) / 100)
 const paymentExcessAmount = computed(() => Math.max(0, Math.round((Number(paymentAmount.value) - paymentTotalDue.value) * 100) / 100))
-const isValidMpesaPhone = computed(() => /^258(84|85)\d{7}$/.test(paymentPhone.value))
+const isValidMpesaPhone = computed(() => /^(258)?(84|85)\d{7}$/.test(paymentPhone.value))
 
 const amountError = computed(() => {
   const v = Number(paymentAmount.value)

@@ -99,7 +99,9 @@ export const initiateC2BPayment = async (params: {
   }
 
   // Validação estrita do número M-Pesa (Moçambique: 25884 ou 25885 + 7 dígitos)
-  const normalizedPhone = String(phone || "").replace(/\D/g, "");
+  let normalizedPhone = String(phone || "").replace(/\D/g, "");
+  if (normalizedPhone.startsWith("00258") && normalizedPhone.length === 14) normalizedPhone = normalizedPhone.slice(2);
+  if (/^(84|85)\d{7}$/.test(normalizedPhone)) normalizedPhone = `258${normalizedPhone}`;
   if (!/^258(84|85)\d{7}$/.test(normalizedPhone)) {
     throw new Error("Número M-Pesa inválido. Deve ter 12 dígitos e começar por 25884 ou 25885.");
   }

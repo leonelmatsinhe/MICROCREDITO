@@ -780,14 +780,28 @@ async function submitMpesaPayment() {
       loanId: activeLoan.value.id,
       amortizationLoanId: selectedInstallment.value,
       amount: form.value.amount,
-      phone: form.value.mpesaPhone
+      phone: `258${String(form.value.mpesaPhone || '').replace(/\D/g, '').slice(-9)}`
     })
 
     if (!data?.success) {
       throw new Error(data?.message || 'Não foi possível iniciar transacção M-Pesa')
     }
 
-    const mpesaTxId = data.mpesaTransactionId
+    if (data.status === 'SUCCESS') {
+      clearInterval(mpesaInterval)
+      mpesaWaiting.value = false
+      submitting.value = false
+      if (data.recibo) {
+        lastReceipt.value = { ...data.recibo, customer_phone: selectedCustomer.value?.customerPhone || form.value.mpesaPhone }
+        viewerRecibo.value = lastReceipt.value
+      } else if (data.tranzactionId) {
+        await fetchReceiptForTx(data.tranzactionId)
+      }
+      successState.value = true
+      emit('payment-success')
+      return
+    }
+    const mpesaTxId = data.mpesaTxId || data.mpesaTransactionId
     mpesaStatusMessage.value = 'Pedido de PIN enviado ao telemóvel do cliente. A aguardar validação...'
 
     // Iniciar contagem decrescente e polling de status
@@ -811,7 +825,7 @@ async function submitMpesaPayment() {
 
       try {
         const statusResp = await api.get(`/api/mpesa/c2b/status/${mpesaTxId}`)
-        const txStatus = statusResp.data?.transaction?.status
+        const txStatus = statusResp.data?.status || statusResp.data?.transaction?.status
 
         if (txStatus === 'SUCCESS') {
           clearInterval(mpesaInterval)
@@ -819,7 +833,7 @@ async function submitMpesaPayment() {
           submitting.value = false
 
           // Carrega recibo da transacção M-Pesa
-          const txId = statusResp.data?.transaction?.tranzactionId
+          const txId = statusResp.data?.tranzactionId || statusResp.data?.transaction?.tranzactionId
           if (txId) {
             await fetchReceiptForTx(txId)
           }
@@ -831,7 +845,7 @@ async function submitMpesaPayment() {
           submitting.value = false
           $q.notify({
             type: 'negative',
-            message: statusResp.data?.transaction?.responseDesc || 'Pagamento M-Pesa recusado pelo cliente ou saldo insuficiente.',
+            message: statusResp.data?.responseDescription || statusResp.data?.transaction?.responseDesc || 'Pagamento M-Pesa recusado pelo cliente ou saldo insuficiente.',
             position: 'top'
           })
         }
