@@ -27,6 +27,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.routes = void 0;
+const SiteController_1 = require("./controllers/SiteController");
 const express_1 = __importDefault(require("express"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
@@ -228,6 +229,9 @@ routes.get("/api/districts", ProvinceController_1.findAllDistricts);
 routes.get("/api/recibos/validar", ReciboController_1.validar);
 // Alias curto usado no QR Code (mesma lógica, URL amigável para o fiscal).
 routes.get("/api/validar-recibo", ReciboController_1.validar);
+// ROTAS PÚBLICAS DO WEBSITE INSTITUCIONAL (clackmicrocredito.com) — devem vir antes do middleware auth
+routes.get("/api/public/site/content", SiteController_1.getPublicSiteContent);
+routes.post("/api/public/site/lead", SiteController_1.submitPublicLead);
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth_1.auth);
 // SUPER ADMIN — aprovação de empresas (apenas userRole = 0)
@@ -548,22 +552,19 @@ const FinancialReportsController_1 = require("./controllers/FinancialReportsCont
 routes.get("/api/financeiro/balancete", auth_1.auth, FinancialReportsController_1.getBalancete);
 routes.get("/api/financeiro/dre", auth_1.auth, FinancialReportsController_1.getDRE);
 // ==================== WEBSITE INSTITUCIONAL (CLACK MICROCRÉDITO, EI) ====================
-const SiteController_1 = require("./controllers/SiteController");
-// Rotas públicas do Website Institucional
-routes.get("/api/public/site/content", SiteController_1.getPublicSiteContent);
-routes.post("/api/public/site/lead", SiteController_1.submitPublicLead);
+const SiteController_2 = require("./controllers/SiteController");
 // Rotas administrativas dinâmicas (Gestão do Conteúdo)
-routes.get("/api/admin/site/content", roles_1.isStaff, SiteController_1.getAdminSiteContent);
-routes.put("/api/admin/site/config", roles_1.isAdmin, SiteController_1.updateAdminSiteConfig);
-routes.post("/api/admin/site/products", roles_1.isAdmin, SiteController_1.createAdminProduct);
-routes.put("/api/admin/site/products/:id", roles_1.isAdmin, SiteController_1.updateAdminProduct);
-routes.delete("/api/admin/site/products/:id", roles_1.isAdmin, SiteController_1.deleteAdminProduct);
-routes.post("/api/admin/site/testimonials", roles_1.isAdmin, SiteController_1.createAdminTestimonial);
-routes.put("/api/admin/site/testimonials/:id", roles_1.isAdmin, SiteController_1.updateAdminTestimonial);
-routes.delete("/api/admin/site/testimonials/:id", roles_1.isAdmin, SiteController_1.deleteAdminTestimonial);
-routes.post("/api/admin/site/faqs", roles_1.isAdmin, SiteController_1.createAdminFaq);
-routes.put("/api/admin/site/faqs/:id", roles_1.isAdmin, SiteController_1.updateAdminFaq);
-routes.delete("/api/admin/site/faqs/:id", roles_1.isAdmin, SiteController_1.deleteAdminFaq);
-routes.get("/api/admin/site/leads", roles_1.isStaff, SiteController_1.getAdminLeads);
-routes.put("/api/admin/site/leads/:id", roles_1.isStaff, SiteController_1.updateAdminLead);
-routes.delete("/api/admin/site/leads/:id", roles_1.isAdmin, SiteController_1.deleteAdminLead);
+routes.get("/api/admin/site/content", roles_1.isStaff, SiteController_2.getAdminSiteContent);
+routes.put("/api/admin/site/config", roles_1.isAdmin, SiteController_2.updateAdminSiteConfig);
+routes.post("/api/admin/site/products", roles_1.isAdmin, SiteController_2.createAdminProduct);
+routes.put("/api/admin/site/products/:id", roles_1.isAdmin, SiteController_2.updateAdminProduct);
+routes.delete("/api/admin/site/products/:id", roles_1.isAdmin, SiteController_2.deleteAdminProduct);
+routes.post("/api/admin/site/testimonials", roles_1.isAdmin, SiteController_2.createAdminTestimonial);
+routes.put("/api/admin/site/testimonials/:id", roles_1.isAdmin, SiteController_2.updateAdminTestimonial);
+routes.delete("/api/admin/site/testimonials/:id", roles_1.isAdmin, SiteController_2.deleteAdminTestimonial);
+routes.post("/api/admin/site/faqs", roles_1.isAdmin, SiteController_2.createAdminFaq);
+routes.put("/api/admin/site/faqs/:id", roles_1.isAdmin, SiteController_2.updateAdminFaq);
+routes.delete("/api/admin/site/faqs/:id", roles_1.isAdmin, SiteController_2.deleteAdminFaq);
+routes.get("/api/admin/site/leads", roles_1.isStaff, SiteController_2.getAdminLeads);
+routes.put("/api/admin/site/leads/:id", roles_1.isStaff, SiteController_2.updateAdminLead);
+routes.delete("/api/admin/site/leads/:id", roles_1.isAdmin, SiteController_2.deleteAdminLead);

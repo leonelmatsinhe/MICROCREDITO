@@ -1,3 +1,8 @@
+import {
+  getPublicSiteContent,
+  submitPublicLead,
+} from "./controllers/SiteController";
+
 import express, { request } from "express";
 import { Request, Response } from "express";
 import path from "path";
@@ -456,6 +461,10 @@ routes.get("/api/recibos/validar", validarRecibo);
 // Alias curto usado no QR Code (mesma lógica, URL amigável para o fiscal).
 routes.get("/api/validar-recibo", validarRecibo);
 
+// ROTAS PÚBLICAS DO WEBSITE INSTITUCIONAL (clackmicrocredito.com) — devem vir antes do middleware auth
+routes.get("/api/public/site/content", getPublicSiteContent);
+routes.post("/api/public/site/lead", submitPublicLead);
+
 // Middleware de autenticação — aplica-se apenas a rotas /api protegidas
 routes.use("/api", auth);
 
@@ -805,8 +814,6 @@ routes.get("/api/financeiro/dre", auth, getDRE);
 
 // ==================== WEBSITE INSTITUCIONAL (CLACK MICROCRÉDITO, EI) ====================
 import {
-  getPublicSiteContent,
-  submitPublicLead,
   getAdminSiteContent,
   updateAdminSiteConfig,
   createAdminProduct,
@@ -823,9 +830,7 @@ import {
   deleteAdminLead,
 } from "./controllers/SiteController";
 
-// Rotas públicas do Website Institucional
-routes.get("/api/public/site/content", getPublicSiteContent);
-routes.post("/api/public/site/lead", submitPublicLead);
+
 
 // Rotas administrativas dinâmicas (Gestão do Conteúdo)
 routes.get("/api/admin/site/content", isStaff, getAdminSiteContent);

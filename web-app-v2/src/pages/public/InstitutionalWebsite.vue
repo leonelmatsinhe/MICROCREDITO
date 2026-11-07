@@ -87,73 +87,75 @@
       </nav>
     </header>
 
-    <!-- Menu Lateral Mobile (Drawer) -->
-    <q-drawer
+    <!-- Menu Lateral Mobile (Dialog Lateral sem exigir QLayout) -->
+    <q-dialog
       v-model="mobileDrawer"
-      side="right"
-      overlay
-      behavior="mobile"
-      class="mobile-menu-drawer bg-navy-dark text-white"
+      position="right"
+      full-height
+      transition-show="slide-left"
+      transition-hide="slide-right"
     >
-      <div class="q-pa-md column full-height justify-between">
-        <div>
-          <div class="row items-center justify-between q-mb-lg">
-            <div class="row items-center">
-              <q-icon name="account_balance" size="22px" color="amber-5" class="q-mr-xs" />
-              <span class="text-subtitle1 text-weight-bold">Clack Microcrédito</span>
+      <q-card class="mobile-menu-drawer bg-navy-dark text-white full-height" style="min-width: 290px; max-width: 85vw">
+        <div class="q-pa-md column full-height justify-between">
+          <div>
+            <div class="row items-center justify-between q-mb-lg">
+              <div class="row items-center">
+                <q-icon name="account_balance" size="22px" color="amber-5" class="q-mr-xs" />
+                <span class="text-subtitle1 text-weight-bold">Clack Microcrédito</span>
+              </div>
+              <q-btn flat round dense icon="close" color="white" v-close-popup />
             </div>
-            <q-btn flat round dense icon="close" color="white" @click="mobileDrawer = false" />
+
+            <q-list dark separator class="mobile-nav-list">
+              <q-item clickable v-ripple @click="navigateTo('#inicio')">
+                <q-item-section avatar><q-icon name="home" color="amber-5" /></q-item-section>
+                <q-item-section>Início</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#simulador')">
+                <q-item-section avatar><q-icon name="calculate" color="amber-5" /></q-item-section>
+                <q-item-section class="text-amber-4 text-weight-bold">Simulador de Crédito</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#produtos')">
+                <q-item-section avatar><q-icon name="paid" color="amber-5" /></q-item-section>
+                <q-item-section>Produtos de Crédito</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#sobre')">
+                <q-item-section avatar><q-icon name="corporate_fare" color="amber-5" /></q-item-section>
+                <q-item-section>Sobre Nós</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#porque-clack')">
+                <q-item-section avatar><q-icon name="verified" color="amber-5" /></q-item-section>
+                <q-item-section>Porquê a Clack?</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#como-funciona')">
+                <q-item-section avatar><q-icon name="checklist_rtl" color="amber-5" /></q-item-section>
+                <q-item-section>Como Funciona</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#faq')">
+                <q-item-section avatar><q-icon name="help_outline" color="amber-5" /></q-item-section>
+                <q-item-section>Perguntas Frequentes</q-item-section>
+              </q-item>
+              <q-item clickable v-ripple @click="navigateTo('#contacto')">
+                <q-item-section avatar><q-icon name="contact_phone" color="amber-5" /></q-item-section>
+                <q-item-section>Contacto</q-item-section>
+              </q-item>
+            </q-list>
           </div>
 
-          <q-list dark separator class="mobile-nav-list">
-            <q-item clickable v-ripple @click="navigateTo('#inicio')">
-              <q-item-section avatar><q-icon name="home" color="amber-5" /></q-item-section>
-              <q-item-section>Início</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#simulador')">
-              <q-item-section avatar><q-icon name="calculate" color="amber-5" /></q-item-section>
-              <q-item-section class="text-amber-4 text-weight-bold">Simulador de Crédito</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#produtos')">
-              <q-item-section avatar><q-icon name="paid" color="amber-5" /></q-item-section>
-              <q-item-section>Produtos de Crédito</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#sobre')">
-              <q-item-section avatar><q-icon name="corporate_fare" color="amber-5" /></q-item-section>
-              <q-item-section>Sobre Nós</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#porque-clack')">
-              <q-item-section avatar><q-icon name="verified" color="amber-5" /></q-item-section>
-              <q-item-section>Porquê a Clack?</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#como-funciona')">
-              <q-item-section avatar><q-icon name="checklist_rtl" color="amber-5" /></q-item-section>
-              <q-item-section>Como Funciona</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#faq')">
-              <q-item-section avatar><q-icon name="help_outline" color="amber-5" /></q-item-section>
-              <q-item-section>Perguntas Frequentes</q-item-section>
-            </q-item>
-            <q-item clickable v-ripple @click="navigateTo('#contacto')">
-              <q-item-section avatar><q-icon name="contact_phone" color="amber-5" /></q-item-section>
-              <q-item-section>Contacto</q-item-section>
-            </q-item>
-          </q-list>
+          <div class="q-pt-lg column q-gutter-sm">
+            <q-btn
+              outline
+              color="amber-5"
+              text-color="white"
+              icon="lock"
+              label="Aceder ao Sistema"
+              class="full-width q-py-sm"
+              :href="systemUrl"
+            />
+          </div>
         </div>
-
-        <div class="q-pt-lg column q-gutter-sm">
-          <q-btn
-            outline
-            color="amber-5"
-            text-color="white"
-            icon="lock"
-            label="Aceder ao Sistema"
-            class="full-width q-py-sm"
-            :href="systemUrl"
-          />
-        </div>
-      </div>
-    </q-drawer>
+      </q-card>
+    </q-dialog>
 
     <!-- ══════════════════════════════════════════════════════════════ -->
     <!-- 3. HERO SECTION (FOCO CORPORATIVO, SEM REPETIÇÕES)             -->
