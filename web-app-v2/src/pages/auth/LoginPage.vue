@@ -82,9 +82,9 @@
               <!-- Header -->
               <div class="text-center q-mb-md">
                 <img
-                  src="@/assets/logo-mbr.jpg"
-                  alt="MBR Microcrédito"
-                  style="height: 52px; width: auto; max-width: 100%; object-fit: contain"
+                  src="@/assets/logo.png"
+                  alt="Mais Mola"
+                  style="height: 64px; width: auto; max-width: 100%; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.12))"
                 />
                 <div class="text-h6 text-weight-bold q-mt-sm">Bem-vindo</div>
                 <div class="text-caption text-grey-6">Aceda com as suas credenciais de equipa</div>

@@ -8,7 +8,7 @@
     <header class="glass-nav">
       <div class="nav-inner">
         <div class="landing-brand row items-center no-wrap cursor-pointer" @click="goTop">
-          <img src="@/assets/logo-mbr.jpg" alt="MBR Microcrédito" class="brand-logo" />
+          <img src="@/assets/logo.png" alt="Mais Mola" class="brand-logo" />
           <div class="landing-brand-name q-ml-sm gt-xs">Gestão de Microcrédito</div>
         </div>
 
@@ -180,16 +180,13 @@ body.body--dark .glass-nav {
   gap: 10px;
 }
 
-/* Logótipo horizontal (MBR Microcrédito): altura fixa e largura automática, para
-   não deformar a imagem. O JPG já traz fundo branco — daí o raio e a sombra,
-   que o destacam da navbar de vidro sem precisar de moldura. */
+/* Logótipo (Mais Mola): circular com sombra suave */
 .brand-logo {
-  height: 38px;
+  height: 40px;
   width: auto;
-  border-radius: 8px;
+  border-radius: 50%;
   object-fit: contain;
-  box-shadow: 0 1px 4px rgba(11, 61, 46, 0.22);
-  outline: 1px solid rgba(11, 61, 46, 0.12);
+  filter: drop-shadow(0 2px 4px rgba(11, 61, 46, 0.22));
 }
 
 /* Classe própria (não `.brand-name`): a sidebar do staff define
