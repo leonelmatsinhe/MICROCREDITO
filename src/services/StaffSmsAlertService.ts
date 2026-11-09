@@ -75,7 +75,7 @@ export const enqueueStaffMpesaPaymentAlert = async (params: {
 
     if (!gestor || !gestor.phone) return { created: false, reason: "no_gestor_phone" };
 
-    const body = `MBR Alerta Gestor: Mutuario ${params.customerName} liquidou prestacao ${params.installmentOrder} (${safeMoney(params.amount)} MZN) via M-Pesa. Recibo: ${params.mpesaReceipt}. Saldo: ${safeMoney(params.remainingBalance)} MZN.`;
+    const body = `Mais Mola Alerta Gestor: Mutuario ${params.customerName} liquidou prestacao ${params.installmentOrder} (${safeMoney(params.amount)} MZN) via M-Pesa. Recibo: ${params.mpesaReceipt}. Saldo: ${safeMoney(params.remainingBalance)} MZN.`;
 
     return await enqueueStaffSms({
       companyId: params.companyId,
@@ -129,7 +129,7 @@ export const enqueueStaffNewLoanRequestAlert = async (params: {
 
     if (!targetPhone) return { created: false, reason: "no_staff_phone" };
 
-    const body = `MBR Alerta: Novo pedido de credito (#${params.loanId}) de ${safeMoney(params.amount)} MZN submetido no portal por ${params.customerName} (${params.installments} parcelas). Aguarda analise.`;
+    const body = `Mais Mola Alerta: Novo pedido de credito (#${params.loanId}) de ${safeMoney(params.amount)} MZN submetido no portal por ${params.customerName} (${params.installments} parcelas). Aguarda analise.`;
 
     return await enqueueStaffSms({
       companyId: params.companyId,
@@ -164,7 +164,7 @@ export const enqueueAdminPendingApprovalAlert = async (params: {
     if (!admin || !admin.phone) return { created: false, reason: "no_admin_phone" };
 
     const gestorInfo = params.gestorName ? ` pelo Gestor ${params.gestorName}` : "";
-    const body = `MBR Admin: Credito #${params.loanId} de ${safeMoney(params.amount)} MZN submetido${gestorInfo} para ${params.customerName}. Aguarda sua aprovacao e desembolso.`;
+    const body = `Mais Mola Admin: Credito #${params.loanId} de ${safeMoney(params.amount)} MZN submetido${gestorInfo} para ${params.customerName}. Aguarda sua aprovacao e desembolso.`;
 
     return await enqueueStaffSms({
       companyId: params.companyId,
@@ -200,7 +200,7 @@ export const enqueueAdminDailyExecutiveClose = async (params: {
     if (!admin || !admin.phone) return { created: false, reason: "no_admin_phone" };
 
     const todayStr = new Date().toLocaleDateString("pt-MZ");
-    const body = `MBR Fecho ${todayStr}: M-Pesa arrecadado: ${safeMoney(params.totalCollectedMpesa)} MZN (${params.txCountMpesa} txs). Desembolsado: ${safeMoney(params.totalDisbursed)} MZN (${params.disbursedCount}). Parcelas em mora: ${params.overdueCount}.`;
+    const body = `Mais Mola Fecho ${todayStr}: M-Pesa arrecadado: ${safeMoney(params.totalCollectedMpesa)} MZN (${params.txCountMpesa} txs). Desembolsado: ${safeMoney(params.totalDisbursed)} MZN (${params.disbursedCount}). Parcelas em mora: ${params.overdueCount}.`;
 
     return await enqueueStaffSms({
       companyId: params.companyId,

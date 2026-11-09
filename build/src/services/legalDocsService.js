@@ -609,7 +609,7 @@ const buildExtractoCredito = (ctx, data) => {
     const companyObj = data.company || ctx.company;
     const companyName = String((companyObj === null || companyObj === void 0 ? void 0 : companyObj.companyName) ||
         (typeof (companyObj === null || companyObj === void 0 ? void 0 : companyObj.getDataValue) === "function" && companyObj.getDataValue("companyName")) ||
-        "").trim();
+        "Mais Mola").trim();
     const labelInst = companyName ? `PELA INSTITUIÇÃO FINANCEIRA (${companyName})` : "PELA INSTITUIÇÃO FINANCEIRA";
     y = drawTable(ctx, {
         x: left, y, widths: [colSign, 40, colSign], aligns: ["center", "center", "center"],
@@ -969,7 +969,7 @@ const buildTermoCompromisso = (ctx, data) => {
         (typeof (c === null || c === void 0 ? void 0 : c.getDataValue) === "function" && c.getDataValue("companyName")) ||
         ((_a = ctx.company) === null || _a === void 0 ? void 0 : _a.companyName) ||
         (typeof ((_b = ctx.company) === null || _b === void 0 ? void 0 : _b.getDataValue) === "function" && ctx.company.getDataValue("companyName")) ||
-        "Instituição Financeira").trim();
+        "Mais Mola").trim();
     doc.font("Helvetica").fontSize(10).fillColor("#000000");
     if (isPJ) {
         doc.text("Pelo presente, nós ", { width, align: "justify", continued: true, lineGap: 6 });
@@ -1104,7 +1104,7 @@ const buildDeclaracaoGarantias = (ctx, data) => __awaiter(void 0, void 0, void 0
         (typeof (c === null || c === void 0 ? void 0 : c.getDataValue) === "function" && c.getDataValue("companyName")) ||
         ((_a = ctx.company) === null || _a === void 0 ? void 0 : _a.companyName) ||
         (typeof ((_b = ctx.company) === null || _b === void 0 ? void 0 : _b.getDataValue) === "function" && ctx.company.getDataValue("companyName")) ||
-        "Instituição Financeira").trim();
+        "Mais Mola").trim();
     para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${coNameG}`, { size: 11 });
     doc.moveDown(1.5);
     doc.font("Helvetica").fontSize(8).fillColor("#000000");

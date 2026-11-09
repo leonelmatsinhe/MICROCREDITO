@@ -113,7 +113,7 @@ const bootstrap = () => __awaiter(void 0, void 0, void 0, function* () {
         console.error("[Migration] Falha ao aplicar migrações:", (error === null || error === void 0 ? void 0 : error.message) || error);
     }
     app.listen(PORT, () => {
-        console.log(`MBR Server is running on PORT ${PORT}`);
+        console.log(`Mais Mola Server is running on PORT ${PORT}`);
         // JOBS DO MÓDULO DE PAGAMENTOS V2 — accrual diário de mora (late_accruals)
         // na janela 00:05 com catch-up horário idempotente (INSERT IGNORE por dia).
         Promise.resolve().then(() => __importStar(require("./jobs/paymentJobsIndex"))).then(({ startPaymentJobs }) => startPaymentJobs())

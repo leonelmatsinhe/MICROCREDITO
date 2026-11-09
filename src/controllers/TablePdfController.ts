@@ -88,8 +88,8 @@ const tablePdf = async (req: Request, res: Response) => {
       bufferPages: true,
       info: {
         Title: body.title,
-        Author: empresa.companyName || "MBRM",
-        Creator: "MBRM v2.0 Cert AT 2026/001",
+        Author: empresa.companyName || "Mais Mola",
+        Creator: "Mais Mola v2.0 Cert AT 2026/001",
       },
     });
 
@@ -104,7 +104,7 @@ const tablePdf = async (req: Request, res: Response) => {
 
     // ── Cabeçalho: empresa + título + meta ──
     doc.fillColor("#0f6b2f").font("Helvetica-Bold").fontSize(13);
-    doc.text(String(empresa.companyName || "Instituição Financeira"), left, 40, { width: pageWidth * 0.7 });
+    doc.text(String(empresa.companyName || "Mais Mola"), left, 40, { width: pageWidth * 0.7 });
     doc.fillColor("#555555").font("Helvetica").fontSize(8);
     const nuitLinha = `NUIT: ${empresa.companyNuit || "—"}${empresa.companyPhone ? `  ·  Tel.: ${empresa.companyPhone}` : ""}`;
     doc.text(nuitLinha, left, 58, { width: pageWidth * 0.7 });
@@ -225,7 +225,7 @@ const tablePdf = async (req: Request, res: Response) => {
         .stroke();
       doc.fillColor("#888888").font("Helvetica").fontSize(7);
       doc.text(
-        `Emitido por ${user?.userName || user?.email || "sistema"} — MBRM v2.0 Cert AT 2026/001`,
+        `Emitido por ${user?.userName || user?.email || "sistema"} — Mais Mola v2.0 Cert AT 2026/001`,
         left,
         footerY,
         { width: pageWidth * 0.7, lineBreak: false }

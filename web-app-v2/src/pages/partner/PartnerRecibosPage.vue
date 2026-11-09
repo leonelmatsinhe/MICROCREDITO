@@ -5,7 +5,7 @@
         <div class="col">
           <div class="text-subtitle2 text-weight-bold">Recibos dos pagamentos</div>
           <div class="text-caption text-grey-6">
-            Comprovativos emitidos pela MBRM para os pagamentos recebidos com o capital desta carteira.
+            Comprovativos emitidos pela Mais Mola para os pagamentos recebidos com o capital desta carteira.
           </div>
         </div>
         <q-btn flat round dense icon="refresh" color="primary" :loading="loading" @click="load">

@@ -65,7 +65,7 @@
             label="Ver recibo em PDF"
             @click="abrirPdf"
           >
-            <q-tooltip>Requer sessão iniciada na plataforma MBRM</q-tooltip>
+            <q-tooltip>Requer sessão iniciada na plataforma Mais Mola</q-tooltip>
           </q-btn>
           <q-btn flat rounded no-caps color="grey-7" icon="refresh" label="Validar outro" @click="limpar" />
         </q-card-actions>
@@ -176,8 +176,8 @@ const titulo = computed(() => {
 const subtitulo = computed(() => {
   if (loading.value) {
     return ehEntrega.value
-      ? 'Consulta ao selo electrónico do comprovativo (MBRM)'
-      : 'Consulta ao registo da Autoridade Tributária (MBRM)'
+      ? 'Consulta ao selo electrónico do comprovativo (Mais Mola)'
+      : 'Consulta ao registo da Autoridade Tributária (Mais Mola)'
   }
   if (resultado.value) {
     return ehEntrega.value

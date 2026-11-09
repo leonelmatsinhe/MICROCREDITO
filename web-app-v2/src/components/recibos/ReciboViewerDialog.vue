@@ -52,7 +52,7 @@
         <div class="text-caption text-grey-8 q-mr-md" style="font-family: monospace">
           {{ recibo?.at_validation_code || '' }}
         </div>
-        <q-badge outline color="primary" :label="recibo?.software_certification || 'MBRM v2.0 Cert AT 2026/001'" />
+        <q-badge outline color="primary" :label="recibo?.software_certification || 'Mais Mola v2.0 Cert AT 2026/001'" />
       </q-card-section>
 
       <!-- ═══════ VISUALIZADOR PDF ═══════ -->

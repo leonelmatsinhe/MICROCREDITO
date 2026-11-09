@@ -48,7 +48,7 @@ const buildWorkbook = async (params: {
 }) => {
   const { company, wallet, statement, period } = params;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "MBRM — Sistema de Microcrédito";
+  wb.creator = "Mais Mola — Sistema de Microcrédito";
   wb.created = new Date();
 
   const thin = { style: "thin", color: { argb: "FF9E9E9E" } } as const;
@@ -63,7 +63,7 @@ const buildWorkbook = async (params: {
     ws.mergeCells(2, 1, 2, columns.length);
     const subtitle = ws.getCell(2, 1);
     subtitle.value =
-      `${company?.companyName || "MBRM"} · NUIT: ${company?.companyNuit || "—"} · ` +
+      `${company?.companyName || "Mais Mola"} · NUIT: ${company?.companyNuit || "—"} · ` +
       `Carteira: ${wallet?.codigo || "—"} — ${wallet?.nome || ""}` +
       (wallet?.parceiro_nome ? ` · Parceiro: ${wallet.parceiro_nome}` : "") +
       ` · Período: ${period.from ? formatDate(period.from) : "início"} a ${period.to ? formatDate(period.to) : "hoje"}`;
@@ -332,7 +332,7 @@ const sendFinancierReportEmail = async (req: Request, res: Response) => {
           <li>Saldo analítico disponível: <b>${statement.resumo.saldo_analitico === null ? "—" : `${num(statement.resumo.saldo_analitico).toFixed(2)} MT`}</b></li>
           <li>Saldo a receber: <b>${num(statement.resumo.saldo_a_receber).toFixed(2)} MT</b></li>
         </ul>
-        <p>Com os melhores cumprimentos,<br/>${(company as any)?.companyName || "MBRM"}</p>
+        <p>Com os melhores cumprimentos,<br/>${(company as any)?.companyName || "Mais Mola"}</p>
       `,
       attachments: [{ filename: fileName, content: Buffer.from(buffer as ArrayBuffer) }],
     });

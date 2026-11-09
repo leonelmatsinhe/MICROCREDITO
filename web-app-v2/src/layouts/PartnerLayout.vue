@@ -16,7 +16,7 @@
           v-if="wallet"
           :color="wallet.cor_badge || 'blue'"
           class="q-mr-sm partner-wallet-badge"
-          :label="`${wallet.codigo} · ${wallet.parceiro_nome || 'Fundo MBRM'}`"
+          :label="`${wallet.codigo} · ${wallet.parceiro_nome || 'Fundo Mais Mola'}`"
         />
 
         <q-btn flat round dense :icon="isDark ? 'light_mode' : 'dark_mode'" @click="uiStore.toggleDark()">
@@ -117,7 +117,7 @@ const drawer = ref(false)
 const isDark = computed(() => uiStore.isDark)
 
 const wallet = computed(() => walletsStore.partnerProfile?.carteira || null)
-const companyName = computed(() => walletsStore.partnerProfile?.empresa?.name || 'MBRM')
+const companyName = computed(() => walletsStore.partnerProfile?.empresa?.name || 'Mais Mola')
 
 // Branding: logotipo da empresa do parceiro (companies.companyLogo, exposto em
 // /api/partner/profile). Mesma resolução do store staff: filename → /documents/…,

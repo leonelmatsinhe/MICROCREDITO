@@ -76,7 +76,7 @@
                   <q-item-section>
                     <q-item-label class="text-weight-bold text-slate-900">{{ scope.opt.label }}</q-item-label>
                     <q-item-label caption>
-                      {{ scope.opt.parceiro ? `Parceiro: ${scope.opt.parceiro}` : 'Fundo Próprio MBRM' }}
+                      {{ scope.opt.parceiro ? `Parceiro: ${scope.opt.parceiro}` : 'Fundo Próprio Mais Mola' }}
                       <span v-if="scope.opt.saldo !== null && scope.opt.saldo !== undefined">
                         · Disp: {{ money(scope.opt.saldo) }}
                       </span>
@@ -189,7 +189,7 @@
                   </span>
                 </div>
                 <div class="text-caption text-grey-6">
-                  Empresa: {{ report.empresa?.name || 'Instituição' }} · NUIT: {{ report.empresa?.nuit || '—' }} · Período: <strong>{{ periodoLabel }}</strong>
+                  Empresa: {{ report.empresa?.name || 'Mais Mola' }} · NUIT: {{ report.empresa?.nuit || '—' }} · Período: <strong>{{ periodoLabel }}</strong>
                 </div>
               </div>
             </div>
@@ -856,7 +856,7 @@ function openEmailDialog() {
       `• Juros recebidos: ${money(resumo.juros_periodo)}\n` +
       `• Saldo analítico disponível: ${resumo.saldo_analitico === null || resumo.saldo_analitico === undefined ? 'Sem limite' : money(resumo.saldo_analitico)}\n` +
       `• Saldo a receber dos clientes: ${money(resumo.saldo_a_receber)}\n\n` +
-      `Atenciosamente,\n${report.value?.empresa?.name || 'A Direcção'}`
+      `Atenciosamente,\n${report.value?.empresa?.name || 'Mais Mola'}`
   }
   emailDialog.value = true
 }

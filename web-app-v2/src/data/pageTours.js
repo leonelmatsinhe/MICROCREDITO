@@ -554,7 +554,7 @@ export const PAGE_TOURS = [
           {
             el: '[data-tour="financing-tabs"]',
             title: 'Carteiras e Taxas de Financiamento',
-            text: 'Gere a origem de fundos na aba <strong>Carteiras de Financiamento</strong> (fundos próprios MBRM e investidores parceiros) e os preçários na aba <strong>Taxas de Juro</strong>, vinculados a cada fundo.',
+            text: 'Gere a origem de fundos na aba <strong>Carteiras de Financiamento</strong> (fundos próprios Mais Mola e investidores parceiros) e os preçários na aba <strong>Taxas de Juro</strong>, vinculados a cada fundo.',
             side: 'bottom'
           },
           {
@@ -585,14 +585,14 @@ export const PAGE_TOURS = [
         steps: [
           {
             el: '[data-tour="team-header"]',
-            title: 'Equipa MBRM e parceiros',
+            title: 'Equipa Mais Mola e parceiros',
             text: 'Utilizadores da instituição (Admin, Gestor, Operador) e parceiros financiadores num só lugar. Cada pessoa entra com o seu próprio login — nunca partilhes credenciais.',
             side: 'bottom'
           },
           {
             el: '[data-tour="team-tabs"]',
             title: 'Duas abas, dois mundos',
-            text: '<strong>Equipa MBRM</strong> para quem opera o sistema; <strong>Parceiros Financiadores</strong> para quem só vê a sua carteira no portal. O perfil define tudo o que a pessoa pode fazer.',
+            text: '<strong>Equipa Mais Mola</strong> para quem opera o sistema; <strong>Parceiros Financiadores</strong> para quem só vê a sua carteira no portal. O perfil define tudo o que a pessoa pode fazer.',
             side: 'bottom'
           },
           {

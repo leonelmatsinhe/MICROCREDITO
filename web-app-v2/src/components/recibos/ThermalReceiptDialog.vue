@@ -16,7 +16,7 @@
         <div class="ticket-container">
           <!-- Cabeçalho Institucional -->
           <div class="ticket-header text-center">
-            <div class="company-name">{{ company?.companyName || 'MBR MICROCRÉDITO' }}</div>
+            <div class="company-name">{{ company?.companyName || 'MAIS MOLA' }}</div>
             <div class="company-sub" v-if="company?.companyNuit">NUIT: {{ company.companyNuit }}</div>
             <div class="company-sub" v-if="company?.companyAddress || company?.bairro">
               {{ [company?.companyAddress, company?.bairro, company?.cidade].filter(Boolean).join(', ') }}

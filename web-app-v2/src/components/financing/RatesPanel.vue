@@ -190,7 +190,7 @@
                 <q-item-section>
                   <q-item-label style="font-size: 13px">{{ scope.opt.label }}</q-item-label>
                   <q-item-label caption>
-                    {{ scope.opt.parceiro ? `Parceiro: ${scope.opt.parceiro}` : 'Fundo próprio MBRM' }}
+                    {{ scope.opt.parceiro ? `Parceiro: ${scope.opt.parceiro}` : 'Fundo próprio Mais Mola' }}
                     <span v-if="scope.opt.inactiva" class="text-negative"> · inactiva</span>
                   </q-item-label>
                 </q-item-section>

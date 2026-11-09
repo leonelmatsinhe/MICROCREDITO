@@ -19,7 +19,7 @@ $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path | Split-Path -Par
 Set-Location $projectRoot
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  DEPLOY LOCAL - MBR Microcredito"        -ForegroundColor Cyan
+Write-Host "  DEPLOY LOCAL - Mais Mola"               -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 # 1. Git: add + commit

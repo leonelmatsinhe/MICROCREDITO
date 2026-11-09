@@ -97,7 +97,7 @@ const bootstrap = async () => {
   }
 
   app.listen(PORT, () => {
-    console.log(`MBR Server is running on PORT ${PORT}`);
+    console.log(`Mais Mola Server is running on PORT ${PORT}`);
 
     // JOBS DO MÓDULO DE PAGAMENTOS V2 — accrual diário de mora (late_accruals)
     // na janela 00:05 com catch-up horário idempotente (INSERT IGNORE por dia).

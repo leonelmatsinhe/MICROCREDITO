@@ -92,7 +92,7 @@
             <template v-else>
               <q-badge color="grey-6" label="LEGADO" />
               <div class="col q-ml-sm text-caption text-grey-6">
-                Geral MBRM — crédito anterior às carteiras de financiamento.
+                Geral Mais Mola — crédito anterior às carteiras de financiamento.
                 <a class="text-primary" style="cursor: pointer" @click="abrirClassificacao">Classificar agora</a>
               </div>
             </template>

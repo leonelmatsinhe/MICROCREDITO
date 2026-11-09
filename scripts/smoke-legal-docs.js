@@ -12,12 +12,12 @@ const { renderLegalDoc } = require("../build/src/services/legalDocsService");
 const rec = (obj) => ({ ...obj, getDataValue(key) { return obj[key]; } });
 
 const company = rec({
-  companyName: "MBR Microcrédito",
+  companyName: "Mais Mola",
   companyAddress: "Bairro Mukhatine, Maputo",
   companyNuit: "103048273",
   companyPhone: "843397628",
-  companyEmail: "geral@mbrmicrocredito.co.mz",
-  companyWebsite: "www.mbrmicrocredito.co.mz",
+  companyEmail: "geral@maismola.co.mz",
+  companyWebsite: "www.maismola.co.mz",
   companyLogo: "",
   companyManager: "Emídio Macuácua",
   forfeit: 0.1,
@@ -78,8 +78,8 @@ const guarantees = [
 ];
 
 const accounts = [
-  rec({ accountDescription: "BCI", accountHolder: "MBR Microcrédito", accountNumber: "000123456789" }),
-  rec({ accountDescription: "Millennium BIM", accountHolder: "MBR Microcrédito", accountNumber: "987654321000" }),
+  rec({ accountDescription: "BCI", accountHolder: "Mais Mola", accountNumber: "000123456789" }),
+  rec({ accountDescription: "Millennium BIM", accountHolder: "Mais Mola", accountNumber: "987654321000" }),
 ];
 
 const data = { loan, customer, company, amortizations, guarantees, accounts };

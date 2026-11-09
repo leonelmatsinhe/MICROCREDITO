@@ -200,14 +200,14 @@ const PAGE_STEPS = {
     el: '[data-tour="financing-tabs"]',
     route: '/financiamento',
     title: 'Carteiras e Taxas',
-    text: 'Origem do capital (fundos MBRM e parceiros financiadores) e as taxas de juro de cada carteira. Define também a que relatório cada carteira pertence (BM ou financiador).',
+    text: 'Origem do capital (fundos Mais Mola e parceiros financiadores) e as taxas de juro de cada carteira. Define também a que relatório cada carteira pertence (BM ou financiador).',
     side: 'bottom'
   },
   teamHeader: {
     el: '[data-tour="team-header"]',
     route: '/equipe',
     title: 'Equipa e parceiros',
-    text: 'Utilizadores MBRM (Admin, Gestor, Operador) e parceiros financiadores na mesma página. O parceiro tem portal próprio e só vê a sua carteira.',
+    text: 'Utilizadores Mais Mola (Admin, Gestor, Operador) e parceiros financiadores na mesma página. O parceiro tem portal próprio e só vê a sua carteira.',
     side: 'bottom'
   },
   bmForm: {
@@ -462,7 +462,7 @@ const TOURS = {
       PAGE_STEPS.partnerBody,
       {
         title: 'Só leitura, sempre actualizado',
-        text: 'Os dados são actualizados pela equipa MBRM. Se notar algo que não bate certo, fale com o gestor da sua carteira.',
+        text: 'Os dados são actualizados pela equipa Mais Mola. Se notar algo que não bate certo, fale com o gestor da sua carteira.',
         el: null,
         side: 'bottom'
       }

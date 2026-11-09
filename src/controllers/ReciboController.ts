@@ -232,7 +232,7 @@ const validar = async (req: Request, res: Response) => {
       success: true,
       valido: hashBate,
       message: hashBate
-        ? "Recibo válido — emitido electronicamente pela MBRM."
+        ? `Recibo válido — emitido electronicamente pela ${empresa.companyName || "Mais Mola"}.`
         : "Hash não corresponde ao recibo indicado.",
       software_certification: selado?.software_certification || SOFTWARE_CERTIFICATION,
       result: {
@@ -308,7 +308,7 @@ const enviar = async (req: Request, res: Response) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: destino,
-      subject: `Recibo ${detalhe.recibo.numero} — ${empresa.companyName || "MBRM"}`,
+      subject: `Recibo ${detalhe.recibo.numero} — ${empresa.companyName || "Mais Mola"}`,
       html: `
         <p>Exmo(a). Sr(a). <b>${detalhe.recibo.customer_name || "Mutuário"}</b>,</p>
         <p>Segue em anexo o recibo <b>${detalhe.recibo.numero}</b> referente ao pagamento de
@@ -320,7 +320,7 @@ const enviar = async (req: Request, res: Response) => {
           <li>Saldo devedor após o pagamento: ${Number(detalhe.recibo.saldo_restante).toFixed(2)} MT</li>
         </ul>
         <p>Pode confirmar a autenticidade deste documento em <a href="${link}">${link}</a>.</p>
-        <p>${empresa.companyName || "MBRM"} · NUIT ${empresa.companyNuit || "—"}</p>
+        <p>${empresa.companyName || "Mais Mola"} · NUIT ${empresa.companyNuit || "—"}</p>
       `,
       attachments: [{ filename: path.basename(filePath), path: filePath }],
     });

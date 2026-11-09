@@ -195,7 +195,7 @@ const isPartner = (req, res, next) => __awaiter(void 0, void 0, void 0, function
     if (!wallet.tem_portal || !wallet.portal_ativo) {
         return res.status(403).json({
             success: false,
-            message: "O acesso ao portal desta carteira está desactivado. Contacte o Administrador da MBRM.",
+            message: "O acesso ao portal desta carteira está desactivado. Contacte o Administrador da Mais Mola.",
         });
     }
     const partner = {

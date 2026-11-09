@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — MBR Microcrédito (Ubuntu / PM2 / Nginx)
+# deploy.sh — Mais Mola (Ubuntu / PM2 / Nginx)
 #
 # DOIS MODOS, o mesmo script:
 #

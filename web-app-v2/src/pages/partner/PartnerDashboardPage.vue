@@ -121,7 +121,7 @@
         <q-card-section class="text-center text-grey-6">
           <q-icon name="insights" size="36px" color="grey-4" />
           <div class="q-mt-sm">Ainda não existem desembolsos nem recebimentos nesta carteira.</div>
-          <div class="text-caption">Os valores aparecem aqui assim que a MBRM classificar créditos financiados por este fundo.</div>
+          <div class="text-caption">Os valores aparecem aqui assim que a Mais Mola classificar créditos financiados por este fundo.</div>
         </q-card-section>
       </q-card>
     </template>

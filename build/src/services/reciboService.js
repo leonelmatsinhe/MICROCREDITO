@@ -98,7 +98,7 @@ const diaDaEmissao = (recibo) => (0, moment_1.default)((recibo === null || recib
 const docsDir = () => path_1.default.join(process.cwd(), "uploads", "docs");
 const qrDir = (companyId, ano) => path_1.default.join(process.cwd(), "uploads", "recibos", String(companyId), String(ano));
 /** Software certificado gravado em cada recibo (referência da certificação AT). */
-exports.SOFTWARE_CERTIFICATION = "MBRM v2.0 Cert AT 2026/001";
+exports.SOFTWARE_CERTIFICATION = "Mais Mola v2.0 Cert AT 2026/001";
 /**
  * Métodos de pagamento gravados pelo sistema em dois formatos: o código legado
  * (1..8) e o código da tesouraria (CASH/BANK/MPESA/EMOLA). Alguns ecrãs gravam
@@ -946,7 +946,7 @@ options = {}) => __awaiter(void 0, void 0, void 0, function* () {
         // "A CLASSIFICAR" que parecia uma falha e confundia o mutuário e a AT).
         const aviso = recibo.wallet_nome
             ? String(recibo.wallet_nome)
-            : "Geral MBRM — crédito anterior às carteiras de financiamento";
+            : "Geral Mais Mola — crédito anterior às carteiras de financiamento";
         const legadoLabel = "LEGADO";
         doc.font("Helvetica-Bold").fontSize(7.5);
         const legadoW = doc.widthOfString(legadoLabel) + 16;
@@ -1155,12 +1155,12 @@ options = {}) => __awaiter(void 0, void 0, void 0, function* () {
         const continuidade = ultima ? "Documento processado por computador" : "Continua na página seguinte";
         if (mostrarSelo) {
             return [
-                `${empresa.companyName || "MBRM"} · NUIT ${empresa.companyNuit || "—"} · Documento válido com QR Code e Hash AT · Sistema v2.0.9`,
+                `${empresa.companyName || "Mais Mola"} · NUIT ${empresa.companyNuit || "—"} · Documento válido com QR Code e Hash AT · Sistema v2.0.9`,
                 `${recibo.numero} · Hash: ${hash ? `${hash.slice(0, 24)}…` : "—"} · Emitido em ${fmtDateTimeMaputo(emissao)} · ${continuidade} · Página ${pagina}/${range.count}`,
             ];
         }
         return [
-            `${empresa.companyName || "Instituição"} · NUIT ${empresa.companyNuit || "—"} · ${continuidade} — ${empresa.companyName || "Sistema"} — Sistema v2.0.9 · Página ${pagina}/${range.count}`,
+            `${empresa.companyName || "Mais Mola"} · NUIT ${empresa.companyNuit || "—"} · ${continuidade} — ${empresa.companyName || "Mais Mola"} — Sistema v2.0.9 · Página ${pagina}/${range.count}`,
             `${recibo.numero} · Emitido em ${fmtDateTimeMaputo(emissao)}`,
         ];
     };

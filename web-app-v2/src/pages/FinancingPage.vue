@@ -7,7 +7,7 @@
           <div class="col-12 col-md">
             <div class="text-subtitle1 text-weight-bold">Financiamento — Carteiras e Taxas</div>
             <div class="text-caption text-grey-6">
-              Origem do capital (parceiros/fundos MBRM), taxas de juro e separação dos relatórios
+              Origem do capital (parceiros/fundos Mais Mola), taxas de juro e separação dos relatórios
               (BM consolidado · financiadores isolados).
             </div>
           </div>

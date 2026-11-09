@@ -276,7 +276,7 @@ export const CHECKLIST_TASKS = {
           PARTNER_MENU_STEP,
           partnerPage(
             'Recebimentos da carteira',
-            'Filtre por data para conciliar o que entrou no período. Os recibos emitidos pela MBRM ficam na vista «Recibos».'
+            'Filtre por data para conciliar o que entrou no período. Os recibos emitidos pela Mais Mola ficam na vista «Recibos».'
           )
         ]
       },
@@ -290,7 +290,7 @@ export const CHECKLIST_TASKS = {
           PARTNER_MENU_STEP,
           partnerPage(
             'Extracto da carteira',
-            'Resumo do capital, dos desembolsos e dos recebimentos do fundo — é o documento que fecha o mês com a MBRM.'
+            'Resumo do capital, dos desembolsos e dos recebimentos do fundo — é o documento que fecha o mês com a Mais Mola.'
           )
         ]
       }

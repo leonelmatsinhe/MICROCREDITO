@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# MBR Microcrédito — imagem de produção (Dokploy / qualquer Docker)
+# Mais Mola — imagem de produção (Dokploy / qualquer Docker)
 #
 # Multi-stage: frontend (Quasar/Vite → public-v2) + backend (tsc → build/) e
 # runtime enxuto só com dependências de produção.

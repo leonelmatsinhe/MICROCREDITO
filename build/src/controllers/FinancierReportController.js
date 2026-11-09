@@ -48,7 +48,7 @@ const readParams = (req) => ({
 const buildWorkbook = (params) => __awaiter(void 0, void 0, void 0, function* () {
     const { company, wallet, statement, period } = params;
     const wb = new exceljs_1.default.Workbook();
-    wb.creator = "MBRM — Sistema de Microcrédito";
+    wb.creator = "Mais Mola — Sistema de Microcrédito";
     wb.created = new Date();
     const thin = { style: "thin", color: { argb: "FF9E9E9E" } };
     const border = { top: thin, bottom: thin, left: thin, right: thin };
@@ -60,7 +60,7 @@ const buildWorkbook = (params) => __awaiter(void 0, void 0, void 0, function* ()
         ws.mergeCells(2, 1, 2, columns.length);
         const subtitle = ws.getCell(2, 1);
         subtitle.value =
-            `${(company === null || company === void 0 ? void 0 : company.companyName) || "MBRM"} · NUIT: ${(company === null || company === void 0 ? void 0 : company.companyNuit) || "—"} · ` +
+            `${(company === null || company === void 0 ? void 0 : company.companyName) || "Mais Mola"} · NUIT: ${(company === null || company === void 0 ? void 0 : company.companyNuit) || "—"} · ` +
                 `Carteira: ${(wallet === null || wallet === void 0 ? void 0 : wallet.codigo) || "—"} — ${(wallet === null || wallet === void 0 ? void 0 : wallet.nome) || ""}` +
                 ((wallet === null || wallet === void 0 ? void 0 : wallet.parceiro_nome) ? ` · Parceiro: ${wallet.parceiro_nome}` : "") +
                 ` · Período: ${period.from ? formatDate(period.from) : "início"} a ${period.to ? formatDate(period.to) : "hoje"}`;
@@ -321,7 +321,7 @@ const sendFinancierReportEmail = (req, res) => __awaiter(void 0, void 0, void 0,
           <li>Saldo analítico disponível: <b>${statement.resumo.saldo_analitico === null ? "—" : `${num(statement.resumo.saldo_analitico).toFixed(2)} MT`}</b></li>
           <li>Saldo a receber: <b>${num(statement.resumo.saldo_a_receber).toFixed(2)} MT</b></li>
         </ul>
-        <p>Com os melhores cumprimentos,<br/>${(company === null || company === void 0 ? void 0 : company.companyName) || "MBRM"}</p>
+        <p>Com os melhores cumprimentos,<br/>${(company === null || company === void 0 ? void 0 : company.companyName) || "Mais Mola"}</p>
       `,
             attachments: [{ filename: fileName, content: Buffer.from(buffer) }],
         });

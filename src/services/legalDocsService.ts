@@ -675,7 +675,7 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
   const companyName = String(
     companyObj?.companyName ||
     (typeof companyObj?.getDataValue === "function" && companyObj.getDataValue("companyName")) ||
-    ""
+    "Mais Mola"
   ).trim();
   const labelInst = companyName ? `PELA INSTITUIÇÃO FINANCEIRA (${companyName})` : "PELA INSTITUIÇÃO FINANCEIRA";
 
@@ -1082,7 +1082,7 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
     (typeof c?.getDataValue === "function" && c.getDataValue("companyName")) ||
     ctx.company?.companyName ||
     (typeof ctx.company?.getDataValue === "function" && ctx.company.getDataValue("companyName")) ||
-    "Instituição Financeira"
+    "Mais Mola"
   ).trim();
   doc.font("Helvetica").fontSize(10).fillColor("#000000");
 
@@ -1224,7 +1224,7 @@ export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): P
     (typeof c?.getDataValue === "function" && c.getDataValue("companyName")) ||
     ctx.company?.companyName ||
     (typeof ctx.company?.getDataValue === "function" && ctx.company.getDataValue("companyName")) ||
-    "Instituição Financeira"
+    "Mais Mola"
   ).trim();
   para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${coNameG}`, { size: 11 });
 

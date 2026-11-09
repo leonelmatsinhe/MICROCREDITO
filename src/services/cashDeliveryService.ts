@@ -219,7 +219,7 @@ export const generateComprovativoPdf = async (
   });
 
   // ── Cabeçalho institucional ──
-  doc.fontSize(14).font("Helvetica-Bold").text(String(empresa.companyName || "Instituição Financeira"), { align: "center" });
+  doc.fontSize(14).font("Helvetica-Bold").text(String(empresa.companyName || "Mais Mola"), { align: "center" });
   if (empresa.companyNuit) {
     doc.fontSize(9).font("Helvetica").text(`NUIT: ${empresa.companyNuit}`, { align: "center" });
   }

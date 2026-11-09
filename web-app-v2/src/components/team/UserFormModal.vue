@@ -105,7 +105,7 @@
             <template v-slot:avatar><q-icon name="login" /></template>
             O parceiro entra com este e-mail/senha e é encaminhado directamente para o
             <strong>Portal do Financiador</strong>, onde só vê a carteira selecionada (créditos, prestações,
-            mora, recebimentos e recibos). Não edita nada, não acede ao painel MBRM nem ao relatório do BM.
+            mora, recebimentos e recibos). Não edita nada, não acede ao painel Mais Mola nem ao relatório do BM.
           </q-banner>
         </template>
 
