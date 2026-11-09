@@ -79,7 +79,7 @@ const tablePdf = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         const contentBottom = doc.page.height - doc.page.margins.bottom - 24;
         // ── Cabeçalho: empresa + título + meta ──
         doc.fillColor("#0f6b2f").font("Helvetica-Bold").fontSize(13);
-        doc.text(String(empresa.companyName || "MBR Microcrédito"), left, 40, { width: pageWidth * 0.7 });
+        doc.text(String(empresa.companyName || "Instituição Financeira"), left, 40, { width: pageWidth * 0.7 });
         doc.fillColor("#555555").font("Helvetica").fontSize(8);
         const nuitLinha = `NUIT: ${empresa.companyNuit || "—"}${empresa.companyPhone ? `  ·  Tel.: ${empresa.companyPhone}` : ""}`;
         doc.text(nuitLinha, left, 58, { width: pageWidth * 0.7 });

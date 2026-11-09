@@ -671,13 +671,21 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
   }
 
   const colSign = (width - 40) / 2;
+  const companyObj = data.company || ctx.company;
+  const companyName = String(
+    companyObj?.companyName ||
+    (typeof companyObj?.getDataValue === "function" && companyObj.getDataValue("companyName")) ||
+    ""
+  ).trim();
+  const labelInst = companyName ? `PELA INSTITUIÇÃO FINANCEIRA (${companyName})` : "PELA INSTITUIÇÃO FINANCEIRA";
+
   y = drawTable(ctx, {
     x: left, y, widths: [colSign, 40, colSign], aligns: ["center", "center", "center"],
     rows: [
       [
         plainTextCell("O MUTUÁRIO (Tomei Conhecimento)\n\n\n_____________________________________________\n" + String(cu?.customerName || ""), { align: "center", fontSize: 8, bold: true }),
         plainTextCell("", {}),
-        plainTextCell("PELA INSTITUIÇÃO FINANCEIRA (MBR Microcrédito)\n\n\n_____________________________________________\nDirecção de Crédito & Operações", { align: "center", fontSize: 8, bold: true }),
+        plainTextCell(`${labelInst}\n\n\n_____________________________________________\nDirecção de Crédito & Operações`, { align: "center", fontSize: 8, bold: true }),
       ],
     ],
     padY: 5, outerWidth: 0,
@@ -1069,6 +1077,13 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
 
   const amount = parseFloat(l.getDataValue("amount")) || 0;
   const isPJ = String(cu?.getDataValue("customerType") || "PF") === "PJ";
+  const coName = String(
+    c?.companyName ||
+    (typeof c?.getDataValue === "function" && c.getDataValue("companyName")) ||
+    ctx.company?.companyName ||
+    (typeof ctx.company?.getDataValue === "function" && ctx.company.getDataValue("companyName")) ||
+    "Instituição Financeira"
+  ).trim();
   doc.font("Helvetica").fontSize(10).fillColor("#000000");
 
   if (isPJ) {
@@ -1082,7 +1097,7 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
     doc.font("Helvetica-Bold").text(cu.getDataValue("companyRepresentativeIdNumber") || "", { continued: true });
     doc.font("Helvetica").text(", declaramos que recebemos na data de hoje o valor de ", { continued: true });
     doc.font("Helvetica-Bold").text(`${fmtMoney(amount)} (${numberToWords(amount)} meticais)`, { continued: true });
-    doc.font("Helvetica").text(" da MBR Microcrédito.", { align: "justify" });
+    doc.font("Helvetica").text(` da ${coName}.`, { align: "justify" });
   } else {
     // TERMO (PF) — texto limpo numa linha justificada: o bug antigo quebrava a
     // linha dentro do nº do BI (pdfmake com segmentos sublinhados justificados).
@@ -1113,7 +1128,7 @@ export const buildTermoCompromisso = (ctx: Ctx, data: LegalDocsData): void => {
   doc.text(`Cheque ${mark(methodIsCheque)}        Numerário ${mark(methodIsCash)}        Transferência ${mark(methodIsTransfer)}`, { width, align: "left" });
   doc.moveDown(0.3);
   doc.font("Helvetica").text("da ", { continued: true });
-  doc.font("Helvetica-Bold").text(String(c.getDataValue("companyName") || "Mais Mola"), { continued: true });
+  doc.font("Helvetica-Bold").text(coName, { continued: true });
   doc.font("Helvetica").text(".", { align: "justify" });
 
   doc.moveDown(0.8);
@@ -1204,7 +1219,14 @@ export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): P
   doc.font("Helvetica-Bold").fontSize(11).fillColor("#222222");
   doc.text(`Valor total dos bens para garantia ${fmtMoney(totalGuaranteeAmount)} (${numberToWords(totalGuaranteeAmount)} meticais) — cobertura de ${coveragePct.toLocaleString("pt-MZ", { maximumFractionDigits: 1 })}% do capital financiado (${fmtMoney(loanAmountForCoverage)})`, { width, align: "right" });
   doc.moveDown(0.5);
-  para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${c.getDataValue("companyName") || ""}`, { size: 11 });
+  const coNameG = String(
+    c?.companyName ||
+    (typeof c?.getDataValue === "function" && c.getDataValue("companyName")) ||
+    ctx.company?.companyName ||
+    (typeof ctx.company?.getDataValue === "function" && ctx.company.getDataValue("companyName")) ||
+    "Instituição Financeira"
+  ).trim();
+  para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${coNameG}`, { size: 11 });
 
   doc.moveDown(1.5);
   doc.font("Helvetica").fontSize(8).fillColor("#000000");

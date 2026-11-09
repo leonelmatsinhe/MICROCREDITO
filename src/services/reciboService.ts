@@ -1346,7 +1346,7 @@ export const renderReciboPdf = async (
       ];
     }
     return [
-      `${empresa.companyName || "MBRM"} · NUIT ${empresa.companyNuit || "—"} · ${continuidade} — MBR Microcrédito — Sistema v2.0.9 · Página ${pagina}/${range.count}`,
+      `${empresa.companyName || "Instituição"} · NUIT ${empresa.companyNuit || "—"} · ${continuidade} — ${empresa.companyName || "Sistema"} — Sistema v2.0.9 · Página ${pagina}/${range.count}`,
       `${recibo.numero} · Emitido em ${fmtDateTimeMaputo(emissao)}`,
     ];
   };

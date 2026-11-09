@@ -916,7 +916,7 @@ function shareWhatsApp() {
   const total = formatMoney(lastReceipt.value?.valor_pago || form.value.amount)
   const num = lastReceipt.value?.numero || 'Oficial'
   const text = encodeURIComponent(
-    `*${companyStore.company?.companyName || 'MBR Microcrédito'}*\n` +
+    `*${companyStore.companyName || companyStore.company?.companyName || 'Mais Mola'}*\n` +
     `Olá ${selectedCustomer.value?.customerName || 'Cliente'},\n` +
     `Confirmamos o recebimento de *${total}*.\n` +
     `Recibo: *${num}*\n` +

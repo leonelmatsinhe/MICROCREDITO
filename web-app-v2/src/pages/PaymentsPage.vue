@@ -761,7 +761,7 @@ function enviarWhatsApp(payment) {
   const total = formatMoney(payment.totalAmount || payment.amount)
   const num = payment.reciboNumero || 'Oficial'
   const text = encodeURIComponent(
-    `*${companyStore.company?.companyName || 'MBR Microcrédito'}*\n` +
+    `*${companyStore.companyName || companyStore.company?.companyName || 'Mais Mola'}*\n` +
     `Olá ${payment.customerName || 'Cliente'},\n` +
     `Confirmamos a recepção do seu pagamento no valor de *${total}*.\n` +
     `Recibo: *${num}*\n` +

@@ -189,7 +189,7 @@
                   </span>
                 </div>
                 <div class="text-caption text-grey-6">
-                  Empresa: {{ report.empresa?.name || 'MBR Microcrédito' }} · NUIT: {{ report.empresa?.nuit || '—' }} · Período: <strong>{{ periodoLabel }}</strong>
+                  Empresa: {{ report.empresa?.name || 'Instituição' }} · NUIT: {{ report.empresa?.nuit || '—' }} · Período: <strong>{{ periodoLabel }}</strong>
                 </div>
               </div>
             </div>
@@ -856,7 +856,7 @@ function openEmailDialog() {
       `• Juros recebidos: ${money(resumo.juros_periodo)}\n` +
       `• Saldo analítico disponível: ${resumo.saldo_analitico === null || resumo.saldo_analitico === undefined ? 'Sem limite' : money(resumo.saldo_analitico)}\n` +
       `• Saldo a receber dos clientes: ${money(resumo.saldo_a_receber)}\n\n` +
-      `Atenciosamente,\n${report.value?.empresa?.name || 'MBR Microcrédito'}`
+      `Atenciosamente,\n${report.value?.empresa?.name || 'A Direcção'}`
   }
   emailDialog.value = true
 }

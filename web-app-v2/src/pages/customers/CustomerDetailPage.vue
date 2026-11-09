@@ -599,7 +599,7 @@ function generateNewPassword() {
   generatedPassword.value = String(Math.floor(100000 + Math.random() * 900000))
 }
 
-const companyName = computed(() => companyStore.companyName || 'MBR Microcrédito')
+const companyName = computed(() => companyStore.companyName || companyStore.company?.companyName || 'Mais Mola')
 const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
 
 async function sendCredentials() {

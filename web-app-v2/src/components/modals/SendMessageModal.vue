@@ -140,7 +140,7 @@
           <div class="row items-center no-wrap q-mb-xs">
             <q-icon :name="channel === 'whatsapp' ? 'chat' : 'sms'" size="14px" :color="channel === 'whatsapp' ? 'positive' : 'primary'" class="q-mr-xs" />
             <span class="text-caption text-weight-bold" style="font-size: 11px">
-              {{ channel === 'whatsapp' ? 'WhatsApp Oficial' : (companyName || 'MBR Microcrédito') }}
+              {{ channel === 'whatsapp' ? 'WhatsApp Oficial' : companyName }}
             </span>
             <q-space />
             <span class="text-caption text-grey-5" style="font-size: 10px">Agora</span>
@@ -224,7 +224,7 @@ const form = ref({
 
 const smsDisabled = computed(() => Number(companyStore.company?.smsEnabled ?? 1) !== 1)
 const smsBlocked = computed(() => channel.value === 'sms' && smsDisabled.value)
-const companyName = computed(() => companyStore.company?.companyName || 'MBR Microcrédito')
+const companyName = computed(() => companyStore.companyName || companyStore.company?.companyName || 'Mais Mola')
 
 // Contagem de partes SMS (padrão GSM 160 caracteres / multipart 153)
 const charCountClass = computed(() => {

@@ -606,13 +606,18 @@ const buildExtractoCredito = (ctx, data) => {
         y = doc.page.margins.top;
     }
     const colSign = (width - 40) / 2;
+    const companyObj = data.company || ctx.company;
+    const companyName = String((companyObj === null || companyObj === void 0 ? void 0 : companyObj.companyName) ||
+        (typeof (companyObj === null || companyObj === void 0 ? void 0 : companyObj.getDataValue) === "function" && companyObj.getDataValue("companyName")) ||
+        "").trim();
+    const labelInst = companyName ? `PELA INSTITUIÇÃO FINANCEIRA (${companyName})` : "PELA INSTITUIÇÃO FINANCEIRA";
     y = drawTable(ctx, {
         x: left, y, widths: [colSign, 40, colSign], aligns: ["center", "center", "center"],
         rows: [
             [
                 plainTextCell("O MUTUÁRIO (Tomei Conhecimento)\n\n\n_____________________________________________\n" + String((cu === null || cu === void 0 ? void 0 : cu.customerName) || ""), { align: "center", fontSize: 8, bold: true }),
                 plainTextCell("", {}),
-                plainTextCell("PELA INSTITUIÇÃO FINANCEIRA (MBR Microcrédito)\n\n\n_____________________________________________\nDirecção de Crédito & Operações", { align: "center", fontSize: 8, bold: true }),
+                plainTextCell(`${labelInst}\n\n\n_____________________________________________\nDirecção de Crédito & Operações`, { align: "center", fontSize: 8, bold: true }),
             ],
         ],
         padY: 5, outerWidth: 0,
@@ -952,6 +957,7 @@ const buildContratoConcessao = (ctx, data) => {
 exports.buildContratoConcessao = buildContratoConcessao;
 // ── 3. TERMO DE COMPROMISSO ────────────────────────────────────────────
 const buildTermoCompromisso = (ctx, data) => {
+    var _a, _b;
     const { doc, left, right } = ctx;
     const { loan: l, customer: cu, company: c } = data;
     const width = right - left;
@@ -959,6 +965,11 @@ const buildTermoCompromisso = (ctx, data) => {
     doc.y += 10;
     const amount = parseFloat(l.getDataValue("amount")) || 0;
     const isPJ = String((cu === null || cu === void 0 ? void 0 : cu.getDataValue("customerType")) || "PF") === "PJ";
+    const coName = String((c === null || c === void 0 ? void 0 : c.companyName) ||
+        (typeof (c === null || c === void 0 ? void 0 : c.getDataValue) === "function" && c.getDataValue("companyName")) ||
+        ((_a = ctx.company) === null || _a === void 0 ? void 0 : _a.companyName) ||
+        (typeof ((_b = ctx.company) === null || _b === void 0 ? void 0 : _b.getDataValue) === "function" && ctx.company.getDataValue("companyName")) ||
+        "Instituição Financeira").trim();
     doc.font("Helvetica").fontSize(10).fillColor("#000000");
     if (isPJ) {
         doc.text("Pelo presente, nós ", { width, align: "justify", continued: true, lineGap: 6 });
@@ -971,7 +982,7 @@ const buildTermoCompromisso = (ctx, data) => {
         doc.font("Helvetica-Bold").text(cu.getDataValue("companyRepresentativeIdNumber") || "", { continued: true });
         doc.font("Helvetica").text(", declaramos que recebemos na data de hoje o valor de ", { continued: true });
         doc.font("Helvetica-Bold").text(`${fmtMoney(amount)} (${numberToWords(amount)} meticais)`, { continued: true });
-        doc.font("Helvetica").text(" da MBR Microcrédito.", { align: "justify" });
+        doc.font("Helvetica").text(` da ${coName}.`, { align: "justify" });
     }
     else {
         // TERMO (PF) — texto limpo numa linha justificada: o bug antigo quebrava a
@@ -1002,7 +1013,7 @@ const buildTermoCompromisso = (ctx, data) => {
     doc.text(`Cheque ${mark(methodIsCheque)}        Numerário ${mark(methodIsCash)}        Transferência ${mark(methodIsTransfer)}`, { width, align: "left" });
     doc.moveDown(0.3);
     doc.font("Helvetica").text("da ", { continued: true });
-    doc.font("Helvetica-Bold").text(String(c.getDataValue("companyName") || "Mais Mola"), { continued: true });
+    doc.font("Helvetica-Bold").text(coName, { continued: true });
     doc.font("Helvetica").text(".", { align: "justify" });
     doc.moveDown(0.8);
     para(ctx, "Sendo expressão da verdade e sem qualquer coação, firmo presente.", { size: 10 });
@@ -1025,6 +1036,7 @@ const buildTermoCompromisso = (ctx, data) => {
 exports.buildTermoCompromisso = buildTermoCompromisso;
 // ── 4. DECLARAÇÃO DE GARANTIAS ─────────────────────────────────────────
 const buildDeclaracaoGarantias = (ctx, data) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
     const { doc, left, right } = ctx;
     const { loan: l, customer: cu, company: c, guarantees } = data;
     const width = right - left;
@@ -1088,7 +1100,12 @@ const buildDeclaracaoGarantias = (ctx, data) => __awaiter(void 0, void 0, void 0
     doc.font("Helvetica-Bold").fontSize(11).fillColor("#222222");
     doc.text(`Valor total dos bens para garantia ${fmtMoney(totalGuaranteeAmount)} (${numberToWords(totalGuaranteeAmount)} meticais) — cobertura de ${coveragePct.toLocaleString("pt-MZ", { maximumFractionDigits: 1 })}% do capital financiado (${fmtMoney(loanAmountForCoverage)})`, { width, align: "right" });
     doc.moveDown(0.5);
-    para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${c.getDataValue("companyName") || ""}`, { size: 11 });
+    const coNameG = String((c === null || c === void 0 ? void 0 : c.companyName) ||
+        (typeof (c === null || c === void 0 ? void 0 : c.getDataValue) === "function" && c.getDataValue("companyName")) ||
+        ((_a = ctx.company) === null || _a === void 0 ? void 0 : _a.companyName) ||
+        (typeof ((_b = ctx.company) === null || _b === void 0 ? void 0 : _b.getDataValue) === "function" && ctx.company.getDataValue("companyName")) ||
+        "Instituição Financeira").trim();
+    para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${coNameG}`, { size: 11 });
     doc.moveDown(1.5);
     doc.font("Helvetica").fontSize(8).fillColor("#000000");
     doc.text(`Maputo, aos ${fmtDateShort(l.getDataValue("updatedAt") || l.getDataValue("dateCreated"))}`, { width, align: "center" });
@@ -1109,7 +1126,7 @@ const buildDeclaracaoGarantias = (ctx, data) => __awaiter(void 0, void 0, void 0
             const gestor = yield UserModel.findByPk(Number(gestorNome), { raw: true });
             gestorNome = String((gestor === null || gestor === void 0 ? void 0 : gestor.userName) || (gestor === null || gestor === void 0 ? void 0 : gestor.name) || gestorNome);
         }
-        catch ( /* mantém o que veio */_a) { /* mantém o que veio */ }
+        catch ( /* mantém o que veio */_c) { /* mantém o que veio */ }
     }
     if (!gestorNome)
         gestorNome = "Gestor de Crédito";

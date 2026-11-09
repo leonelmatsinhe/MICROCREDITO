@@ -235,7 +235,7 @@ function shareWhatsApp() {
   const total = formatMoney(reciboData.value.valor_pago || reciboData.value.totalAmount || reciboData.value.amount)
   const num = reciboData.value.numero || 'Oficial'
   const text = encodeURIComponent(
-    `*${company.value.companyName || 'MBR Microcrédito'}*\n` +
+    `*${company.value?.companyName || 'Mais Mola'}*\n` +
     `Olá ${reciboData.value.customer_name || 'Estimado(a) Cliente'},\n` +
     `Confirmamos a recepção do seu pagamento no valor de *${total}*.\n` +
     `*Recibo:* ${num}\n` +
