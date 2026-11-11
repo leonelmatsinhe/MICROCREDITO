@@ -150,13 +150,21 @@ const numberToWords = (num: number): string => {
   return result;
 };
 
+const getGenderRaw = (cu: any): string =>
+  String(
+    cu?.sex ||
+    cu?.customerGender ||
+    (typeof cu?.getDataValue === "function" && (cu.getDataValue("sex") || cu.getDataValue("customerGender"))) ||
+    ""
+  ).toLowerCase().trim();
+
 const convertGender = (cu: any): string => {
-  const g = String(cu?.customerGender || "").toLowerCase();
-  return g === "f" || g === "feminino" ? "A MUTUÁRIA" : "O MUTUÁRIO";
+  const g = getGenderRaw(cu);
+  return g === "f" || g === "feminino" || g === "mulher" ? "A MUTUÁRIA" : "O MUTUÁRIO";
 };
 const convertGenderLabel = (cu: any): string => {
-  const g = String(cu?.customerGender || "").toLowerCase();
-  return g === "f" || g === "feminino" ? "Mulher" : "Homem";
+  const g = getGenderRaw(cu);
+  return g === "f" || g === "feminino" || g === "mulher" ? "Mulher" : "Homem";
 };
 
 /** Caminho local do logotipo (companies.companyLogo → uploads/...), como no reciboService. */
@@ -260,16 +268,16 @@ const drawTable = (ctx: Ctx, opts: TableOpts): number => {
       const textY = rowY + padY;
       const textW = w - 2 * padX;
       if (cell.rich) {
-        let cx = x + padX;
-        cell.rich.forEach(part => {
+        doc.x = x + padX;
+        doc.y = textY;
+        cell.rich.forEach((part, idx) => {
+          const isLast = idx === cell.rich!.length - 1;
           doc.font(part.bold ? "Helvetica-Bold" : "Helvetica").fontSize(fSize).fillColor(part.color || color);
-          const partW = doc.widthOfString(part.text);
-          doc.text(part.text, cx, textY, { lineBreak: false });
-          cx += partW;
+          doc.text(part.text, { width: textW, align, continued: !isLast });
         });
       } else {
         doc.font(cell.bold ? "Helvetica-Bold" : "Helvetica").fontSize(fSize).fillColor(color);
-        doc.text(cell.text || "", x + padX, textY, { width: textW, align, lineBreak: false });
+        doc.text(cell.text || "", x + padX, textY, { width: textW, align });
       }
       // grelha vertical
       doc.save().moveTo(x, rowY).lineTo(x, rowY + h).lineWidth(0.5).strokeColor(gridColor).stroke().restore();
@@ -280,6 +288,8 @@ const drawTable = (ctx: Ctx, opts: TableOpts): number => {
       .moveTo(x, rowY).lineTo(x, rowY + h)
       .moveTo(opts.x, rowY + h).lineTo(x, rowY + h)
       .lineWidth(0.5).strokeColor(gridColor).stroke().restore();
+    // Repor cursor X à margem esquerda após o loop de células
+    doc.x = ctx.left;
     return rowY + h;
   };
 
@@ -323,12 +333,15 @@ const drawFooters = (ctx: Ctx, seal?: { hash?: string; qrPath?: string | null; e
   const stamp = `Documento processado por computador em ${fmtDateShort(emit)} ${emit.toTimeString().slice(0, 5)}`;
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    const y = doc.page.height - doc.page.margins.bottom - 12;
+    const savedBottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 10;
+    const y = doc.page.height - 26;
     doc.font("Helvetica").fontSize(7).fillColor(COLORS.grey);
     doc.text(stamp, doc.page.margins.left, y, { lineBreak: false });
     const label = `${company.companyName || ""} | Pág. ${i - range.start + 1}/${range.count}`;
     const labelW = doc.widthOfString(label);
     doc.text(label, doc.page.width - doc.page.margins.right - labelW, y, { lineBreak: false });
+    doc.page.margins.bottom = savedBottom;
   }
 };
 
@@ -336,14 +349,16 @@ const drawFooters = (ctx: Ctx, seal?: { hash?: string; qrPath?: string | null; e
 const para = (ctx: Ctx, text: string, opts: { size?: number; align?: Align; gap?: number } = {}): void => {
   const { doc } = ctx;
   const size = opts.size ?? 8;
+  doc.x = ctx.left;
   doc.font("Helvetica").fontSize(size).fillColor("#000000");
-  doc.text(text, { width: ctx.right - ctx.left, align: opts.align || "justify", lineGap: size * 0.6 });
+  doc.text(text, ctx.left, doc.y, { width: ctx.right - ctx.left, align: opts.align || "justify", lineGap: size * 0.6 });
   if (opts.gap) doc.moveDown(opts.gap);
 };
 
 /** Parágrafo com segmentos mistos (bold incluído), prefixo "1. ". */
 const numberedPara = (ctx: Ctx, parts: (string | RichPart)[]): void => {
   const { doc } = ctx;
+  doc.x = ctx.left;
   doc.moveDown(0.2);
   const all: RichPart[] = [{ text: "1. ", bold: true }, ...parts.map(p => (typeof p === "string" ? { text: p } : p))];
   all.forEach((part, idx) => {
@@ -379,6 +394,7 @@ export interface LegalDocsData {
   guarantees: any[];
   accounts: any[];
   transactions?: any[];
+  creditManagerName?: string;
 }
 
 export const loadLegalDocsData = async (loanId: number): Promise<LegalDocsData | null> => {
@@ -410,7 +426,15 @@ export const loadLegalDocsData = async (loanId: number): Promise<LegalDocsData |
   } catch (tErr) {
     console.error("[LegalDocs] Erro ao carregar transações:", tErr);
   }
-  return { loan, customer, company, amortizations, guarantees, accounts, transactions };
+  let creditManagerName = String(loan.getDataValue("creditManager") || "").trim();
+  if (/^\d+$/.test(creditManagerName)) {
+    try {
+      const { UserModel } = await import("../database/models/UserModel");
+      const gestor: any = await UserModel.findByPk(Number(creditManagerName), { raw: true });
+      creditManagerName = String(gestor?.userName || gestor?.name || creditManagerName);
+    } catch { /* mantém o valor original */ }
+  }
+  return { loan, customer, company, amortizations, guarantees, accounts, transactions, creditManagerName };
 };
 
 // ── 1. EXTRACTO DE CONTA DO CRÉDITO (PADRÃO BANCÁRIO & BANCO DE MOÇAMBIQUE) ───
@@ -1156,69 +1180,6 @@ export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): P
   const { loan: l, customer: cu, company: c, guarantees } = data;
   const width = right - left;
 
-  let y = drawCompanyHeader(ctx, "Declaração de Garantias");
-  doc.y = y + 6;
-
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
-  doc.text("1. Dados cliente", { width, align: "left" });
-  doc.moveDown(0.4);
-  doc.font("Helvetica").fontSize(8);
-  const isPJ = String(cu?.getDataValue("customerType") || "PF") === "PJ";
-  if (isPJ) {
-    doc.font("Helvetica-Bold").text(`EMPRESA: ${String(cu.getDataValue("customerName") || "").toUpperCase()}`, { width });
-    doc.font("Helvetica");
-    doc.text(`NUIT: ${cu.getDataValue("customerNuit") || ""}`, { width });
-    doc.text(`Alvará: ${cu.getDataValue("companyLicenseNumber") || ""} | Actividade: ${cu.getDataValue("companyMainActivity") || ""}`, { width });
-    doc.text(`Representante: ${cu.getDataValue("companyLegalRepresentative") || ""}`, { width });
-    doc.text(`Sede: ${cu.getDataValue("customerAddress") || ""} | Tel: ${cu.getDataValue("customerPhone") || ""}`, { width });
-  } else {
-    doc.font("Helvetica-Bold").text(`${convertGenderLabel(cu).toUpperCase()}: ${String(cu.getDataValue("customerName") || "").toUpperCase()}`, { width });
-    doc.font("Helvetica");
-    doc.text(`Nº do cliente: ${cu.getDataValue("accountNumber") || ""}`, { width });
-    doc.text(`Morada: ${cu.getDataValue("customerAddress") || ""}`, { width });
-    doc.text(`Telemóvel: +${cu.getDataValue("customerPhone") || ""}`, { width });
-    doc.text(`NUIT: ${cu.getDataValue("customerNuit") || ""}`, { width });
-  }
-
-  doc.moveDown(0.8);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
-  doc.text("2. Bens de garantia", { width });
-  doc.moveDown(0.4);
-
-  if (guarantees.length === 0) {
-    // Estado vazio legível — nunca tabela vazia nem texto cortado.
-    doc.font("Helvetica-Oblique").fontSize(10).fillColor(COLORS.grey);
-    doc.text("Nenhum bem registado — avaliação 0,00 MZN", { width, align: "center" });
-    doc.y += 14;
-  } else {
-    const guarRows: Cell[][] = guarantees.map((g) => [
-      plainTextCell("", {}),
-      plainTextCell(String(g.getDataValue("guaranteeDescription") || g.getDataValue("description") || "--")),
-      plainTextCell(fmtDateShort(g.getDataValue("createdAt") || g.getDataValue("dateCreated"))),
-      plainTextCell(fmtMoney(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue") || 0), { align: "right" }),
-    ]);
-    // numeração das linhas
-    guarRows.forEach((row, i) => { row[0] = plainTextCell(String(i + 1), { align: "center" }); });
-
-    const gw = [30, (width - 30) * 0.46, (width - 30) * 0.28, 0];
-    gw[3] = width - 30 - gw[1] - gw[2];
-    y = drawTable(ctx, {
-      x: left, y: doc.y, widths: gw, aligns: ["center", "left", "left", "right"],
-      header: ["#", "Descrição", "Data de submissão", "Avaliação (MZN)"],
-      rows: guarRows, padY: 3,
-    });
-    doc.y = y + 10;
-  }
-
-  const totalGuaranteeAmount = guarantees.reduce((s, g) => s + (parseFloat(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue")) || 0), 0);
-  // Cobertura: bens avaliados vs capital financiado (ex.: 130k/150k = 86,7%)
-  const loanAmountForCoverage = parseFloat(l.getDataValue("amount")) || 0;
-  const coveragePct = loanAmountForCoverage > 0
-    ? Math.round((totalGuaranteeAmount / loanAmountForCoverage) * 1000) / 10
-    : 0;
-  doc.font("Helvetica-Bold").fontSize(11).fillColor("#222222");
-  doc.text(`Valor total dos bens para garantia ${fmtMoney(totalGuaranteeAmount)} (${numberToWords(totalGuaranteeAmount)} meticais) — cobertura de ${coveragePct.toLocaleString("pt-MZ", { maximumFractionDigits: 1 })}% do capital financiado (${fmtMoney(loanAmountForCoverage)})`, { width, align: "right" });
-  doc.moveDown(0.5);
   const coNameG = String(
     c?.companyName ||
     (typeof c?.getDataValue === "function" && c.getDataValue("companyName")) ||
@@ -1226,23 +1187,211 @@ export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): P
     (typeof ctx.company?.getDataValue === "function" && ctx.company.getDataValue("companyName")) ||
     "Mais Mola"
   ).trim();
-  para(ctx, `E por ser verdade, certifico que todas as informações por mim prestadas ao Gestor de Crédito, bem como os bens acima descritos, servem de garantia para a satisfação da obrigação prevista no contrato de concessão de empréstimo celebrado com a ${coNameG}`, { size: 11 });
 
-  doc.moveDown(1.5);
-  doc.font("Helvetica").fontSize(8).fillColor("#000000");
-  doc.text(`Maputo, aos ${fmtDateShort(l.getDataValue("updatedAt") || l.getDataValue("dateCreated"))}`, { width, align: "center" });
-  doc.moveDown(2.5);
+  let y = drawCompanyHeader(ctx, "Declaração de Garantias");
+  doc.x = left;
+  doc.y = y + 4;
 
-  const SIG_H = 70;
-  let signY = doc.y + 10;
+  // ── 1. IDENTIFICAÇÃO DO MUTUÁRIO & CONTRATO ────────────────────────────
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(COLORS.navy);
+  doc.text("1. IDENTIFICAÇÃO DO MUTUÁRIO & ENQUADRAMENTO DO CONTRATO", left, doc.y, { width, align: "left" });
+  doc.y += 4;
+
+  const isPJ = String(cu?.getDataValue("customerType") || "PF") === "PJ";
+  const customerNameStr = String(cu?.getDataValue("customerName") || "—");
+  const accountNumStr = String(cu?.getDataValue("accountNumber") || l.getDataValue("accountNumber") || "—");
+  const phoneRaw = String(cu?.getDataValue("customerPhone") || "").trim();
+  const phoneStr = phoneRaw ? (phoneRaw.startsWith("+") ? phoneRaw : `+${phoneRaw}`) : "—";
+  const nuitStr = String(cu?.getDataValue("customerNuit") || "—");
+  const biStr = String(cu?.getDataValue("customerNationalId") || "—");
+  const addressStr = String(cu?.getDataValue("customerAddress") || "—");
+  const rawLoanId = l.getDataValue("id") || l.id;
+  const loanIdStr = rawLoanId ? `CR-${rawLoanId}` : `Conta #${accountNumStr}`;
+  const loanAmountForCoverage = parseFloat(l.getDataValue("amount")) || 0;
+
+  const w2 = width / 2;
+  const clientRows: Cell[][] = isPJ
+    ? [
+        [
+          { rich: [{ text: "Empresa Mutuária: ", bold: true }, { text: customerNameStr.toUpperCase() }] },
+          { rich: [{ text: "N.º de Cliente / Conta: ", bold: true }, { text: accountNumStr }] },
+        ],
+        [
+          { rich: [{ text: "NUIT: ", bold: true }, { text: nuitStr }] },
+          { rich: [{ text: "Alvará: ", bold: true }, { text: String(cu?.getDataValue("companyLicenseNumber") || "—") }] },
+        ],
+        [
+          { rich: [{ text: "Representante Legal: ", bold: true }, { text: String(cu?.getDataValue("companyLegalRepresentative") || "—") }] },
+          { rich: [{ text: "Telemóvel: ", bold: true }, { text: phoneStr }] },
+        ],
+        [
+          { rich: [{ text: "Sede / Morada: ", bold: true }, { text: addressStr }] },
+          { rich: [{ text: "Contrato / Capital: ", bold: true }, { text: `${loanIdStr} (${fmtMoney(loanAmountForCoverage)})` }] },
+        ],
+      ]
+    : [
+        [
+          { rich: [{ text: `${convertGender(cu).replace(/^O |^A /, "")}: `, bold: true }, { text: customerNameStr.toUpperCase() }] },
+          { rich: [{ text: "N.º do Cliente / Conta: ", bold: true }, { text: accountNumStr }] },
+        ],
+        [
+          { rich: [{ text: "Documento (BI): ", bold: true }, { text: biStr }] },
+          { rich: [{ text: "NUIT: ", bold: true }, { text: nuitStr }] },
+        ],
+        [
+          { rich: [{ text: "Telemóvel: ", bold: true }, { text: phoneStr }] },
+          { rich: [{ text: "Contrato / Capital: ", bold: true }, { text: `${loanIdStr} (${fmtMoney(loanAmountForCoverage)})` }] },
+        ],
+        [
+          { rich: [{ text: "Morada / Residência: ", bold: true }, { text: addressStr }] },
+          { rich: [{ text: "Data de Concessão: ", bold: true }, { text: fmtDateShort(l.getDataValue("disbursementDate") || l.getDataValue("dateCreated")) }] },
+        ],
+      ];
+
+  y = drawTable(ctx, {
+    x: left,
+    y: doc.y,
+    widths: [w2, w2],
+    aligns: ["left", "left"],
+    rows: clientRows,
+    fontSize: 8.5,
+    padY: 4.5,
+    padX: 6,
+    outerLine: COLORS.navy,
+    outerWidth: 1,
+    gridColor: "#dce1e7",
+  });
+  doc.x = left;
+  doc.y = y + 14;
+
+  // ── 2. RELAÇÃO E AVALIAÇÃO DOS BENS DADOS EM GARANTIA ──────────────────
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(COLORS.navy);
+  doc.text("2. RELAÇÃO E AVALIAÇÃO DOS BENS DADOS EM GARANTIA", left, doc.y, { width, align: "left" });
+  doc.y += 4;
+
+  const totalGuaranteeAmount = guarantees.reduce(
+    (s, g) => s + (parseFloat(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue")) || 0),
+    0
+  );
+  const coveragePct = loanAmountForCoverage > 0
+    ? Math.round((totalGuaranteeAmount / loanAmountForCoverage) * 1000) / 10
+    : 0;
+
+  if (guarantees.length === 0) {
+    y = drawTable(ctx, {
+      x: left,
+      y: doc.y,
+      widths: [width],
+      aligns: ["center"],
+      rows: [[plainTextCell("Nenhum bem móvel ou imóvel registado — avaliação total: 0,00 MZN", { align: "center", fontSize: 9, color: COLORS.grey, fillColor: "#f8fafc" })]],
+      outerLine: "#cbd5e1",
+      padY: 8,
+    });
+    doc.x = left;
+    doc.y = y + 10;
+  } else {
+    const guarRows: Cell[][] = guarantees.map((g, i) => [
+      plainTextCell(String(i + 1), { align: "center", bold: true }),
+      plainTextCell(String(g.getDataValue("guaranteeDescription") || g.getDataValue("description") || "--")),
+      plainTextCell(fmtDateShort(g.getDataValue("createdAt") || g.getDataValue("dateCreated")), { align: "center" }),
+      plainTextCell(fmtMoney(g.getDataValue("purchaseAmount") || g.getDataValue("purchaseValue") || 0), { align: "right", bold: true }),
+    ]);
+
+    // Linha de Total na própria tabela
+    guarRows.push([
+      plainTextCell("", { fillColor: "#f1f5f9" }),
+      plainTextCell("VALOR TOTAL DOS BENS DADOS EM GARANTIA", { bold: true, color: COLORS.navy, fillColor: "#f1f5f9" }),
+      plainTextCell(`Cobertura: ${coveragePct.toLocaleString("pt-MZ", { maximumFractionDigits: 1 })}%`, { align: "center", bold: true, color: coveragePct >= 100 ? COLORS.green : COLORS.orange, fillColor: "#f1f5f9" }),
+      plainTextCell(fmtMoney(totalGuaranteeAmount), { align: "right", bold: true, color: COLORS.navy, fillColor: "#f1f5f9", fontSize: 9 }),
+    ]);
+
+    const gw = [32, Math.round((width - 32) * 0.50), Math.round((width - 32) * 0.22), 0];
+    gw[3] = width - gw[0] - gw[1] - gw[2];
+    y = drawTable(ctx, {
+      x: left,
+      y: doc.y,
+      widths: gw,
+      aligns: ["center", "left", "center", "right"],
+      header: ["#", "Descrição Detalhada do Bem", "Data de Registo", "Valor Avaliado (MZN)"],
+      headerBg: COLORS.navy,
+      headerTextColor: "#ffffff",
+      rows: guarRows,
+      zebra: true,
+      fontSize: 8.5,
+      padY: 5,
+      padX: 6,
+      gridColor: "#cbd5e1",
+    });
+    doc.x = left;
+    doc.y = y + 8;
+  }
+
+  // Quadro-resumo do valor por extenso e cobertura
+  y = drawTable(ctx, {
+    x: left,
+    y: doc.y,
+    widths: [width],
+    aligns: ["left"],
+    rows: [[
+      {
+        fillColor: "#f8fafc",
+        fontSize: 8.5,
+        rich: [
+          { text: "Avaliação Global: ", bold: true, color: COLORS.navy },
+          { text: `${fmtMoney(totalGuaranteeAmount)} (${numberToWords(totalGuaranteeAmount)} meticais)`, bold: true },
+          { text: `  —  Rácio de cobertura de ${coveragePct.toLocaleString("pt-MZ", { maximumFractionDigits: 1 })}% sobre o capital financiado (${fmtMoney(loanAmountForCoverage)}).` },
+        ],
+      },
+    ]],
+    padY: 5,
+    padX: 6,
+    outerLine: COLORS.primary,
+    outerWidth: 1,
+    gridColor: "#e2e8f0",
+  });
+  doc.x = left;
+  doc.y = y + 14;
+
+  // ── 3. DECLARAÇÃO DE PROPRIEDADE, FIEL DEPOSITÁRIO E COMPROMISSO LEGAL ─
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(COLORS.navy);
+  doc.text("3. DECLARAÇÃO DE PROPRIEDADE, FIEL DEPOSITÁRIO E COMPROMISSO LEGAL", left, doc.y, { width, align: "left" });
+  doc.y += 5;
+
+  para(
+    ctx,
+    `1. Por ser expressão da verdade, declaro sob compromisso de honra que todas as informações por mim prestadas ao Gestor de Crédito são verdadeiras, e que os bens móveis/imóveis acima descritos e avaliados são de minha legítima e exclusiva propriedade, encontrando-se livres de quaisquer ónus, encargos ou penhoras, servindo de garantia real para a satisfação integral da obrigação prevista no Contrato de Concessão de Empréstimo celebrado com a ${coNameG}.`,
+    { size: 9, gap: 0.4 }
+  );
+
+  para(
+    ctx,
+    `2. Na qualidade de Fiel Depositário(a) dos bens dados em garantia, comprometo-me a conservá-los em perfeito estado de funcionamento e a não os vender, doar, alienar, transferir, ocultar ou onerar a terceiros sem autorização prévia e por escrito da ${coNameG}, até à completa e integral liquidação do capital mutuado, juros remuneratórios e eventuais encargos moratórios.`,
+    { size: 9, gap: 0.4 }
+  );
+
+  para(
+    ctx,
+    `3. Em caso de incumprimento contratual das prestações acordadas, autorizo expressamente a ${coNameG} a proceder à recolha, apreensão e execução extrajudicial ou judicial dos referidos bens para amortização ou liquidação do saldo devedor, nos termos da Cláusula Décima Segunda e Décima Terceira do Contrato de Concessão de Empréstimo e da legislação aplicável na República de Moçambique.`,
+    { size: 9, gap: 0.8 }
+  );
+
+  // Local e Data
+  doc.x = left;
+  doc.moveDown(0.6);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#000000");
+  doc.text(`Maputo, aos ${fmtDateShort(l.getDataValue("updatedAt") || l.getDataValue("dateCreated"))}`, left, doc.y, { width, align: "center" });
+  doc.moveDown(1.8);
+
+  // ── 4. ASSINATURAS ─────────────────────────────────────────────────────
+  const SIG_H = 75;
+  let signY = doc.y + 6;
   if (signY + SIG_H > ctx.contentBottom) {
     doc.addPage();
-    signY = doc.page.margins.top;
+    ctx.contentBottom = doc.page.height - doc.page.margins.bottom - 24;
+    signY = doc.page.margins.top + 10;
   }
-  const half = width / 2;
-  // Nome do gestor: resolve por id (creditManager é users.id) com fallback ao
-  // texto gravado — nunca sai um número solto na linha da assinatura.
-  let gestorNome = String(l.getDataValue("creditManager") || "").trim();
+
+  let gestorNome = String(data.creditManagerName || l.getDataValue("creditManager") || "").trim();
   if (/^\d+$/.test(gestorNome)) {
     try {
       const { UserModel } = await import("../database/models/UserModel");
@@ -1251,14 +1400,37 @@ export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): P
     } catch { /* mantém o que veio */ }
   }
   if (!gestorNome) gestorNome = "Gestor de Crédito";
-  const DOTTED_G = "…………………………………………";
-  const leftSig = `${DOTTED_G}\n\n${gestorNome}\n\n(GESTOR DE CRÉDITO)`;
-  const rightSig = isPJ
-    ? `${DOTTED_G}\n\n${cu.getDataValue("customerName") || ""}\nRepresentada por: ${cu.getDataValue("companyLegalRepresentative") || ""}`
-    : `${DOTTED_G}\n\n${cu.getDataValue("customerName") || ""}\n\n(${convertGender(cu).trim()})`;
-  doc.font("Helvetica").fontSize(8).fillColor("#000000");
-  doc.text(leftSig, left + 10, signY, { width: half - 30, align: "center" });
-  doc.text(rightSig, left + half + 20, signY, { width: half - 30, align: "center" });
+
+  const colSign = (width - 40) / 2;
+  const isFem = convertGender(cu).includes("MUTUÁRIA");
+  const mutuarioRole = isPJ
+    ? `Representada por: ${cu?.getDataValue("companyLegalRepresentative") || ""}`
+    : `${convertGender(cu).trim()} / FIEL ${isFem ? "DEPOSITÁRIA" : "DEPOSITÁRIO"}`;
+
+  y = drawTable(ctx, {
+    x: left,
+    y: signY,
+    widths: [colSign, 40, colSign],
+    aligns: ["center", "center", "center"],
+    rows: [
+      [
+        plainTextCell(
+          `PELA INSTITUIÇÃO FINANCEIRA (${coNameG})\n\n\n_____________________________________________\n${gestorNome}\n(Gestor de Crédito / Verificador)`,
+          { align: "center", fontSize: 8.5, bold: true }
+        ),
+        plainTextCell("", {}),
+        plainTextCell(
+          `DECLARO QUE LI E CONCORDO\n\n\n_____________________________________________\n${customerNameStr}\n(${mutuarioRole})`,
+          { align: "center", fontSize: 8.5, bold: true }
+        ),
+      ],
+    ],
+    padY: 6,
+    outerWidth: 0,
+    gridColor: "#ffffff",
+  });
+  doc.x = left;
+  doc.y = y + 8;
 };
 
 // ── Cláusula vigésima primeira (seguro) — texto integral do frontend ───
@@ -1270,6 +1442,7 @@ const buildInsuranceClause = (ctx: Ctx, data: LegalDocsData, info: { companyName
   const { companyName, companyAbbr, amount, rate, numInstallments } = info;
 
   const point = (title: string, num: string, text: string) => {
+    doc.x = left;
     if (title && num) {
       doc.font("Helvetica-Bold").fontSize(8).fillColor("#000000");
       doc.moveDown(0.5);
@@ -1288,6 +1461,7 @@ const buildInsuranceClause = (ctx: Ctx, data: LegalDocsData, info: { companyName
       doc.font("Helvetica").fontSize(8).fillColor("#000000");
       doc.text(`      ${t}`, left + 10, doc.y, { width: width - 10 });
     });
+    doc.x = left;
   };
 
   doc.moveDown(0.8);
@@ -1388,7 +1562,12 @@ export const renderLegalDoc = async (tipo: string, data: LegalDocsData, seal?: {
   const doc = new PDFDocument({
     size: "A4",
     layout: landscape ? "landscape" : "portrait",
-    margin: landscape ? 30 : 40,
+    margins: {
+      top: landscape ? 30 : 40,
+      bottom: landscape ? 44 : 52,
+      left: landscape ? 30 : 40,
+      right: landscape ? 30 : 40,
+    },
     bufferPages: true,
   });
   const chunks: Buffer[] = [];
@@ -1399,14 +1578,14 @@ export const renderLegalDoc = async (tipo: string, data: LegalDocsData, seal?: {
     doc,
     left: doc.page.margins.left,
     right: doc.page.width - doc.page.margins.right,
-    contentBottom: doc.page.height - doc.page.margins.bottom - (landscape ? 20 : 24),
+    contentBottom: doc.page.height - doc.page.margins.bottom - 10,
     company: data.company,
   };
 
   switch (tipo) {
     case "contrato": buildContratoConcessao(ctx, data); break;
     case "termo": buildTermoCompromisso(ctx, data); break;
-    case "garantias": buildDeclaracaoGarantias(ctx, data); break;
+    case "garantias": await buildDeclaracaoGarantias(ctx, data); break;
     case "extracto":
     case "plano": // Plano Inicial = extracto no estado do desembolso (imutável no pacote)
       buildExtractoCredito(ctx, data);

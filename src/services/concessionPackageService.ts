@@ -24,6 +24,8 @@ import { validationUrl } from "./reciboService";
  * pelo LegalDocsController (renderLegalDoc) e nunca persiste.
  */
 
+export const CONCESSION_LAYOUT_VERSION = 2;
+
 export const DOCS_DO_PACOTE: Array<{ key: string; label: string; file: string }> = [
   { key: "termo", label: "Termo de Compromisso", file: "termo-compromisso" },
   { key: "garantias", label: "Declaração de Garantias", file: "declaracao-garantias" },
@@ -108,7 +110,8 @@ export const generateConcessionPackage = async (params: {
       file: fileName,
       bytes: pdf.length,
       hash: crypto.createHash("sha256").update(pdf).digest("hex"),
-    };
+      layoutVersion: CONCESSION_LAYOUT_VERSION,
+    } as any;
   }
 
   // Hash do pacote: SHA-256 dos 4 PDFs concatenados + loanId (estável).
@@ -158,7 +161,9 @@ export const findConcessionPackage = async (loanId: number): Promise<any | null>
   return (rows as any[])[0] || null;
 };
 
-/** Lê um PDF do pacote do disco (docs JSON: termo|garantias|contrato|plano). */
+/** Lê um PDF do pacote do disco (docs JSON: termo|garantias|contrato|plano).
+ *  Se o documento foi gerado com uma versão de layout anterior (ex: texto cortado
+ *  na Declaração de Garantias), re-renderiza e actualiza o ficheiro automaticamente. */
 export const readConcessionDoc = async (loanId: number, key: string): Promise<{ buffer: Buffer; fileName: string } | null> => {
   const pacote: any = await findConcessionPackage(loanId);
   if (!pacote) return null;
@@ -166,6 +171,33 @@ export const readConcessionDoc = async (loanId: number, key: string): Promise<{ 
   const entry = docs[key];
   if (!entry?.file) return null;
   const abs = path.join(process.cwd(), pacote.storage_dir || "", entry.file);
+
+  const needsLayoutUpgrade = Number(entry.layoutVersion || 0) < CONCESSION_LAYOUT_VERSION || !fs.existsSync(abs);
+  if (needsLayoutUpgrade) {
+    try {
+      const data = await loadLegalDocsData(loanId);
+      if (data && data.loan) {
+        const emitidoEm = pacote.created_at ? new Date(pacote.created_at) : new Date();
+        const freshPdf = await renderLegalDoc(key, data, { emitidoEm });
+        await fs.promises.mkdir(path.dirname(abs), { recursive: true });
+        await fs.promises.writeFile(abs, freshPdf);
+        docs[key] = {
+          file: entry.file,
+          bytes: freshPdf.length,
+          hash: crypto.createHash("sha256").update(freshPdf).digest("hex"),
+          layoutVersion: CONCESSION_LAYOUT_VERSION,
+        };
+        await db.query(
+          "UPDATE concession_packages SET docs = ? WHERE id = ?",
+          { replacements: [JSON.stringify(docs), Number(pacote.id)] }
+        );
+        return { buffer: freshPdf, fileName: entry.file };
+      }
+    } catch (e: any) {
+      console.error(`[Concessao] Falha ao actualizar layout de ${key} do crédito #${loanId}:`, e?.message);
+    }
+  }
+
   if (!fs.existsSync(abs)) return null;
   return { buffer: await fs.promises.readFile(abs), fileName: entry.file };
 };
@@ -197,11 +229,10 @@ export const buildConcessionZip = async (loanId: number): Promise<{ buffer: Buff
   };
 
   const entries: Array<{ name: Buffer; data: Buffer; crc: number; size: number }> = [];
-  for (const [key, entry] of Object.entries<any>(docs)) {
-    const abs = path.join(dirAbs, entry.file);
-    if (!fs.existsSync(abs)) continue;
-    const data = await fs.promises.readFile(abs);
-    entries.push({ name: Buffer.from(entry.file, "utf8"), data, crc: crc32(data), size: data.length });
+  for (const [key] of Object.entries<any>(docs)) {
+    const doc = await readConcessionDoc(loanId, key);
+    if (!doc) continue;
+    entries.push({ name: Buffer.from(doc.fileName, "utf8"), data: doc.buffer, crc: crc32(doc.buffer), size: doc.buffer.length });
   }
   if (entries.length === 0) return null;
 
