@@ -426,13 +426,37 @@ export const loadLegalDocsData = async (loanId: number): Promise<LegalDocsData |
   } catch (tErr) {
     console.error("[LegalDocs] Erro ao carregar transações:", tErr);
   }
-  let creditManagerName = String(loan.getDataValue("creditManager") || "").trim();
-  if (/^\d+$/.test(creditManagerName)) {
+  let rawManager = String(
+    loan.getDataValue("creditManager") ||
+    customer?.getDataValue?.("creditManager") ||
+    ""
+  ).trim();
+
+  let creditManagerName = "";
+  if (/^\d+$/.test(rawManager)) {
     try {
       const { UserModel } = await import("../database/models/UserModel");
-      const gestor: any = await UserModel.findByPk(Number(creditManagerName), { raw: true });
-      creditManagerName = String(gestor?.userName || gestor?.name || creditManagerName);
-    } catch { /* mantém o valor original */ }
+      const gestor: any = await UserModel.findByPk(Number(rawManager), { raw: true });
+      creditManagerName = String(gestor?.name || gestor?.userName || "").trim();
+    } catch { /* tenta fallback de query directa */ }
+
+    if (!creditManagerName || /^\d+$/.test(creditManagerName)) {
+      try {
+        const { db } = await import("../database/db");
+        const [rows]: any = await db.query("SELECT name FROM users WHERE id = ? LIMIT 1", {
+          replacements: [Number(rawManager)],
+        });
+        if (rows && rows[0]?.name) {
+          creditManagerName = String(rows[0].name).trim();
+        }
+      } catch { /* ignora se falhar */ }
+    }
+  } else if (rawManager && !/^\d+$/.test(rawManager)) {
+    creditManagerName = rawManager;
+  }
+
+  if (!creditManagerName || /^\d+$/.test(creditManagerName)) {
+    creditManagerName = String(company?.getDataValue?.("companyManager") || company?.companyManager || "Direcção de Crédito").trim();
   }
   return { loan, customer, company, amortizations, guarantees, accounts, transactions, creditManagerName };
 };
@@ -445,6 +469,14 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
   const width = right - left;
 
   let y = drawCompanyHeader(ctx, "Extracto de Conta do Crédito");
+
+  let gestorDisplay = String(data.creditManagerName || "").trim();
+  if (!gestorDisplay || /^\d+$/.test(gestorDisplay)) {
+    const rawVal = String(loan.getDataValue("creditManager") || "").trim();
+    gestorDisplay = (!rawVal || /^\d+$/.test(rawVal))
+      ? String(data.company?.companyManager || ctx.company?.companyManager || "Direcção de Crédito")
+      : rawVal;
+  }
 
   // 1. DADOS DO MUTUÁRIO & ENQUADRAMENTO DA OPERAÇÃO
   doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.navy);
@@ -465,7 +497,7 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
         { rich: [{ text: "Operação / Contrato: ", bold: true }, { text: `CR-${loan.getDataValue("id")}` }] },
         { rich: [{ text: "Sector BM (Secção 2.1.3): ", bold: true }, { text: String(loan.getDataValue("loanDescription") || "Comércio") }] },
         { rich: [{ text: "Data de Concessão: ", bold: true }, { text: fmtDateShort(loan.getDataValue("disbursementDate") || loan.getDataValue("dateCreated")) }] },
-        { rich: [{ text: "Gestor de Crédito: ", bold: true }, { text: String(loan.getDataValue("creditManager") || "—") }] },
+        { rich: [{ text: "Gestor de Crédito: ", bold: true }, { text: gestorDisplay || "—" }] },
       ],
     ],
     fontSize: 8, padY: 4, outerLine: COLORS.navy, outerWidth: 1, gridColor: "#e2e8f0",
@@ -1080,7 +1112,8 @@ export const buildContratoConcessao = (ctx: Ctx, data: LegalDocsData): void => {
   }
   const half = width / 2;
   const DOTTED = "…………………………………………";
-  const leftSig = `${DOTTED}\n\n${c.getDataValue("companyManager") || "Gestor de Crédito"}\n\n(O MUTUANTE)`;
+  const managerNameContract = String(data.creditManagerName || c.getDataValue("companyManager") || "Gestor de Crédito").trim();
+  const leftSig = `${DOTTED}\n\n${managerNameContract}\n\n(O MUTUANTE)`;
   const rightSig = isPJ
     ? `${DOTTED}\n\nPela MUTUÁRIA\n${cu.getDataValue("customerName") || ""}\nRepresentada por: ${cu.getDataValue("companyLegalRepresentative") || ""}\nBI: ${cu.getDataValue("companyRepresentativeIdNumber") || ""}`
     : `${DOTTED}\n\n${cu.getDataValue("customerName") || ""}\n\n(${convertGender(cu).trim()})`;
@@ -1391,15 +1424,10 @@ export const buildDeclaracaoGarantias = async (ctx: Ctx, data: LegalDocsData): P
     signY = doc.page.margins.top + 10;
   }
 
-  let gestorNome = String(data.creditManagerName || l.getDataValue("creditManager") || "").trim();
-  if (/^\d+$/.test(gestorNome)) {
-    try {
-      const { UserModel } = await import("../database/models/UserModel");
-      const gestor: any = await UserModel.findByPk(Number(gestorNome), { raw: true });
-      gestorNome = String(gestor?.userName || gestor?.name || gestorNome);
-    } catch { /* mantém o que veio */ }
+  let gestorNome = String(data.creditManagerName || "").trim();
+  if (!gestorNome || /^\d+$/.test(gestorNome)) {
+    gestorNome = String(c?.getDataValue?.("companyManager") || c?.companyManager || "Gestor de Crédito").trim();
   }
-  if (!gestorNome) gestorNome = "Gestor de Crédito";
 
   const colSign = (width - 40) / 2;
   const isFem = convertGender(cu).includes("MUTUÁRIA");

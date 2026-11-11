@@ -61,6 +61,7 @@ const amortizations = Array.from({ length: n }, (_, i) => {
 });
 
 const loan = rec({
+  id: 125,
   amount,
   numberOfInstallments: n,
   interestRate: monthlyRate,
@@ -82,7 +83,7 @@ const accounts = [
   rec({ accountDescription: "Millennium BIM", accountHolder: "Mais Mola", accountNumber: "987654321000" }),
 ];
 
-const data = { loan, customer, company, amortizations, guarantees, accounts };
+const data = { loan, customer, company, amortizations, guarantees, accounts, creditManagerName: "Emídio Macuácua" };
 
 const outDir = path.join(process.cwd(), "uploads", "docs", "smoke");
 fs.mkdirSync(outDir, { recursive: true });

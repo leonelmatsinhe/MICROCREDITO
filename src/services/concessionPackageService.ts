@@ -24,7 +24,7 @@ import { validationUrl } from "./reciboService";
  * pelo LegalDocsController (renderLegalDoc) e nunca persiste.
  */
 
-export const CONCESSION_LAYOUT_VERSION = 2;
+export const CONCESSION_LAYOUT_VERSION = 3;
 
 export const DOCS_DO_PACOTE: Array<{ key: string; label: string; file: string }> = [
   { key: "termo", label: "Termo de Compromisso", file: "termo-compromisso" },
