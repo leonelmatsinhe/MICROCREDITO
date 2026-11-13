@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateMissingPackages = exports.buildConcessionZip = exports.readConcessionDoc = exports.findConcessionPackage = exports.generateConcessionPackage = exports.PackageAlreadyIssuedError = exports.DOCS_DO_PACOTE = void 0;
+exports.generateMissingPackages = exports.buildConcessionZip = exports.readConcessionDoc = exports.findConcessionPackage = exports.generateConcessionPackage = exports.PackageAlreadyIssuedError = exports.DOCS_DO_PACOTE = exports.CONCESSION_LAYOUT_VERSION = void 0;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -37,6 +37,7 @@ const reciboService_1 = require("./reciboService");
  * FLUXO 2 (extrato dinâmico) NÃO passa aqui — é gerado on-demand em memória
  * pelo LegalDocsController (renderLegalDoc) e nunca persiste.
  */
+exports.CONCESSION_LAYOUT_VERSION = 4;
 exports.DOCS_DO_PACOTE = [
     { key: "termo", label: "Termo de Compromisso", file: "termo-compromisso" },
     { key: "garantias", label: "Declaração de Garantias", file: "declaracao-garantias" },
@@ -101,6 +102,7 @@ const generateConcessionPackage = (params) => __awaiter(void 0, void 0, void 0, 
             file: fileName,
             bytes: pdf.length,
             hash: crypto_1.default.createHash("sha256").update(pdf).digest("hex"),
+            layoutVersion: exports.CONCESSION_LAYOUT_VERSION,
         };
     }
     // Hash do pacote: SHA-256 dos 4 PDFs concatenados + loanId (estável).
@@ -142,7 +144,9 @@ const findConcessionPackage = (loanId) => __awaiter(void 0, void 0, void 0, func
     return rows[0] || null;
 });
 exports.findConcessionPackage = findConcessionPackage;
-/** Lê um PDF do pacote do disco (docs JSON: termo|garantias|contrato|plano). */
+/** Lê um PDF do pacote do disco (docs JSON: termo|garantias|contrato|plano).
+ *  Se o documento foi gerado com uma versão de layout anterior (ex: texto cortado
+ *  na Declaração de Garantias), re-renderiza e actualiza o ficheiro automaticamente. */
 const readConcessionDoc = (loanId, key) => __awaiter(void 0, void 0, void 0, function* () {
     const pacote = yield (0, exports.findConcessionPackage)(loanId);
     if (!pacote)
@@ -152,6 +156,29 @@ const readConcessionDoc = (loanId, key) => __awaiter(void 0, void 0, void 0, fun
     if (!(entry === null || entry === void 0 ? void 0 : entry.file))
         return null;
     const abs = path_1.default.join(process.cwd(), pacote.storage_dir || "", entry.file);
+    const needsLayoutUpgrade = Number(entry.layoutVersion || 0) < exports.CONCESSION_LAYOUT_VERSION || !fs_1.default.existsSync(abs);
+    if (needsLayoutUpgrade) {
+        try {
+            const data = yield (0, legalDocsService_1.loadLegalDocsData)(loanId);
+            if (data && data.loan) {
+                const emitidoEm = pacote.created_at ? new Date(pacote.created_at) : new Date();
+                const freshPdf = yield (0, legalDocsService_1.renderLegalDoc)(key, data, { emitidoEm });
+                yield fs_1.default.promises.mkdir(path_1.default.dirname(abs), { recursive: true });
+                yield fs_1.default.promises.writeFile(abs, freshPdf);
+                docs[key] = {
+                    file: entry.file,
+                    bytes: freshPdf.length,
+                    hash: crypto_1.default.createHash("sha256").update(freshPdf).digest("hex"),
+                    layoutVersion: exports.CONCESSION_LAYOUT_VERSION,
+                };
+                yield db_1.db.query("UPDATE concession_packages SET docs = ? WHERE id = ?", { replacements: [JSON.stringify(docs), Number(pacote.id)] });
+                return { buffer: freshPdf, fileName: entry.file };
+            }
+        }
+        catch (e) {
+            console.error(`[Concessao] Falha ao actualizar layout de ${key} do crédito #${loanId}:`, e === null || e === void 0 ? void 0 : e.message);
+        }
+    }
     if (!fs_1.default.existsSync(abs))
         return null;
     return { buffer: yield fs_1.default.promises.readFile(abs), fileName: entry.file };
@@ -185,12 +212,11 @@ const buildConcessionZip = (loanId) => __awaiter(void 0, void 0, void 0, functio
         return (c ^ 0xffffffff) >>> 0;
     };
     const entries = [];
-    for (const [key, entry] of Object.entries(docs)) {
-        const abs = path_1.default.join(dirAbs, entry.file);
-        if (!fs_1.default.existsSync(abs))
+    for (const [key] of Object.entries(docs)) {
+        const doc = yield (0, exports.readConcessionDoc)(loanId, key);
+        if (!doc)
             continue;
-        const data = yield fs_1.default.promises.readFile(abs);
-        entries.push({ name: Buffer.from(entry.file, "utf8"), data, crc: crc32(data), size: data.length });
+        entries.push({ name: Buffer.from(doc.fileName, "utf8"), data: doc.buffer, crc: crc32(doc.buffer), size: doc.buffer.length });
     }
     if (entries.length === 0)
         return null;

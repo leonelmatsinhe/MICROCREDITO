@@ -552,8 +552,11 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
   const atrasadas = amortizations.filter(r => Number(r.status) !== 1 && String(r.dueDate || "").slice(0, 10) < hoje);
   const maxLateDays = Math.max(0, ...amortizations.map(r => Number(r.status) === 1 ? 0 : (Number(r.lateDays) || 0)));
 
+  const isLiquidado = totalExigivel <= 0 || (amortizations.length > 0 && paidCount === amortizations.length) || Number(data.loan?.getDataValue?.("status")) === 3;
+
   // Classe de Risco Banco de Moçambique
-  const classeRiscoBM = maxLateDays <= 0 ? "Normal (Regularizado)" :
+  const classeRiscoBM = isLiquidado ? "Liquidado" :
+    maxLateDays <= 0 ? "Normal (Em dia)" :
     maxLateDays <= 30 ? `Classe I (${maxLateDays} dias em atraso)` :
     maxLateDays <= 90 ? `Classe II - Sub-standard (${maxLateDays} dias)` :
     maxLateDays <= 365 ? `Classe III - Duvidoso (${maxLateDays} dias)` :
@@ -659,6 +662,23 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
   });
 
   // TOTAIS
+  let totalEstadoLabel = "PENDENTE";
+  let totalEstadoColor = COLORS.orange;
+
+  if (isLiquidado) {
+    totalEstadoLabel = "LIQUIDADO";
+    totalEstadoColor = COLORS.green;
+  } else if (atrasadas.length > 0) {
+    totalEstadoLabel = `${atrasadas.length} EM ATRASO`;
+    totalEstadoColor = COLORS.red;
+  } else if (totalPaid > 0) {
+    totalEstadoLabel = "EM DIA";
+    totalEstadoColor = COLORS.green;
+  } else {
+    totalEstadoLabel = "PENDENTE";
+    totalEstadoColor = COLORS.orange;
+  }
+
   planRows.push([
     plainTextCell("TOTAL", { bold: true, color: COLORS.navy, align: "center", fontSize: 7.5 }),
     plainTextCell("", {}),
@@ -668,7 +688,7 @@ export const buildExtractoCredito = (ctx: Ctx, data: LegalDocsData): void => {
     plainTextCell(fmtVal(totalPaid), { align: "right", bold: true, fontSize: 8, color: COLORS.green }),
     plainTextCell(fmtVal(moraTotal), { align: "right", bold: true, fontSize: 8, color: moraTotal > 0 ? COLORS.red : COLORS.green }),
     plainTextCell(fmtVal(totalExigivel), { align: "right", bold: true, fontSize: 8.5, color: totalExigivel > 0 ? COLORS.red : COLORS.green }),
-    plainTextCell(atrasadas.length > 0 ? `${atrasadas.length} EM ATRASO` : "REGULARIZADO", { align: "center", bold: true, color: atrasadas.length > 0 ? COLORS.red : COLORS.green, fontSize: 8 }),
+    plainTextCell(totalEstadoLabel, { align: "center", bold: true, color: totalEstadoColor, fontSize: 8 }),
   ]);
 
   y = drawTable(ctx, {
